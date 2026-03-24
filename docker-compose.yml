@@ -1,0 +1,23 @@
+services:
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  hermit:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - CHROMA_PERSIST_PATH=/app/data/chroma
+    volumes:
+      - ./data:/app/data
+      - ./docs:/app/docs
+    depends_on:
+      - ollama
+
+volumes:
+  ollama_data:

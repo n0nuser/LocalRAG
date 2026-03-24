@@ -1,0 +1,86 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hermit"
+version = "0.1.0"
+description = "Offline-first RAG system. Your documents, your models, your machine."
+readme = "README.md"
+requires-python = ">=3.13"
+license = "MIT"
+authors = [{ name = "Pablo Jesus Gonzalez Rubio", email = "gonzrubio.pablo@gmail.com" }]
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.34",
+    "typer>=0.15",
+    "chromadb>=1.0",
+    "httpx>=0.28",
+    "pypdf>=5.4",
+    "python-docx>=1.1",
+    "pydantic-settings>=2.8",
+    "rich>=13",
+    "charset-normalizer>=3.4",
+    "sse-starlette>=2.2",
+]
+
+[project.scripts]
+hermit = "hermit.cli.app:app"
+
+[dependency-groups]
+dev = ["ruff", "pytest", "pytest-asyncio", "respx", "pre-commit"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "BLE001",
+    "COM812",
+    "ISC001",
+    "D100",
+    "D104",
+    "D105",
+    "D107",
+    "D205",
+    "D211",
+    "D212",
+    "ANN204",
+    "ANN401",
+    "S602",
+    "ERA001",
+    "PGH003",
+    "PLR0913",
+    "TRY400",
+    "N803",
+    "N815",
+    "D101",
+    "D102",
+    "D103",
+    "TC001",
+    "TC002",
+    "TC003",
+    "S101",
+    "B008",
+    "FAST002",
+    "FBT001",
+    "INP001",
+    "PERF401",
+    "ARG002",
+    "EM101",
+    "PLR2004",
+    "PLW0108",
+    "S104",
+    "TRY003",
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
