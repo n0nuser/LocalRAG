@@ -7,7 +7,13 @@ Offline-first RAG system. Your documents, your models, your machine.
 Hermit ingests your local documents, stores embeddings in a local ChromaDB database,
 and answers questions using Ollama models. No cloud services required.
 
+## Documentation
+
+- **[Installing Ollama](docs/ollama.md)** — install the Ollama app/CLI first (official [ollama.com/download](https://ollama.com/download)); required for local (non-Docker) use.
+
 ## Quick Start (uv + local Ollama)
+
+1. **Install Ollama** on your system. See **[docs/ollama.md](docs/ollama.md)** (official guide: [ollama.com](https://ollama.com/), downloads: [ollama.com/download](https://ollama.com/download)).
 
 1. Install dependencies:
 
@@ -72,6 +78,8 @@ Main keys:
 - `RAG_TOP_K`
 
 ## Docker
+
+With Compose, Ollama runs in a container—you can skip a **host** Ollama install for that workflow. For background on Ollama itself, still see [docs/ollama.md](docs/ollama.md).
 
 ```bash
 docker compose up --build
