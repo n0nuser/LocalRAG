@@ -4,7 +4,7 @@ import httpx
 import pytest
 import respx
 
-from hermit.ingestion.embedder import OllamaEmbedder
+from localrag.ingestion.embedder import OllamaEmbedder
 
 
 @respx.mock

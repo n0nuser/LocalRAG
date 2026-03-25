@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from hermit.ingestion.chunker import chunk_text
-from hermit.ingestion.loader import list_supported_files
+from localrag.ingestion.chunker import chunk_text
+from localrag.ingestion.loader import list_supported_files
 
 
 def test_chunk_text_returns_overlap_chunks() -> None:

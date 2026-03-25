@@ -6,10 +6,10 @@ from uuid import uuid4
 
 from fastapi.testclient import TestClient
 
-from hermit.api.dependencies import get_api_settings, get_engine, get_ingestion_service
-from hermit.api.main import app
-from hermit.ingestion.service import IngestionResult
-from hermit.settings import Settings
+from localrag.api.dependencies import get_api_settings, get_engine, get_ingestion_service
+from localrag.api.main import app
+from localrag.ingestion.service import IngestionResult
+from localrag.settings import Settings
 
 
 @dataclass

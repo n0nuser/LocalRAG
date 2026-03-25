@@ -1,6 +1,6 @@
 # Installing Ollama
 
-Hermit talks to **Ollama** on your machine for local embeddings and chat. Ollama is a separate install—not a Python package. Hermit follows the [Ollama HTTP API](https://github.com/ollama/ollama/blob/main/docs/api.md): embeddings use **`POST /api/embed`** (not the legacy `/api/embeddings` endpoint); chat uses **`POST /api/chat`**; model discovery uses **`GET /api/tags`**; pulls use **`POST /api/pull`**. Request and response bodies for those calls are typed in **`hermit/ollama/schemas.py`**. Use a reasonably current Ollama release so those routes match.
+LocalRAG talks to **Ollama** on your machine for local embeddings and chat. Ollama is a separate install—not a Python package. LocalRAG follows the [Ollama HTTP API](https://github.com/ollama/ollama/blob/main/docs/api.md): embeddings use **`POST /api/embed`** (not the legacy `/api/embeddings` endpoint); chat uses **`POST /api/chat`**; model discovery uses **`GET /api/tags`**; pulls use **`POST /api/pull`**. Request and response bodies for those calls are typed in **`localrag/ollama/schemas.py`**. Use a reasonably current Ollama release so those routes match.
 
 The **canonical instructions** are on the official site:
 
@@ -17,15 +17,15 @@ Follow the steps there for your OS (Windows, macOS, or Linux). The site covers i
    ollama --version
    ```
 
-2. **Run the server** (Hermit expects it reachable, default `http://127.0.0.1:11434`):
+2. **Run the server** (LocalRAG expects it reachable, default `http://127.0.0.1:11434`):
 
    ```bash
    ollama serve
    ```
 
-   On many setups the Ollama app starts this for you in the background; if `hermit` or the API cannot reach Ollama, run `ollama serve` explicitly.
+   On many setups the Ollama app starts this for you in the background; if `localrag` or the API cannot reach Ollama, run `ollama serve` explicitly.
 
-3. **Pull models** Hermit uses by default (names match [`.env.example`](../.env.example)):
+3. **Pull models** LocalRAG uses by default (names match [`.env.example`](../.env.example)):
 
    ```bash
    ollama pull nomic-embed-text
@@ -34,15 +34,15 @@ Follow the steps there for your OS (Windows, macOS, or Linux). The site covers i
 
    You can change models via `OLLAMA_EMBED_MODEL` and `OLLAMA_LLM_MODEL` in `.env`.
 
-4. **Optional:** run Hermit’s helper to check connectivity and pull defaults:
+4. **Optional:** run LocalRAG’s helper to check connectivity and pull defaults:
 
    ```bash
-   uv run hermit setup
+   uv run localrag setup
    ```
 
 ## Docker
 
-If you use Hermit’s `docker-compose.yml`, Ollama runs in a container; pull models **inside that container** (see the [README](../README.md) Docker section). You do not need a host install of Ollama for that path—only for **native** `uv run hermit` / local API usage.
+If you use LocalRAG’s `docker-compose.yml`, Ollama runs in a container; pull models **inside that container** (see the [README](../README.md) Docker section). You do not need a host install of Ollama for that path—only for **native** `uv run localrag` / local API usage.
 
 ## More help
 

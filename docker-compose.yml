@@ -6,7 +6,7 @@ services:
     volumes:
       - ollama_data:/root/.ollama
 
-  hermit:
+  localrag:
     build: .
     ports:
       - "8000:8000"

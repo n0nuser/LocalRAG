@@ -1,6 +1,6 @@
 # Agent and contributor context
 
-Hermit keeps **human-oriented** docs in the [README](README.md) and **machine- and agent-oriented** maps under [`docs/`](docs/). Use these to load the right files first and avoid spelunking the whole tree.
+LocalRAG keeps **human-oriented** docs in the [README](README.md) and **machine- and agent-oriented** maps under [`docs/`](docs/). Use these to load the right files first and avoid spelunking the whole tree.
 
 ## Trunk-based Git (read this before branching)
 
@@ -14,13 +14,13 @@ The FastAPI layer follows a **light domain-driven** split:
 
 | Piece | Location | Role |
 | --- | --- | --- |
-| **Schemas** (request/response DTOs, OpenAPI) | `hermit/api/schemas.py` | Pydantic models and path type aliases only—no business rules. |
-| **Application services** | `hermit/api/service.py` | Use cases: orchestration, validation, logging, mapping to/from schemas. |
-| **Repositories** | `hermit/api/repository.py` | Persistence boundaries for the API (e.g. Chroma collections via `VectorStore`). |
-| **HTTP adapters** | `hermit/api/routers/*.py` | Routes: dependencies, call services, return responses. **No** Pydantic models or domain logic in router modules. |
-| **Cross-cutting API errors** | `hermit/api/exceptions.py` | Exceptions mapped to HTTP in `hermit/api/main.py` (e.g. `IngestApiError`). |
+| **Schemas** (request/response DTOs, OpenAPI) | `localrag/api/schemas.py` | Pydantic models and path type aliases only—no business rules. |
+| **Application services** | `localrag/api/service.py` | Use cases: orchestration, validation, logging, mapping to/from schemas. |
+| **Repositories** | `localrag/api/repository.py` | Persistence boundaries for the API (e.g. Chroma collections via `VectorStore`). |
+| **HTTP adapters** | `localrag/api/routers/*.py` | Routes: dependencies, call services, return responses. **No** Pydantic models or domain logic in router modules. |
+| **Cross-cutting API errors** | `localrag/api/exceptions.py` | Exceptions mapped to HTTP in `localrag/api/main.py` (e.g. `IngestApiError`). |
 
-Domain packages (`hermit/ingestion/`, `hermit/rag/`, `hermit/storage/`) keep their own services and types; the API service calls into them (e.g. `IngestionService`, `RAGEngine`).
+Domain packages (`localrag/ingestion/`, `localrag/rag/`, `localrag/storage/`) keep their own services and types; the API service calls into them (e.g. `IngestionService`, `RAGEngine`).
 
 ## Documentation maintenance for agents
 
