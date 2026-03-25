@@ -1,0 +1,20 @@
+---
+description: UV usage and project commands
+alwaysApply: true
+---
+
+# Project Setup
+
+This project uses **UV** for dependency management. All Python commands must be run through UV.
+
+```bash
+uv lock # Recreate lock
+uv lock --upgrade
+uv sync # Install dependencies
+uv sync --no-dev # For production cases
+uv add {package}
+uv add --dev {package} # Adds to the development group
+uv remove {package}
+uv run pytest
+uv export --format requirements.txt
+```

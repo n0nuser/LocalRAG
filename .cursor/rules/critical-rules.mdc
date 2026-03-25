@@ -1,0 +1,141 @@
+---
+description: Non-negotiable code rules — violating these results in rejected code
+alwaysApply: true
+---
+
+# Critical Rules
+
+## No Logic in `__init__` Methods
+
+`__init__` must only contain simple parameter assignments. Never call methods that perform I/O, API calls, parsing, or complex computation. Use `@classmethod` factory methods instead.
+
+```python
+# ❌ WRONG
+class ToolsMetadata:
+    def __init__(self):
+        self._metadata = {}
+        self._load_metadata()
+
+# ✅ CORRECT
+class ToolsMetadata:
+    def __init__(self, metadata: dict[str, ToolMetadata]):
+        self._metadata = metadata
+
+    @classmethod
+    def create(cls) -> "ToolsMetadata":
+        metadata = cls._load_metadata()
+        return cls(metadata)
+```
+
+## Imports at Top Level Only
+
+All imports must be at the top of the file. Never import inside functions, methods, or conditionals.
+
+```python
+# ❌ WRONG
+def my_function():
+    import json
+    return json.dumps(data)
+
+# ✅ CORRECT
+import json
+
+def my_function():
+    return json.dumps(data)
+```
+
+## `__init__.py` Content Rules
+
+If `__init__.py` is only a package marker, keep it completely empty (no comments or docstrings).
+If the project/package is a library, `__init__.py` may contain meaningful public exports and package metadata when intentionally defining the library API surface.
+
+## No `__all__` Outside `__init__.py`
+
+Never define `__all__` in non-`__init__.py` files. Use explicit imports at call sites instead.
+
+```python
+# ❌ WRONG — in domain/models.py
+__all__ = ["MyModel", "OtherModel"]
+
+# ✅ CORRECT — import explicitly where needed
+from st_internal_quota_service.domain.models import MyModel, OtherModel
+```
+
+## No Testing `__init__` or Models in Isolation
+
+- Never create `test_init_*` test methods — refactor the logic out of `__init__` instead.
+- Never create test files for Pydantic models or dataclasses (e.g., `test_public_response.py`) — models are tested implicitly through business logic tests.
+
+## No `Field()` in Pydantic Models (Except FastAPI / OpenAPI)
+
+Never use `Field(...)`, `Field(title=...)`, or `Field(default=...)` **only** to wrap a value in domain or internal models. Set types and defaults directly. Use `Field()` when you need validation constraints, an `alias`, or **FastAPI request/response OpenAPI metadata** (`description`, `examples`, `json_schema_extra` on the model, etc.).
+
+**FastAPI bodies and documented responses** — field descriptions and examples are part of the public API contract. Use `Field(description=..., examples=[...])` (and `ConfigDict(json_schema_extra=...)` for multi-field examples) on those models. Do not remove or downgrade existing descriptions while refactoring defaults or typing.
+
+```python
+# ❌ WRONG — internal model, Field adds nothing
+class MyModel(BaseModel):
+    name: str = Field(..., title="Name")
+    count: int = Field(default=0)
+
+# ✅ CORRECT — internal model
+class MyModel(BaseModel):
+    name: str
+    count: int = 0
+
+# ✅ CORRECT — FastAPI request/response model (OpenAPI)
+class QueryRequest(BaseModel):
+    question: str = Field(description="User question.", examples=["How do I install?"])
+    limit: int | None = Field(default=None, description="Optional cap.", examples=[10])
+```
+
+## Never Import `_`-Prefixed Symbols from Another Module
+
+A leading underscore means "private to this module". If you need it elsewhere, make it public (remove the underscore), move it to a shared location, or inline the logic.
+
+```python
+# ❌ WRONG
+from some_module import _private_helper
+
+# ✅ CORRECT — inline it, or make it public and rename
+```
+
+## Format After Every Edit
+
+After modifying any Python file, format with Ruff on those files before finishing.
+
+## Return Empty Lists, Not None
+
+Methods with a list return type must return `[]` instead of `None`. Never type a list-returning method as `list[T] | None` unless the absence of a list is semantically distinct from an empty list.
+
+```python
+# ❌ WRONG
+def get_users(self) -> list[User] | None:
+    if not self.data:
+        return None
+    return self.data
+
+# ✅ CORRECT
+def get_users(self) -> list[User]:
+    if not self.data:
+        return []
+    return self.data
+```
+
+## Use `@pytest.mark.parametrize` for Variations
+
+Never create separate test functions for each case (`test_with_500`, `test_with_502`). Use one parametrized test.
+
+```python
+# ❌ WRONG
+def test_retry_with_500(): ...
+def test_retry_with_502(): ...
+
+# ✅ CORRECT
+@pytest.mark.parametrize("status_code,expected_retry", [
+    (500, True),
+    (502, True),
+    (200, False),
+])
+def test_http_client_retry_logic(status_code, expected_retry): ...
+```

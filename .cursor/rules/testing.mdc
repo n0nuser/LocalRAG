@@ -1,0 +1,51 @@
+---
+description: Testing conventions, fixtures, mocking, and structure
+globs: "**/tests/**/*.py,**/test_*.py"
+alwaysApply: false
+---
+
+# Testing
+
+## Philosophy
+
+- Tests validate behavior and flow — not for coverage numbers alone.
+- Read whole test files before editing to spot patterns, reusable fixtures, and avoid duplication.
+- Each test verifies one specific behavior with a descriptive name.
+
+## Network & Determinism
+
+- No outbound HTTP — autouse fixture in `tests/conftest.py` blocks network. Use `@pytest.mark.no_requests` only when explicitly needed.
+- Deterministic: use `freezegun` for dates, isolate from I/O.
+
+## Fixtures
+
+- Centralize shared data in `tests/fixtures/*.py` (auto-registered via `pytest_plugins` in `tests/conftest.py`).
+- Factory pattern for flexible object creation; fixed instances only when a single variant suffices.
+- Keep fixture scope as narrow as possible; only create fixtures reused multiple times.
+
+## Mock Strategy
+
+- **Real objects** for simple data structures and internal components.
+- **Mock at the boundary**: external services, databases, HTTP clients, I/O, AWS (Kinesis, SSM, Redis).
+- Stub over mock when behavior is simple; centralized mock fixtures for consistency.
+- Don't assert call order unless order is the behavior under test.
+
+## Assertions
+
+- Assert whole objects (dicts and Pydantic models), not individual fields.
+
+```python
+assert result == {"user_id": "123", "status": "active"}   # ✅
+assert result.user_id == "123"                              # ❌
+```
+
+## Style
+
+- No AAA comments (`# Arrange`, `# Act`, `# Assert`) — structure should be self-evident; use blank lines to separate sections.
+- Logs: assert behavior first. If testing logs, check levels/fields, not exact strings or call counts.
+
+## Helpers & Structure
+
+- Small generic helpers go in `tests/utils/` — reuse before creating new ones.
+- Test file structure mirrors source: `src/tools/search.py` -> `tests/tools/test_search.py`.
+- Check `tests/fixtures/` for reusable components before adding new ones.
