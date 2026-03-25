@@ -1,0 +1,90 @@
+---
+description: Self-check checklist before finishing any code change — catches the most common review failures
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Code Review Checklist
+
+Run this checklist before finishing any Python change. These are the most common issues caught in real PRs.
+
+## PEP-8 & Naming
+
+- [ ] All identifiers use `snake_case` — no camelCase variable, function, or class attribute names
+- [ ] Pydantic model fields are `snake_case`; if JSON must be camelCase, use `alias_generator=to_camel` + `model_dump(by_alias=True)`
+- [ ] Empty `__init__.py` files stay empty — no comments or docstrings
+- [ ] Classes with a docstring don't have `pass` — the docstring is enough for empty bodies
+- [ ] No module-level docstrings when the purpose is obvious from the file path or name
+
+## Pydantic Models
+
+- [ ] No `Field(...)`, `Field(title=...)`, or `Field(default=...)` wrappers — set types and defaults directly
+- [ ] Only use `Field()` when you need a validator constraint or an `alias`
+- [ ] `str | None` fields have a default of `= None`, not `= Field(...)` (required)
+
+## Type Annotations
+
+- [ ] Use `|` syntax — no `Optional[...]` or `Union[...]`
+- [ ] Use built-in `list`, `dict`, `tuple` — no `List`, `Dict`, `Tuple` from `typing`
+
+## Imports
+
+- [ ] All imports at the top of the file — never inside functions or conditionals
+- [ ] No importing `_`-prefixed symbols from another module
+- [ ] No `__all__` without a strong reason — use `_` prefix for private symbols instead
+- [ ] No imports in `__init__.py` unless it's the root of a library
+
+## Error Handling
+
+- [ ] No bare `except Exception` in route handlers — let the error-handling middleware catch it
+- [ ] Use specific exception types everywhere else
+
+## DRY / Logic
+
+- [ ] No logic duplicated across modules — if it exists elsewhere, import it
+- [ ] `__init__` only contains simple assignments — no I/O, API calls, or complex logic
+- [ ] No magic strings — define a `StrEnum` or constant if applicable
+- [ ] Prefer returning a small dataclass over a raw tuple from functions
+
+## Tests
+
+- [ ] Assert whole objects/dicts, not individual fields
+- [ ] Use `@pytest.mark.parametrize` for variations — no separate test per case
+- [ ] No `test_init_*` methods — refactor instead
+- [ ] No standalone test files for Pydantic models — test through business logic
+
+## Layer 1: Intent Verification (The "Why" Layer)
+
+- [ ] Does the code match the ticket/requirement exactly?
+- [ ] Are there business rules missing that only humans would know?
+- [ ] Is the solution appropriately complex for the problem size?
+- [ ] Would a domain expert recognize this as correct?
+
+## Layer 2: Architecture Integration (The "How" Layer)
+
+- [ ] Does this follow our established patterns and conventions?
+- [ ] Are there existing utilities/services this should use instead?
+- [ ] Does the error handling match our standard approach?
+- [ ] Is the logging/monitoring consistent with our practices?
+- [ ] If a folder has only one module (excluding `__init__.py`), consider inlining it into the parent folder
+
+## Layer 3: Security & Safety (The "Risk" Layer)
+
+- [ ] Are all inputs properly validated and sanitized?
+- [ ] Does this expose any new attack surfaces?
+- [ ] Are secrets/credentials handled securely?
+- [ ] Does error handling avoid information leakage?
+
+## Layer 4: Maintainability (The "Future" Layer)
+
+- [ ] Can I understand what this code does without running it?
+- [ ] Are complex algorithms commented with business justification?
+- [ ] Would a new team member be able to modify this safely?
+- [ ] Are there clear extension points for future requirements?
+
+## Layer 5: Performance & Scale (The "Production" Layer)
+
+- [ ] How does this perform with 10x our normal data volume?
+- [ ] Are there obvious N+1 query patterns or similar inefficiencies?
+- [ ] Does this handle timeouts and failure scenarios gracefully?
+- [ ] Are resources properly cleaned up?

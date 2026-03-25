@@ -1,0 +1,101 @@
+---
+description: Grug Brained Developer philosophy — practical coding wisdom
+alwaysApply: true
+---
+
+# Grug Brained Developer
+
+Complexity is the apex predator. Every decision should reduce it.
+
+## Say No
+
+- Default answer to new features, abstractions, and indirection is **"no"**.
+- If forced to say yes, build the **80/20 solution**: 80% of the value with 20% of the code. Skip the bells and whistles.
+
+## Factor Late, Not Early
+
+- Don't abstract too early — the system's shape hasn't emerged yet.
+- Wait for **cut points**: narrow interfaces that trap complexity behind a small surface area.
+- Bias toward waiting. Wrong abstractions are worse than duplication.
+- Prototypes force reality — use them to discover structure before committing to architecture.
+
+## Chesterton's Fence
+
+- Understand code before removing or rewriting it, no matter how ugly it looks.
+- If you can't explain why something exists, you don't have permission to delete it.
+
+## Expression Complexity
+
+- Break complex conditionals into named intermediate variables — easier to debug, easier to read.
+
+```python
+# ❌ Dense
+if contact and not contact.is_active() and (contact.in_group(FAMILY) or contact.in_group(FRIENDS)):
+    ...
+
+# ✅ Grug
+contact_is_inactive = not contact.is_active()
+contact_is_family_or_friends = contact.in_group(FAMILY) or contact.in_group(FRIENDS)
+if contact and contact_is_inactive and contact_is_family_or_friends:
+    ...
+```
+
+## DRY — With Balance
+
+- Respect DRY, but simple repeated code is often better than a complex abstraction to eliminate it.
+- Duplication is far cheaper than the wrong abstraction.
+
+## Locality of Behavior
+
+- Put code on the thing that does the thing. When you look at it, you should know what it does.
+- Spreading logic across many files for "separation of concerns" often just hides behavior.
+
+## Testing
+
+- Integration tests are the sweet spot: high-level enough to verify correctness, low-level enough to debug.
+- Write most tests after prototyping, when the code has firmed up — but be disciplined about actually writing them.
+- Reproduce bugs with a regression test first, then fix.
+- Avoid mocking unless absolutely necessary; when needed, mock at coarse-grained boundaries only.
+
+## Logging
+
+- Log generously, especially logical branches (`if`/`for`).
+- Include request IDs so logs can be grouped across services.
+- Dynamic log levels (per-user if possible) are invaluable for production debugging.
+
+## Refactoring
+
+- Keep refactors small — the larger the refactor, the more likely it fails.
+- The system should keep working at every step. Never be "too far from shore."
+- Introducing more abstraction during a refactor is a warning sign, not progress.
+
+## Concurrency
+
+- Fear it. Prefer simple models: stateless request handlers, independent job queues.
+
+## Optimizing
+
+- Never optimize without a real profiling result showing the specific bottleneck.
+- Network calls dwarf CPU — minimize them first.
+- Premature optimization is the root of all evil.
+
+## Generics and Closures
+
+- Use sparingly, like salt. Small amount goes a long way; too much ruins everything.
+- Limit generics to container-like classes where they add clear value.
+
+## APIs
+
+- Design for the caller, not the implementation.
+- Layer APIs: simple API for common cases, complex API for complex cases.
+- Put the API on the thing — don't make callers convert, wrap, or collect just to do something basic.
+
+## Tools
+
+- Invest time learning tools — two weeks of tool learning often doubles productivity.
+- A good debugger is worth more than shiney rocks. Learn conditional breakpoints, expression evaluation, stack navigation.
+
+## No FOLD (Fear Of Looking Dumb)
+
+- Say "this is too complex" out loud. It gives others permission to admit confusion too.
+- Complexity thrives when everyone pretends to understand.

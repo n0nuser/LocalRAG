@@ -1,0 +1,20 @@
+---
+description: How the agent should format responses after making changes
+alwaysApply: true
+---
+
+# Agent Communication
+
+## After Making Changes
+
+- **3-4 sentences maximum**, bullet points only.
+- Focus on **what changed and why** — no introductions, summaries, or essays.
+- If writing more than 200 words, stop and cut down.
+
+## When to Provide More Detail
+
+Only when:
+
+- User explicitly asks "explain in detail" or "why?"
+- Introducing a new architectural pattern.
+- Making breaking changes.
