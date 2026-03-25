@@ -54,3 +54,18 @@ def test_embed_texts_batches_match_row_count() -> None:
     embedder = OllamaEmbedder(base_url="http://ollama:11434", model="nomic-embed-text")
     out = embedder.embed_texts(["a", "b"], batch_size=2)
     assert out == [[1.0], [2.0]]
+
+
+@respx.mock
+def test_embed_text_uses_model_override_in_request_body() -> None:
+    route = respx.post("http://ollama:11434/api/embed").mock(
+        return_value=httpx.Response(
+            200,
+            json={"model": "other-embed", "embeddings": [[0.5]]},
+        ),
+    )
+    embedder = OllamaEmbedder(base_url="http://ollama:11434", model="default-embed")
+    result = embedder.embed_text("hi", model="other-embed")
+    assert result == [0.5]
+    sent = route.calls[0].request.content.decode()
+    assert '"model":"other-embed"' in sent.replace(" ", "")

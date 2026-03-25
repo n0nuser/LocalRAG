@@ -18,7 +18,7 @@ The FastAPI layer follows a **light domain-driven** split:
 | **Application services** | `localrag/api/service.py` | Use cases: orchestration, validation, logging, mapping to/from schemas. |
 | **Repositories** | `localrag/api/repository.py` | Persistence boundaries for the API (e.g. Chroma collections via `VectorStore`). |
 | **HTTP adapters** | `localrag/api/routers/*.py` | Routes: dependencies, call services, return responses. **No** Pydantic models or domain logic in router modules. |
-| **Cross-cutting API errors** | `localrag/api/exceptions.py` | Exceptions mapped to HTTP in `localrag/api/main.py` (e.g. `IngestApiError`). |
+| **Cross-cutting API errors** | `localrag/api/exceptions.py` | `HttpMappedError` subclasses (`IngestApiError`, `RagApiError`) mapped to HTTP in `localrag/api/main.py`. |
 
 Domain packages (`localrag/ingestion/`, `localrag/rag/`, `localrag/storage/`) keep their own services and types; the API service calls into them (e.g. `IngestionService`, `RAGEngine`).
 

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 from fastapi.testclient import TestClient
@@ -13,11 +14,24 @@ from localrag.settings import Settings
 
 
 @dataclass
+class StubRetriever:
+    def retrieve(self, question: str, n_results: int | None = None) -> list[dict[str, Any]]:
+        _ = (question, n_results)
+        return []
+
+
+@dataclass
 class StubEngine:
-    def stream_answer(
-        self, question: str, model: str | None = None, n_results: int | None = None
+    retriever: StubRetriever = field(default_factory=StubRetriever)
+
+    def stream_chat_from_contexts(
+        self,
+        *,
+        contexts: list[dict[str, Any]],
+        question: str,
+        model: str | None,
     ) -> object:
-        _ = (question, model, n_results)
+        _ = (contexts, question, model)
         yield {"type": "token", "token": "hello "}
         yield {"type": "token", "token": "world"}
         yield {"type": "final", "sources": [{"source": "doc.md", "chunk_index": 1}]}
@@ -39,10 +53,12 @@ def test_query_streams_events() -> None:
 
 @dataclass
 class UnusedIngestionService:
-    def ingest_file(self, path: Path) -> IngestionResult:
+    def ingest_file(self, path: Path, embed_model: str | None = None) -> IngestionResult:
         raise AssertionError(path)
 
-    def ingest_directory(self, path: Path, recursive: bool | None = None) -> IngestionResult:
+    def ingest_directory(
+        self, path: Path, recursive: bool | None = None, embed_model: str | None = None
+    ) -> IngestionResult:
         raise AssertionError(path)
 
 
@@ -64,11 +80,13 @@ def test_ingest_accepts_percent_encoded_spaces(tmp_path: Path) -> None:
     class RecordingIngestionService:
         seen: list[Path]
 
-        def ingest_file(self, path: Path) -> IngestionResult:
+        def ingest_file(self, path: Path, embed_model: str | None = None) -> IngestionResult:
             self.seen.append(path)
             return IngestionResult(files_processed=1, total_chunks=1, processed_sources=[str(path)])
 
-        def ingest_directory(self, path: Path, recursive: bool | None = None) -> IngestionResult:
+        def ingest_directory(
+            self, path: Path, recursive: bool | None = None, embed_model: str | None = None
+        ) -> IngestionResult:
             raise AssertionError(path)
 
     recording = RecordingIngestionService(seen=[])

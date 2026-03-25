@@ -48,6 +48,25 @@ class RAGEngine:
             n_results,
         )
         contexts = self.retriever.retrieve(question=question, n_results=n_results)
+        return self.stream_chat_from_contexts(contexts=contexts, question=question, model=model)
+
+    def stream_chat_from_contexts(
+        self,
+        *,
+        contexts: list[dict[str, Any]],
+        question: str,
+        model: str | None,
+    ) -> Generator[dict[str, Any]]:
+        """Stream LLM tokens when contexts were retrieved earlier (HTTP runs retrieve first)."""
+        return self._stream_chat_tokens(contexts=contexts, question=question, model=model)
+
+    def _stream_chat_tokens(
+        self,
+        *,
+        contexts: list[dict[str, Any]],
+        question: str,
+        model: str | None,
+    ) -> Generator[dict[str, Any]]:
         logger.debug("rag_contexts count=%s", len(contexts))
         prompt = build_prompt(
             system_prompt=self.settings.rag_system_prompt,

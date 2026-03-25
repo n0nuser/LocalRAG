@@ -20,11 +20,13 @@ class OllamaEmbedder:
     model: str
     timeout_seconds: float = 120.0
 
-    def embed_text(self, text: str) -> list[float]:
-        rows = self._embed_inputs([text])
+    def embed_text(self, text: str, *, model: str | None = None) -> list[float]:
+        rows = self._embed_inputs([text], model=model)
         return rows[0]
 
-    def embed_texts(self, texts: list[str], batch_size: int) -> list[list[float]]:
+    def embed_texts(
+        self, texts: list[str], batch_size: int, *, model: str | None = None
+    ) -> list[list[float]]:
         if not texts:
             return []
         safe_batch_size = max(1, batch_size)
@@ -36,15 +38,16 @@ class OllamaEmbedder:
         )
         for start in range(0, len(texts), safe_batch_size):
             batch = texts[start : start + safe_batch_size]
-            out.extend(self._embed_inputs(batch))
+            out.extend(self._embed_inputs(batch, model=model))
         return out
 
-    def _embed_inputs(self, inputs: list[str]) -> list[list[float]]:
-        request_body = OllamaEmbedRequest(model=self.model, input=inputs)
+    def _embed_inputs(self, inputs: list[str], *, model: str | None = None) -> list[list[float]]:
+        effective_model = model if model is not None else self.model
+        request_body = OllamaEmbedRequest(model=effective_model, input=inputs)
         char_count = sum(len(s) for s in inputs)
         logger.debug(
             "ollama_embed_request model=%s input_count=%s input_chars=%s",
-            self.model,
+            effective_model,
             len(inputs),
             char_count,
         )
@@ -58,7 +61,7 @@ class OllamaEmbedder:
         except httpx.HTTPError as exc:
             logger.error(
                 "ollama_embed_http_error model=%s url=%s error=%s",
-                self.model,
+                effective_model,
                 self.base_url,
                 exc,
             )
@@ -67,13 +70,13 @@ class OllamaEmbedder:
         try:
             body = parse_ollama_json(response.json(), OllamaEmbedResponse)
         except ValueError as exc:
-            logger.error("ollama_embed_invalid_response model=%s error=%s", self.model, exc)
+            logger.error("ollama_embed_invalid_response model=%s error=%s", effective_model, exc)
             raise
 
         if len(body.embeddings) != len(inputs):
             logger.error(
                 "ollama_embed_row_count_mismatch model=%s expected=%s got=%s",
-                self.model,
+                effective_model,
                 len(inputs),
                 len(body.embeddings),
             )
@@ -88,7 +91,7 @@ class OllamaEmbedder:
             if not vector:
                 logger.error(
                     "ollama_embed_empty_vector model=%s embedding_index=%s",
-                    self.model,
+                    effective_model,
                     index,
                 )
                 raise ValueError(

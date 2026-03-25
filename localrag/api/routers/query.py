@@ -16,4 +16,5 @@ def query(
     request: QueryRequest,
     engine: RAGEngine = Depends(get_engine),
 ) -> EventSourceResponse:
-    return EventSourceResponse(api_service.iter_query_sse_events(request, engine))
+    contexts = api_service.get_query_contexts(request, engine)
+    return EventSourceResponse(api_service.iter_query_sse_events(request, engine, contexts))

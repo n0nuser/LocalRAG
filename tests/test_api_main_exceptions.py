@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from http import HTTPStatus
+
 import httpx
 import respx
 from fastapi.testclient import TestClient
 
-from localrag.api.dependencies import get_api_settings, get_collection_repository
+from localrag.api.dependencies import (
+    get_api_settings,
+    get_collection_repository,
+    get_engine,
+)
 from localrag.api.main import app
+from localrag.rag.exceptions import RetrievalError
 from localrag.settings import Settings
 
 
@@ -45,5 +53,27 @@ def test_unhandled_exception_results_in_500() -> None:
     response = client.get("/health")
     assert response.status_code == 500
     assert response.json()["detail"] == "Internal server error"
+
+    app.dependency_overrides.clear()
+
+
+@dataclass
+class FailingRetriever:
+    def retrieve(self, question: str, n_results: int | None = None) -> list[object]:
+        raise RetrievalError(HTTPStatus.BAD_GATEWAY, "Embedding service unavailable.")
+
+
+@dataclass
+class FailingQueryEngine:
+    retriever: FailingRetriever = field(default_factory=FailingRetriever)
+
+
+def test_query_maps_retrieval_failure_to_502() -> None:
+    app.dependency_overrides[get_engine] = lambda: FailingQueryEngine()
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post("/query", json={"question": "Hi"})
+    assert response.status_code == 502
+    assert response.json()["detail"] == "Embedding service unavailable."
 
     app.dependency_overrides.clear()

@@ -11,10 +11,12 @@ from localrag.settings import Settings
 
 @dataclass
 class StubEmbedder:
-    seen_texts_batches: list[tuple[int, list[str], int]]
+    seen_texts_batches: list[tuple[int, list[str], int, str | None]]
 
-    def embed_texts(self, texts: list[str], batch_size: int) -> list[list[float]]:
-        self.seen_texts_batches.append((len(self.seen_texts_batches), texts, batch_size))
+    def embed_texts(
+        self, texts: list[str], batch_size: int, *, model: str | None = None
+    ) -> list[list[float]]:
+        self.seen_texts_batches.append((len(self.seen_texts_batches), texts, batch_size, model))
         return [[float(index)] for index, _ in enumerate(texts)]
 
 
@@ -22,6 +24,10 @@ class StubEmbedder:
 class StubVectorStore:
     deleted_sources: list[str]
     added: list[dict[str, object]]
+    distinct_sources: list[str] | None = None
+
+    def list_distinct_sources(self) -> list[str]:
+        return list(self.distinct_sources or [])
 
     def delete_by_source(self, source: str) -> None:
         self.deleted_sources.append(source)
@@ -68,7 +74,7 @@ def test_ingestion_service_ingest_paths_skips_not_allowed_and_empty_chunks(tmp_p
         embedding_batch_size=2,
     )
     embedder = StubEmbedder(seen_texts_batches=[])
-    vector_store = StubVectorStore(deleted_sources=[], added=[])
+    vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
     service = IngestionService(settings=settings, embedder=embedder, vector_store=vector_store)
 
     result: IngestionResult = service.ingest_paths([allowed_file, disallowed_file, empty_file])
@@ -94,9 +100,10 @@ def test_ingestion_service_ingest_paths_skips_not_allowed_and_empty_chunks(tmp_p
 
     # Embeddings batching happens inside the embedder; we only need to ensure it ran.
     assert len(embedder.seen_texts_batches) == 1
-    _, seen_texts, seen_batch_size = embedder.seen_texts_batches[0]
+    _, seen_texts, seen_batch_size, seen_model = embedder.seen_texts_batches[0]
     assert seen_batch_size == settings.embedding_batch_size
     assert seen_texts == chunks
+    assert seen_model is None
 
 
 def test_ingestion_service_ingest_file_delegates_to_ingest_paths(
@@ -109,14 +116,15 @@ def test_ingestion_service_ingest_file_delegates_to_ingest_paths(
 
     settings = Settings(ingest_roots=[str(allowed_root)])
     embedder = StubEmbedder(seen_texts_batches=[])
-    vector_store = StubVectorStore(deleted_sources=[], added=[])
+    vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
     service = IngestionService(settings=settings, embedder=embedder, vector_store=vector_store)
 
     expected = IngestionResult(files_processed=1, total_chunks=0, processed_sources=[str(path)])
 
     called: list[list[Path]] = []
 
-    def fake_ingest_paths(paths: list[Path]) -> IngestionResult:
+    def fake_ingest_paths(paths: list[Path], **kwargs: object) -> IngestionResult:
+        _ = kwargs
         called.append(paths)
         return expected
 
@@ -136,7 +144,7 @@ def test_ingestion_service_ingest_directory_uses_settings_ingest_recursive_when_
 
     settings = Settings(ingest_roots=[str(root)], ingest_recursive=False)
     embedder = StubEmbedder(seen_texts_batches=[])
-    vector_store = StubVectorStore(deleted_sources=[], added=[])
+    vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
     service = IngestionService(settings=settings, embedder=embedder, vector_store=vector_store)
 
     captured: list[bool] = []
@@ -151,7 +159,11 @@ def test_ingestion_service_ingest_directory_uses_settings_ingest_recursive_when_
         "localrag.ingestion.service.list_supported_files",  # type: ignore[arg-type]
         fake_list_supported_files,
     )
-    monkeypatch.setattr(service, "ingest_paths", lambda _paths: expected)  # type: ignore[arg-type]
+    monkeypatch.setattr(
+        service,
+        "ingest_paths",
+        lambda _paths, **_kw: expected,  # type: ignore[arg-type]
+    )
 
     service.ingest_directory(root, recursive=None)
     assert captured == [False]
@@ -167,7 +179,7 @@ def test_ingestion_service_ingest_paths_re_raises_parse_errors(
 
     settings = Settings(ingest_roots=[str(allowed_root)])
     embedder = StubEmbedder(seen_texts_batches=[])
-    vector_store = StubVectorStore(deleted_sources=[], added=[])
+    vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
     service = IngestionService(settings=settings, embedder=embedder, vector_store=vector_store)
 
     def fake_parse_file(_path: Path) -> str:
@@ -177,3 +189,43 @@ def test_ingestion_service_ingest_paths_re_raises_parse_errors(
 
     with pytest.raises(ValueError, match="parse failed"):
         service.ingest_paths([path])
+
+
+def test_ingestion_service_ingest_paths_passes_embed_model_to_embedder(tmp_path: Path) -> None:
+    allowed_root = tmp_path / "allowed"
+    allowed_root.mkdir()
+    path = allowed_root / "a.md"
+    path.write_text("hello world wide", encoding="utf-8")
+
+    settings = Settings(ingest_roots=[str(allowed_root)], chunk_chars=100, chunk_overlap_chars=0)
+    embedder = StubEmbedder(seen_texts_batches=[])
+    vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
+    service = IngestionService(settings=settings, embedder=embedder, vector_store=vector_store)
+
+    service.ingest_paths([path], embed_model="custom-embed")
+
+    assert embedder.seen_texts_batches[0][3] == "custom-embed"
+
+
+def test_ingestion_service_rebuild_reingests_distinct_sources(tmp_path: Path) -> None:
+    allowed_root = tmp_path / "allowed"
+    allowed_root.mkdir()
+    kept = allowed_root / "kept.md"
+    kept.write_text("hello world", encoding="utf-8")
+    missing = str(allowed_root / "gone.md")
+
+    settings = Settings(ingest_roots=[str(allowed_root)], chunk_chars=100, chunk_overlap_chars=0)
+    embedder = StubEmbedder(seen_texts_batches=[])
+    vector_store = StubVectorStore(
+        deleted_sources=[],
+        added=[],
+        distinct_sources=[str(kept.resolve()), missing],
+    )
+    service = IngestionService(settings=settings, embedder=embedder, vector_store=vector_store)
+
+    result = service.rebuild_collection()
+
+    assert missing in result.missing_sources
+    assert vector_store.deleted_sources[0] == missing
+    assert str(kept.resolve()) in result.processed_sources
+    assert result.files_processed == 1

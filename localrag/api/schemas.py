@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import Path
 from pydantic import BaseModel, ConfigDict, Field
 
-from localrag.settings import DEFAULT_OLLAMA_LLM_MODEL
+from localrag.settings import DEFAULT_OLLAMA_EMBED_MODEL, DEFAULT_OLLAMA_LLM_MODEL
 
 CollectionNamePath = Annotated[
     str,
@@ -80,6 +80,15 @@ class IngestFileRequest(BaseModel):
         ),
         examples=["/var/docs/guide.md", "C:\\\\docs\\\\report.txt"],
     )
+    embed_model: str | None = Field(
+        default=None,
+        description=(
+            "Ollama **embedding** model tag for this ingest run (`ollama list`). "
+            "If omitted, uses the server's configured embed model "
+            f"(`{DEFAULT_OLLAMA_EMBED_MODEL}` via `OLLAMA_EMBED_MODEL`)."
+        ),
+        examples=[DEFAULT_OLLAMA_EMBED_MODEL],
+    )
 
 
 class IngestDirectoryRequest(BaseModel):
@@ -108,6 +117,15 @@ class IngestDirectoryRequest(BaseModel):
             "`ingest_recursive` setting."
         ),
         examples=[True],
+    )
+    embed_model: str | None = Field(
+        default=None,
+        description=(
+            "Ollama **embedding** model tag for this ingest run (`ollama list`). "
+            "If omitted, uses the server's configured embed model "
+            f"(`{DEFAULT_OLLAMA_EMBED_MODEL}` via `OLLAMA_EMBED_MODEL`)."
+        ),
+        examples=[DEFAULT_OLLAMA_EMBED_MODEL],
     )
 
 
@@ -176,4 +194,49 @@ class CollectionDeleteResponse(BaseModel):
     status: str = Field(
         description="Literal status after the collection was deleted.",
         examples=["ok"],
+    )
+
+
+class RebuildCollectionRequest(BaseModel):
+    """Body for ``POST /collections/rebuild`` (may be empty ``{}``)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {},
+                {"embed_model": DEFAULT_OLLAMA_EMBED_MODEL},
+            ]
+        }
+    )
+
+    embed_model: str | None = Field(
+        default=None,
+        description=(
+            "Ollama **embedding** model tag used when re-embedding all stored sources. "
+            "If omitted, uses the server's configured embed model "
+            f"(`{DEFAULT_OLLAMA_EMBED_MODEL}` via `OLLAMA_EMBED_MODEL`)."
+        ),
+        examples=[DEFAULT_OLLAMA_EMBED_MODEL],
+    )
+
+
+class RebuildCollectionResponse(BaseModel):
+    status: str = Field(
+        description="Literal status after rebuild.",
+        examples=["ok"],
+    )
+    files_processed: int = Field(
+        description="Files successfully re-ingested.",
+        examples=[3],
+    )
+    total_chunks: int = Field(
+        description="Total chunks written after rebuild.",
+        examples=[40],
+    )
+    missing_sources: list[str] = Field(
+        description=(
+            "Source paths that were in the vector store but no longer exist on disk; "
+            "their vectors were removed."
+        ),
+        examples=[["/old/path/removed.md"]],
     )

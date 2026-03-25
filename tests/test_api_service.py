@@ -13,7 +13,7 @@ from localrag.api.dependencies import (
     get_ingestion_service,
 )
 from localrag.api.main import app
-from localrag.ingestion.service import IngestionResult
+from localrag.ingestion.service import IngestionResult, RebuildCollectionResult
 from localrag.settings import Settings
 
 
@@ -31,11 +31,13 @@ class StubCollectionRepo:
 
 @dataclass
 class StubIngestionService:
-    called: list[tuple[Path, bool | None]]
+    called: list[tuple[Path, bool | None, str | None]]
     result: IngestionResult
 
-    def ingest_directory(self, path: Path, recursive: bool | None = None) -> IngestionResult:
-        self.called.append((path, recursive))
+    def ingest_directory(
+        self, path: Path, recursive: bool | None = None, embed_model: str | None = None
+    ) -> IngestionResult:
+        self.called.append((path, recursive, embed_model))
         return self.result
 
 
@@ -137,6 +139,7 @@ def test_ingest_directory_success_and_forbidden_outside_roots(tmp_path: Path) ->
     assert ok.json() == {"status": "ok", "files_processed": 2, "total_chunks": 3}
     assert ingestion.called[0][0] == inside_dir.resolve()
     assert ingestion.called[0][1] is False
+    assert ingestion.called[0][2] is None
 
     forbidden = client.post(
         "/ingest/directory",
@@ -144,5 +147,29 @@ def test_ingest_directory_success_and_forbidden_outside_roots(tmp_path: Path) ->
     )
     assert forbidden.status_code == 403
     assert forbidden.json()["detail"] == "Path is not under configured ingest roots."
+
+    app.dependency_overrides.clear()
+
+
+def test_collections_rebuild_passes_embed_model() -> None:
+    seen: list[str | None] = []
+
+    class StubRebuild:
+        def rebuild_collection(self, embed_model: str | None = None) -> RebuildCollectionResult:
+            seen.append(embed_model)
+            return RebuildCollectionResult(
+                files_processed=0,
+                total_chunks=0,
+                processed_sources=[],
+                missing_sources=[],
+            )
+
+    app.dependency_overrides[get_ingestion_service] = lambda: StubRebuild()
+    client = TestClient(app)
+
+    response = client.post("/collections/rebuild", json={"embed_model": "mxbai-embed-large"})
+    assert response.status_code == 200
+    assert response.json()["missing_sources"] == []
+    assert seen == ["mxbai-embed-large"]
 
     app.dependency_overrides.clear()

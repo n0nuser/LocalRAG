@@ -10,7 +10,7 @@ from urllib.parse import unquote
 
 import httpx
 
-from localrag.api.exceptions import IngestApiError
+from localrag.api.exceptions import IngestApiError, RagApiError
 from localrag.api.repository import ChromaCollectionRepository
 from localrag.api.schemas import (
     CollectionDeleteResponse,
@@ -21,10 +21,13 @@ from localrag.api.schemas import (
     IngestFileRequest,
     IngestFileResponse,
     QueryRequest,
+    RebuildCollectionRequest,
+    RebuildCollectionResponse,
 )
 from localrag.ingestion.service import IngestionService
 from localrag.ollama.schemas import OllamaTagsResponse, parse_ollama_json
 from localrag.rag.engine import RAGEngine
+from localrag.rag.exceptions import RetrievalError
 from localrag.settings import Settings, is_path_allowed
 
 logger = logging.getLogger(__name__)
@@ -78,6 +81,26 @@ def delete_collection_response(
     return CollectionDeleteResponse(status="ok")
 
 
+def rebuild_collection_response(
+    request: RebuildCollectionRequest,
+    ingestion_service: IngestionService,
+) -> RebuildCollectionResponse:
+    logger.info("collection_rebuild_start embed_model=%s", request.embed_model)
+    result = ingestion_service.rebuild_collection(embed_model=request.embed_model)
+    logger.info(
+        "collection_rebuild_done files=%s chunks=%s missing=%s",
+        result.files_processed,
+        result.total_chunks,
+        len(result.missing_sources),
+    )
+    return RebuildCollectionResponse(
+        status="ok",
+        files_processed=result.files_processed,
+        total_chunks=result.total_chunks,
+        missing_sources=result.missing_sources,
+    )
+
+
 def ingest_file(
     request: IngestFileRequest,
     settings: Settings,
@@ -94,7 +117,7 @@ def ingest_file(
             "Path is not under configured ingest roots.",
         )
     logger.info("ingest_file_start path=%s", path)
-    result = ingestion_service.ingest_file(path)
+    result = ingestion_service.ingest_file(path, embed_model=request.embed_model)
     logger.info(
         "ingest_file_done path=%s chunks=%s",
         path,
@@ -128,7 +151,11 @@ def ingest_directory(
         path,
         request.recursive,
     )
-    result = ingestion_service.ingest_directory(path, recursive=request.recursive)
+    result = ingestion_service.ingest_directory(
+        path,
+        recursive=request.recursive,
+        embed_model=request.embed_model,
+    )
     logger.info(
         "ingest_directory_done path=%s files=%s chunks=%s",
         path,
@@ -142,18 +169,34 @@ def ingest_directory(
     )
 
 
-def iter_query_sse_events(request: QueryRequest, engine: RAGEngine) -> Iterator[dict[str, Any]]:
+def get_query_contexts(request: QueryRequest, engine: RAGEngine) -> list[dict[str, Any]]:
+    """Retrieve chunks synchronously so embedding / vector errors map to HTTP before SSE starts."""
+    try:
+        return engine.retriever.retrieve(
+            question=request.question,
+            n_results=request.n_results,
+        )
+    except RetrievalError as exc:
+        raise RagApiError(int(exc.status_code), exc.detail) from exc
+
+
+def iter_query_sse_events(
+    request: QueryRequest,
+    engine: RAGEngine,
+    contexts: list[dict[str, Any]],
+) -> Iterator[dict[str, Any]]:
     logger.info(
         "query_start model=%s n_results=%s question_chars=%s",
         request.model,
         request.n_results,
         len(request.question),
     )
-    for event in engine.stream_answer(
+    stream = engine.stream_chat_from_contexts(
+        contexts=contexts,
         question=request.question,
         model=request.model,
-        n_results=request.n_results,
-    ):
+    )
+    for event in stream:
         if event["type"] == "token":
             yield {"event": "token", "data": str(event["token"])}
         if event["type"] == "final":

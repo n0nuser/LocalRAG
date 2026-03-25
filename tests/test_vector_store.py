@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from hashlib import sha1
 from pathlib import Path
 
@@ -16,6 +16,17 @@ class FakeCollection:
     delete_calls: list[dict[str, object]]
     query_calls: list[dict[str, object]]
     query_result: dict[str, object]
+    get_return: dict[str, object] = field(default_factory=dict)
+
+    def get(
+        self,
+        ids: list[str] | None = None,
+        include: list[str] | None = None,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        _ = (ids, kwargs)
+        _ = include
+        return self.get_return
 
     def upsert(
         self,
@@ -87,6 +98,7 @@ def test_vector_store_add_chunks_validates_lengths() -> None:
         delete_calls=[],
         query_calls=[],
         query_result={},
+        get_return={},
     )
     client = FakeClient(collections=[], deleted_collections=[])
     store = VectorStore(client=client, collection=collection)  # type: ignore[arg-type]
@@ -106,6 +118,7 @@ def test_vector_store_add_chunks_rejects_empty_embeddings() -> None:
         delete_calls=[],
         query_calls=[],
         query_result={},
+        get_return={},
     )
     client = FakeClient(collections=[], deleted_collections=[])
     store = VectorStore(client=client, collection=collection)  # type: ignore[arg-type]
@@ -129,6 +142,7 @@ def test_vector_store_upsert_delete_query_and_list_collections() -> None:
             "metadatas": [[{"source": "s", "chunk_index": 0}]],
             "distances": [[0.12]],
         },
+        get_return={},
     )
 
     c1 = FakeNameCollection(name="col-1", count_value=2)
@@ -166,6 +180,26 @@ def test_vector_store_upsert_delete_query_and_list_collections() -> None:
 
     store.delete_collection("col-1")
     assert client.deleted_collections == ["col-1"]
+
+
+def test_vector_store_list_distinct_sources() -> None:
+    collection = FakeCollection(
+        upsert_calls=[],
+        delete_calls=[],
+        query_calls=[],
+        query_result={},
+        get_return={
+            "metadatas": [
+                {"source": "/b.md", "chunk_index": 0},
+                {"source": "/a.md", "chunk_index": 0},
+                {"source": "/a.md", "chunk_index": 1},
+            ],
+        },
+    )
+    client = FakeClient(collections=[], deleted_collections=[])
+    store = VectorStore(client=client, collection=collection)  # type: ignore[arg-type]
+
+    assert store.list_distinct_sources() == ["/a.md", "/b.md"]
 
 
 def test_vector_store_create_initializes_persistent_client(

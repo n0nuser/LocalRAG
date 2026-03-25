@@ -8,7 +8,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from localrag.api.exceptions import IngestApiError
+from localrag.api.exceptions import HttpMappedError
 from localrag.api.middleware import RequestContextMiddleware
 from localrag.api.routers.collections import router as collections_router
 from localrag.api.routers.health import router as health_router
@@ -37,10 +37,10 @@ app.include_router(query_router)
 app.include_router(collections_router)
 
 
-@app.exception_handler(IngestApiError)
-async def ingest_api_error_handler(request: Request, exc: IngestApiError) -> JSONResponse:
+@app.exception_handler(HttpMappedError)
+async def http_mapped_error_handler(request: Request, exc: HttpMappedError) -> JSONResponse:
     logger.warning(
-        "ingest_api_error %s %s status=%s detail=%s",
+        "http_mapped_error %s %s status=%s detail=%s",
         request.method,
         request.url.path,
         exc.status_code,

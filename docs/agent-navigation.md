@@ -26,7 +26,7 @@ Agents (and humans) move faster when they:
 | Environment / defaults | `localrag/settings.py`, `.env.example` |
 | FastAPI routes (HTTP only) | `localrag/api/routers/*.py` |
 | API request/response OpenAPI models | `localrag/api/schemas.py` |
-| API use cases (health, ingest rules, query SSE, collections) | `localrag/api/service.py` |
+| API use cases (health, ingest rules, query contexts + SSE, collections including rebuild) | `localrag/api/service.py` |
 | API persistence boundary (Chroma collections) | `localrag/api/repository.py` |
 | API app factory (lifespan, middleware, error handlers) | `localrag/api/main.py` |
 | HTTP ingest path validation (`INGEST_ROOTS`, URL decode) | `localrag/api/service.py`, `localrag/settings.py` (`is_path_allowed`), `localrag/api/exceptions.py` + `main.py` handler |

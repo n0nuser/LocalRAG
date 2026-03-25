@@ -74,6 +74,17 @@ class VectorStore:
             include=["documents", "metadatas", "distances"],
         )
 
+    def list_distinct_sources(self) -> list[str]:
+        raw = self.collection.get(include=["metadatas"])
+        metadatas = raw.get("metadatas")
+        if not metadatas:
+            return []
+        sources: set[str] = set()
+        for md in metadatas:
+            if md and isinstance(md, dict) and "source" in md:
+                sources.add(str(md["source"]))
+        return sorted(sources)
+
     def list_collections(self) -> list[dict[str, Any]]:
         result: list[dict[str, Any]] = []
         for collection in self.client.list_collections():

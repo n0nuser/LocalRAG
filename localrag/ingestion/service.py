@@ -22,15 +22,27 @@ class IngestionResult:
 
 
 @dataclass
+class RebuildCollectionResult:
+    """Outcome of re-embedding every chunk for sources currently in the vector store."""
+
+    files_processed: int
+    total_chunks: int
+    processed_sources: list[str]
+    missing_sources: list[str]
+
+
+@dataclass
 class IngestionService:
     settings: Settings
     embedder: OllamaEmbedder
     vector_store: VectorStore
 
-    def ingest_file(self, path: Path) -> IngestionResult:
-        return self.ingest_paths([path])
+    def ingest_file(self, path: Path, embed_model: str | None = None) -> IngestionResult:
+        return self.ingest_paths([path], embed_model=embed_model)
 
-    def ingest_directory(self, path: Path, recursive: bool | None = None) -> IngestionResult:
+    def ingest_directory(
+        self, path: Path, recursive: bool | None = None, embed_model: str | None = None
+    ) -> IngestionResult:
         should_recurse = self.settings.ingest_recursive if recursive is None else recursive
         files = list_supported_files(path, recursive=should_recurse)
         logger.info(
@@ -39,9 +51,32 @@ class IngestionService:
             should_recurse,
             len(files),
         )
-        return self.ingest_paths(files)
+        return self.ingest_paths(files, embed_model=embed_model)
 
-    def ingest_paths(self, paths: list[Path]) -> IngestionResult:
+    def rebuild_collection(self, embed_model: str | None = None) -> RebuildCollectionResult:
+        sources = self.vector_store.list_distinct_sources()
+        missing_sources: list[str] = []
+        paths_to_ingest: list[Path] = []
+        for source in sources:
+            path = Path(source)
+            if path.is_file():
+                paths_to_ingest.append(path)
+            else:
+                missing_sources.append(source)
+                self.vector_store.delete_by_source(source)
+                logger.warning(
+                    "rebuild_skip_missing_file source=%s",
+                    source,
+                )
+        ingest = self.ingest_paths(paths_to_ingest, embed_model=embed_model)
+        return RebuildCollectionResult(
+            files_processed=ingest.files_processed,
+            total_chunks=ingest.total_chunks,
+            processed_sources=ingest.processed_sources,
+            missing_sources=sorted(missing_sources),
+        )
+
+    def ingest_paths(self, paths: list[Path], embed_model: str | None = None) -> IngestionResult:
         total_chunks = 0
         files_processed = 0
         processed_sources: list[str] = []
@@ -75,7 +110,11 @@ class IngestionService:
             self.vector_store.delete_by_source(source)
             logger.debug("ingest_embed_start path=%s chunk_count=%s", resolved_path, len(chunks))
 
-            embeddings = self.embedder.embed_texts(chunks, self.settings.embedding_batch_size)
+            embeddings = self.embedder.embed_texts(
+                chunks,
+                self.settings.embedding_batch_size,
+                model=embed_model,
+            )
             created_at = datetime.now(UTC).isoformat()
             metadatas = [
                 {
