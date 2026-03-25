@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from hermit.rag.retriever import Retriever
-from hermit.settings import Settings
+from localrag.rag.retriever import Retriever
+from localrag.settings import Settings
 
 
 @dataclass

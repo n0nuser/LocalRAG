@@ -1,10 +1,10 @@
-# hermit
+# localrag
 
 Offline-first RAG system. Your documents, your models, your machine.
 
 ## What It Is
 
-Hermit ingests your local documents, stores embeddings in a local ChromaDB database,
+LocalRAG ingests your local documents, stores embeddings in a local ChromaDB database,
 and answers questions using Ollama models. No cloud services required.
 
 ## Documentation
@@ -27,7 +27,7 @@ uv sync
 ollama serve
 ```
 
-1. Pull models (or let `hermit setup` do it):
+1. Pull models (or let `localrag setup` do it):
 
 ```bash
 ollama pull nomic-embed-text
@@ -37,8 +37,8 @@ ollama pull llama3.2
 1. Ingest docs and ask a question:
 
 ```bash
-uv run hermit ingest ./docs
-uv run hermit query "What are the key topics in these documents?"
+uv run localrag ingest ./docs
+uv run localrag query "What are the key topics in these documents?"
 ```
 
 ## API
@@ -46,7 +46,7 @@ uv run hermit query "What are the key topics in these documents?"
 Run the API:
 
 ```bash
-uv run uvicorn hermit.api.main:app --reload
+uv run uvicorn localrag.api.main:app --reload
 ```
 
 Then open:

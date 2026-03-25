@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from hermit.ollama.schemas import (
+from localrag.ollama.schemas import (
     OllamaChatStreamChunk,
     OllamaEmbedResponse,
     OllamaTagsResponse,
