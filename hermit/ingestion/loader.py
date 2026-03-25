@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from hermit.ingestion.parsers.code import parse_code
@@ -41,6 +42,8 @@ SUPPORTED_EXTENSIONS = (
     }
 )
 
+logger = logging.getLogger(__name__)
+
 
 def is_supported_file(path: Path) -> bool:
     return path.suffix.lower() in SUPPORTED_EXTENSIONS
@@ -59,6 +62,7 @@ def list_supported_files(path: Path, recursive: bool) -> list[Path]:
 
 def parse_file(path: Path) -> str:
     extension = path.suffix.lower()
+    logger.debug("parse_file_dispatch path=%s extension=%s", path, extension)
     if extension == ".pdf":
         return parse_pdf(path)
     if extension == ".docx":

@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from hermit.config import Settings, get_settings
+from fastapi import Depends
+
+from hermit.api.repository import ChromaCollectionRepository
 from hermit.ingestion.embedder import OllamaEmbedder
 from hermit.ingestion.service import IngestionService
 from hermit.rag.engine import RAGEngine
 from hermit.rag.retriever import Retriever
+from hermit.settings import Settings, get_settings
 from hermit.storage.vector_store import VectorStore
 
 
@@ -50,3 +53,9 @@ def get_ingestion_service() -> IngestionService:
 
 def get_api_settings() -> Settings:
     return get_settings()
+
+
+def get_collection_repository(
+    store: VectorStore = Depends(get_vector_store),
+) -> ChromaCollectionRepository:
+    return ChromaCollectionRepository(_vector_store=store)

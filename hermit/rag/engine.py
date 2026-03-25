@@ -1,15 +1,23 @@
 from __future__ import annotations
 
-import json
+import logging
 from collections.abc import Generator
 from dataclasses import dataclass
 from typing import Any
 
 import httpx
 
-from hermit.config import Settings
+from hermit.ollama.schemas import (
+    OllamaChatMessage,
+    OllamaChatRequest,
+    OllamaChatStreamChunk,
+    parse_ollama_json_line,
+)
 from hermit.rag.prompt import build_prompt
 from hermit.rag.retriever import Retriever
+from hermit.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -33,41 +41,61 @@ class RAGEngine:
     def stream_answer(
         self, question: str, model: str | None = None, n_results: int | None = None
     ) -> Generator[dict[str, Any]]:
+        logger.info(
+            "rag_stream_start question_chars=%s model=%s n_results=%s",
+            len(question),
+            model,
+            n_results,
+        )
         contexts = self.retriever.retrieve(question=question, n_results=n_results)
+        logger.debug("rag_contexts count=%s", len(contexts))
         prompt = build_prompt(
             system_prompt=self.settings.rag_system_prompt,
             question=question,
             contexts=contexts,
         )
         runtime_model = model or self.settings.ollama_llm_model
-        payload = {
-            "model": runtime_model,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": True,
-        }
+        chat_request = OllamaChatRequest(
+            model=runtime_model,
+            messages=[OllamaChatMessage(role="user", content=prompt)],
+            stream=True,
+        )
 
-        with (
-            httpx.Client(timeout=self.timeout_seconds) as client,
-            client.stream(
-                "POST", f"{self.settings.ollama_base_url}/api/chat", json=payload
-            ) as resp,
-        ):
-            resp.raise_for_status()
-            for line in resp.iter_lines():
-                if not line:
-                    continue
-                parsed = self._parse_ollama_line(line)
-                token = parsed.get("message", {}).get("content", "")
-                if token:
-                    yield {"type": "token", "token": token}
-                if parsed.get("done"):
-                    break
+        try:
+            with (
+                httpx.Client(timeout=self.timeout_seconds) as client,
+                client.stream(
+                    "POST",
+                    f"{self.settings.ollama_base_url}/api/chat",
+                    json=chat_request.model_dump(mode="json", exclude_none=True),
+                ) as resp,
+            ):
+                resp.raise_for_status()
+                for line in resp.iter_lines():
+                    if not line:
+                        continue
+                    try:
+                        chunk = parse_ollama_json_line(line, OllamaChatStreamChunk)
+                    except ValueError:
+                        logger.warning("rag_ollama_bad_chunk line_chars=%s", len(line))
+                        continue
+                    msg = chunk.message
+                    token = msg.content if msg and msg.content else ""
+                    if token:
+                        yield {"type": "token", "token": token}
+                    if chunk.done:
+                        break
+        except httpx.HTTPError as exc:
+            logger.error(
+                "rag_ollama_chat_http_error url=%s model=%s error=%s",
+                self.settings.ollama_base_url,
+                runtime_model,
+                exc,
+            )
+            raise
 
+        logger.info("rag_stream_done model=%s", runtime_model)
         yield {"type": "final", "sources": self._extract_sources(contexts)}
-
-    @staticmethod
-    def _parse_ollama_line(line: str) -> dict[str, Any]:
-        return json.loads(line)
 
     @staticmethod
     def _extract_sources(contexts: list[dict[str, Any]]) -> list[dict[str, object]]:

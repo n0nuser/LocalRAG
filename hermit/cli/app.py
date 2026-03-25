@@ -7,6 +7,8 @@ from hermit.cli.commands.config import show_config
 from hermit.cli.commands.ingest import ingest
 from hermit.cli.commands.query import query
 from hermit.cli.commands.setup import setup
+from hermit.logging_config import configure_logging
+from hermit.settings import get_settings
 
 app = typer.Typer(help="Hermit CLI")
 
@@ -18,6 +20,7 @@ app.add_typer(collections_app, name="collections")
 
 
 def main() -> None:
+    configure_logging(get_settings().log_level)
     app()
 
 

@@ -4,7 +4,7 @@ import json
 
 import typer
 
-from hermit.config import get_settings
+from hermit.settings import get_settings
 
 
 def show_config() -> None:

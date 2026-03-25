@@ -15,7 +15,7 @@ Agents (and humans) move faster when they:
 
 1. [README](../README.md) — what Hermit does, quick start, API entry command.
 2. [`pyproject.toml`](../pyproject.toml) — dependencies, script entry `hermit = hermit.cli.app:app`, Ruff/pytest config.
-3. [`.env.example`](../.env.example) — canonical env var names and defaults (mirrors `Settings` in `hermit/config.py`).
+3. [`.env.example`](../.env.example) — canonical env var names and defaults (mirrors `Settings` in `hermit/settings.py`).
 4. [architecture.md](architecture.md) — layers, data flow, extension points.
 5. The specific file(s) for your task (see table below).
 
@@ -23,16 +23,23 @@ Agents (and humans) move faster when they:
 
 | Task | Primary locations |
 | --- | --- |
-| Environment / defaults | `hermit/config.py`, `.env.example` |
-| FastAPI routes, request/response shapes | `hermit/api/routers/*.py`, `hermit/api/main.py` |
+| Environment / defaults | `hermit/settings.py`, `.env.example` |
+| FastAPI routes (HTTP only) | `hermit/api/routers/*.py` |
+| API request/response OpenAPI models | `hermit/api/schemas.py` |
+| API use cases (health, ingest rules, query SSE, collections) | `hermit/api/service.py` |
+| API persistence boundary (Chroma collections) | `hermit/api/repository.py` |
+| API app factory (lifespan, middleware, error handlers) | `hermit/api/main.py` |
+| HTTP ingest path validation (`INGEST_ROOTS`, URL decode) | `hermit/api/service.py`, `hermit/settings.py` (`is_path_allowed`), `hermit/api/exceptions.py` + `main.py` handler |
 | DI / shared service instances | `hermit/api/dependencies.py` |
+| Log format, levels, request ID | `hermit/logging_config.py`, `hermit/api/middleware.py`, `LOG_LEVEL` in `hermit/settings.py` |
 | CLI commands | `hermit/cli/app.py`, `hermit/cli/commands/*.py` |
 | Parsing a file type | `hermit/ingestion/parsers/`, `hermit/ingestion/loader.py` |
-| Chunk size / overlap | `hermit/ingestion/chunker.py`, `hermit/config.py` |
+| Chunk size / overlap | `hermit/ingestion/chunker.py`, `hermit/settings.py` |
 | Embeddings / Ollama HTTP for embed | `hermit/ingestion/embedder.py` |
 | Ingest orchestration | `hermit/ingestion/service.py` |
 | Chroma collection / persist path | `hermit/storage/vector_store.py`, settings |
 | Retrieval top-k / query embedding | `hermit/rag/retriever.py`, settings |
+| Ollama HTTP request/response shapes | `hermit/ollama/schemas.py` (used by embedder, RAG engine, health, setup) |
 | Prompt / answer streaming | `hermit/rag/prompt.py`, `hermit/rag/engine.py` |
 | Human Ollama install (not Python) | [ollama.md](ollama.md) |
 
@@ -55,4 +62,4 @@ Pre-commit and contribution workflow: [`.github/CONTRIBUTING.md`](../.github/CON
 
 ## When to update this doc
 
-Update [agent-navigation.md](agent-navigation.md) if you add major entry points, move packages, or change the “read order” anchors. Update [architecture.md](architecture.md) if layers, routers, or ingest/RAG flow change materially.
+Update [agent-navigation.md](agent-navigation.md) if you add major entry points, move packages, or change the “read order” anchors. Update [architecture.md](architecture.md) if layers, routers, schemas/services/repositories, or ingest/RAG flow change materially. See [AGENTS.md](../AGENTS.md) for the full “documentation maintenance for agents” rule.

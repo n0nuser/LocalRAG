@@ -1,6 +1,6 @@
 # Installing Ollama
 
-Hermit talks to **Ollama** on your machine for local embeddings and chat. Ollama is a separate install—not a Python package.
+Hermit talks to **Ollama** on your machine for local embeddings and chat. Ollama is a separate install—not a Python package. Hermit follows the [Ollama HTTP API](https://github.com/ollama/ollama/blob/main/docs/api.md): embeddings use **`POST /api/embed`** (not the legacy `/api/embeddings` endpoint); chat uses **`POST /api/chat`**; model discovery uses **`GET /api/tags`**; pulls use **`POST /api/pull`**. Request and response bodies for those calls are typed in **`hermit/ollama/schemas.py`**. Use a reasonably current Ollama release so those routes match.
 
 The **canonical instructions** are on the official site:
 

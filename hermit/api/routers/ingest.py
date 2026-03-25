@@ -1,47 +1,34 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from fastapi import APIRouter, Depends
-from pydantic import BaseModel
 
-from hermit.api.dependencies import get_ingestion_service
+from hermit.api import service as api_service
+from hermit.api.dependencies import get_api_settings, get_ingestion_service
+from hermit.api.schemas import (
+    IngestDirectoryRequest,
+    IngestDirectoryResponse,
+    IngestFileRequest,
+    IngestFileResponse,
+)
 from hermit.ingestion.service import IngestionService
+from hermit.settings import Settings
 
 router = APIRouter(prefix="", tags=["ingestion"])
 
 
-class IngestFileRequest(BaseModel):
-    path: str
-
-
-class IngestDirectoryRequest(BaseModel):
-    path: str
-    recursive: bool | None = None
-
-
-@router.post("/ingest")
+@router.post("/ingest", response_model=IngestFileResponse)
 def ingest_file(
     request: IngestFileRequest,
+    settings: Settings = Depends(get_api_settings),
     ingestion_service: IngestionService = Depends(get_ingestion_service),
-) -> dict[str, object]:
-    result = ingestion_service.ingest_file(Path(request.path))
-    source = result.processed_sources[0] if result.processed_sources else request.path
-    return {
-        "status": "ok",
-        "chunks_added": result.total_chunks,
-        "source": source,
-    }
+) -> IngestFileResponse:
+    return api_service.ingest_file(request, settings, ingestion_service)
 
 
-@router.post("/ingest/directory")
+@router.post("/ingest/directory", response_model=IngestDirectoryResponse)
 def ingest_directory(
     request: IngestDirectoryRequest,
+    settings: Settings = Depends(get_api_settings),
     ingestion_service: IngestionService = Depends(get_ingestion_service),
-) -> dict[str, object]:
-    result = ingestion_service.ingest_directory(Path(request.path), recursive=request.recursive)
-    return {
-        "status": "ok",
-        "files_processed": result.files_processed,
-        "total_chunks": result.total_chunks,
-    }
+) -> IngestDirectoryResponse:
+    return api_service.ingest_directory(request, settings, ingestion_service)

@@ -1,32 +1,19 @@
 from __future__ import annotations
 
-import httpx
 from fastapi import APIRouter, Depends
 
-from hermit.api.dependencies import get_api_settings, get_vector_store
-from hermit.config import Settings
-from hermit.storage.vector_store import VectorStore
+from hermit.api import service as api_service
+from hermit.api.dependencies import get_api_settings, get_collection_repository
+from hermit.api.repository import ChromaCollectionRepository
+from hermit.api.schemas import HealthResponse
+from hermit.settings import Settings
 
 router = APIRouter(prefix="", tags=["health"])
 
 
-@router.get("/health")
+@router.get("/health", response_model=HealthResponse)
 def health(
     settings: Settings = Depends(get_api_settings),
-    vector_store: VectorStore = Depends(get_vector_store),
-) -> dict[str, object]:
-    ollama_ok = False
-    with httpx.Client(timeout=5.0) as client:
-        try:
-            response = client.get(f"{settings.ollama_base_url}/api/tags")
-            response.raise_for_status()
-            ollama_ok = True
-        except httpx.HTTPError:
-            ollama_ok = False
-
-    return {
-        "status": "ok",
-        "ollama_ok": ollama_ok,
-        "chroma_path": settings.chroma_persist_path,
-        "collections": vector_store.list_collections(),
-    }
+    collection_repo: ChromaCollectionRepository = Depends(get_collection_repository),
+) -> HealthResponse:
+    return api_service.check_health(settings, collection_repo)
