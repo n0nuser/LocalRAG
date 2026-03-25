@@ -21,6 +21,7 @@ Branch names follow **Conventional Commits** types:
 ## Steps
 
 ### 1. Fetch remote state
+
 ```bash
 git fetch origin
 ```
@@ -33,6 +34,7 @@ Instead, verify the PR is closed and merged on GitHub, then proceed.
 
 Optionally, check whether the branch still has unmerged commits by diffing
 against `origin/main` (a clean diff means all work landed):
+
 ```bash
 git diff origin/main...HEAD
 ```
@@ -40,22 +42,26 @@ git diff origin/main...HEAD
 If the diff is empty, the branch content is fully reflected in `main`.
 
 ### 3. Switch to `main` (stash only if checkout would conflict)
+
 ```bash
 git checkout main
 ```
 
 If Git refuses due to uncommitted changes, stash first:
+
 ```bash
 git stash push -u -m "wip before main"
 git checkout main
 ```
 
 ### 4. Pull `main`
+
 ```bash
 git pull origin main
 ```
 
 If you stashed in step 3, pop it now:
+
 ```bash
 git stash pop
 ```
@@ -67,11 +73,13 @@ just stage and move on to step 5.
 ### 5. Create the new branch
 
 Use the appropriate Conventional Commits type as prefix:
+
 ```bash
 git checkout -b <type>/your-topic
 ```
 
 Examples:
+
 - `feat/improve-agents-efficiency`
 - `fix/null-pointer-on-startup`
 - `refactor/extract-auth-service`
@@ -87,6 +95,7 @@ push, and open a PR targeting `main`.
 Your work is fine — you just need to move it to a proper branch.
 
 **1. Undo the commit locally, keeping the changes:**
+
 ```bash
 git reset --soft HEAD~1   # changes become staged
 # or
@@ -94,11 +103,13 @@ git reset --mixed HEAD~1  # changes become unstaged
 ```
 
 **2. Stash everything:**
+
 ```bash
 git stash push -u -m "wip moved off wrong branch"
 ```
 
 **3. If the commit was already pushed, force-update the remote:**
+
 ```bash
 git push origin +HEAD:<wrong-branch> --force-with-lease
 ```
