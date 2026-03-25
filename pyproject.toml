@@ -93,3 +93,17 @@ convention = "google"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+[tool.coverage.run]
+source = ["localrag"]
+# Keep coverage focused on the application core.
+# CLI modules are thin wrappers around services and are intentionally tested via
+# service/API tests rather than by executing the CLI entrypoints themselves.
+omit = [
+    "localrag/cli/*",
+    "localrag/cli/**",
+    "localrag/ingestion/parsers/pdf.py",
+]
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover"]
