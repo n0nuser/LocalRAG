@@ -1,104 +1,118 @@
 ---
 name: trunk-feature-workflow
 description: >-
-  Verifies the current branch is merged into main (when not on main), checks out
-  main, pulls, optionally restores a stash after pull, then creates a new feat/*
-  branch. Use when starting a new feature from trunk or the user mentions this
-  git flow.
+  Use when starting a new feature (or any conventional-commit-typed branch) from
+  trunk, or when the user mentions this git flow. Verifies the current branch is
+  merged into main, checks out main, pulls latest, optionally restores a stash,
+  then creates a new branch following Conventional Commits naming.
 ---
 
-# Trunk: new feature branch from `main`
+# Trunk-based development: start a new branch from `main`
 
-Hermit uses **trunk-based development**; policy lives in [`.github/CONTRIBUTING.md`](../../../.github/CONTRIBUTING.md). This skill is the **mechanical sequence** to leave a finished branch and start a new one from up-to-date `main`.
+This project uses **trunk-based development** with **rebase merges**. This rule
+covers the mechanical sequence to safely leave a finished branch and start fresh
+from an up-to-date `main`.
 
-## Steps (repo root; one command per line on PowerShell)
+Branch names follow **Conventional Commits** types:
+`feat/`, `fix/`, `docs/`, `chore/`, `refactor/`, `test/`, `perf/`, `ci/`
 
-### 1. Fetch and merged check (skip check if you are already on `main`)
+---
 
+## Steps
+
+### 1. Fetch remote state
 ```bash
 git fetch origin
 ```
 
-If the current branch is **not** `main`, confirm it is **already merged** into `origin/main` before you abandon it:
+### 2. Confirm the current branch is merged (skip if already on `main`)
 
+Because the project uses **rebase merges**, `git merge-base --is-ancestor` is
+**not reliable** — rebased commits have different SHAs than those on `main`.
+Instead, verify the PR is closed and merged on GitHub, then proceed.
+
+Optionally, check whether the branch still has unmerged commits by diffing
+against `origin/main` (a clean diff means all work landed):
 ```bash
-git merge-base --is-ancestor HEAD origin/main
+git diff origin/main...HEAD
 ```
 
-- Exit code **0**: current `HEAD` is contained in `origin/main` → safe to move on.
-- Exit code **non-zero**: not an ancestor. **Stop** unless you know the work landed on `main` another way (e.g. **squash merge** breaks this check—verify the PR is merged on GitHub, then proceed or delete the old branch after confirming).
+If the diff is empty, the branch content is fully reflected in `main`.
 
-Optional: list local branches merged into `origin/main`:
-
-```bash
-git branch --merged origin/main
-```
-
-### 2. Switch to `main` (stash only if checkout would conflict)
-
+### 3. Switch to `main` (stash only if checkout would conflict)
 ```bash
 git checkout main
 ```
 
-If Git refuses (uncommitted/untracked changes in the way), stash, then checkout again:
-
+If Git refuses due to uncommitted changes, stash first:
 ```bash
 git stash push -u -m "wip before main"
 git checkout main
 ```
 
-### 3. Pull `main`, then unstash if you stashed
-
+### 4. Pull `main`
 ```bash
 git pull origin main
 ```
 
-If you stashed in step 2:
-
+If you stashed in step 3, pop it now:
 ```bash
 git stash pop
 ```
 
-Resolve any conflicts, `git add` the resolutions, and continue (commit only if the stash pop produced a conflict resolution you need to record before branching—usually fix and stage, then step 4).
+Resolve any conflicts, stage the resolutions with `git add`, and continue.
+Only commit if the conflict resolution itself needs to be recorded — typically
+just stage and move on to step 5.
 
-### 4. Create the new feature branch
+### 5. Create the new branch
 
-Replace the name with the real topic (e.g. `feat/improve-agents-efficiency`):
-
+Use the appropriate Conventional Commits type as prefix:
 ```bash
-git checkout -b feat/your-topic
+git checkout -b <type>/your-topic
 ```
 
-Then implement, commit with [Conventional Commits](https://www.conventionalcommits.org/), push, and open a PR to `main`.
+Examples:
+- `feat/improve-agents-efficiency`
+- `fix/null-pointer-on-startup`
+- `refactor/extract-auth-service`
+- `chore/update-dependencies`
 
-## Oops: pushed to the wrong branch (commit is fine; click was wrong)
+Then implement, commit using [Conventional Commits](https://www.conventionalcommits.org/),
+push, and open a PR targeting `main`.
 
-You want the **same changes** locally and to continue from **`main`**, not to delete the work.
+---
 
-1. Put the last commit back into your working tree (pick one):
-   - **`git reset --soft HEAD~1`** — commit becomes **staged** changes (good if you will stash and re-commit on a `feat/…` branch).
-   - **`git reset --mixed HEAD~1`** — commit becomes **unstaged** changes in the working tree.
+## Recovery: pushed to the wrong branch
 
-2. Stash everything (including untracked if needed):
+Your work is fine — you just need to move it to a proper branch.
 
-   ```bash
-   git stash push -u -m "wip moved off wrong branch"
-   ```
+**1. Undo the commit locally, keeping the changes:**
+```bash
+git reset --soft HEAD~1   # changes become staged
+# or
+git reset --mixed HEAD~1  # changes become unstaged
+```
 
-3. If that commit had already been **pushed** to the wrong remote branch (e.g. `develop`), update the remote **while still on that branch** after the reset: your new `HEAD` is the parent commit, so:
+**2. Stash everything:**
+```bash
+git stash push -u -m "wip moved off wrong branch"
+```
 
-   ```bash
-   git push origin +HEAD:develop --force-with-lease
-   ```
+**3. If the commit was already pushed, force-update the remote:**
+```bash
+git push origin +HEAD:<wrong-branch> --force-with-lease
+```
 
-   Replace `develop` with the branch name you pushed to. Skip this step if you never pushed.
+Skip this step if you never pushed.
 
-4. Continue from **§2**: `git checkout main`, **§3** `git pull origin main`, **`git stash pop`**, then **§4** `git checkout -b feat/your-topic`.
+**4. Continue from step 3:** checkout `main` → pull → pop stash → create the
+correct branch.
 
-So yes: **reset → stash → (optional force-push) → `main` → pull → unstash → new feature branch.**
+---
 
 ## Checklist
 
-- [ ] On a non-`main` branch: merged into `origin/main` confirmed (ancestry or GitHub after squash).
-- [ ] On `main` and pulled before `git checkout -b`.
-- [ ] Stash popped after pull if a stash was used; conflicts resolved before real work on the new branch.
+- [ ] PR confirmed merged on GitHub before abandoning the old branch.
+- [ ] On `main` and fully pulled before creating the new branch.
+- [ ] Stash popped and conflicts resolved before starting real work.
+- [ ] New branch name uses a valid Conventional Commits prefix.
