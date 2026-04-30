@@ -2,18 +2,18 @@ from __future__ import annotations
 
 import logging
 
-from localrag.logging_config import RequestIdFilter, _parse_level, configure_logging, request_id_ctx
+from localrag.logging_config import _parse_level, configure_logging, request_id_ctx
 
 
-def test_request_id_filter_sets_request_id_from_contextvar() -> None:
-    token = request_id_ctx.set("req-123")
-    record = logging.LogRecord(
-        name="x", level=logging.INFO, pathname="", lineno=1, msg="m", args=(), exc_info=None
-    )
-    flt = RequestIdFilter()
-    assert flt.filter(record) is True
-    assert record.request_id == "req-123"
+def test_request_id_ctx_default() -> None:
+    assert request_id_ctx.get() == "-"
+
+
+def test_request_id_ctx_set_and_reset() -> None:
+    token = request_id_ctx.set("req-abc")
+    assert request_id_ctx.get() == "req-abc"
     request_id_ctx.reset(token)
+    assert request_id_ctx.get() == "-"
 
 
 def test_parse_level_falls_back_to_info_on_unknown() -> None:
@@ -22,7 +22,6 @@ def test_parse_level_falls_back_to_info_on_unknown() -> None:
 
 
 def test_configure_logging_is_idempotent() -> None:
-    # Ensure calling multiple times doesn't duplicate handlers.
     configure_logging("INFO")
     hermit_log = logging.getLogger("localrag")
     initial = len(hermit_log.handlers)

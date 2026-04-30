@@ -11,6 +11,7 @@ from urllib.parse import unquote
 
 import httpx
 
+from localrag import metrics as app_metrics
 from localrag.api.exceptions import IngestApiError, RagApiError
 from localrag.api.repository import ChromaCollectionRepository
 from localrag.api.schemas import (
@@ -126,6 +127,7 @@ def ingest_file(
         path,
         result.total_chunks,
     )
+    app_metrics.ingested_documents_total.inc(1)
     source = result.processed_sources[0] if result.processed_sources else request.path
     return IngestFileResponse(
         status="ok",
@@ -165,6 +167,7 @@ def ingest_directory(
         result.files_processed,
         result.total_chunks,
     )
+    app_metrics.ingested_documents_total.inc(result.files_processed)
     return IngestDirectoryResponse(
         status="ok",
         files_processed=result.files_processed,
@@ -199,6 +202,11 @@ def query_json(request: QueryRequest, engine: RAGEngine) -> QueryResponse:
         SourceRef(source=str(s.get("source", "")), chunk_index=int(s.get("chunk_index", -1)))
         for s in raw_sources
     ]
+
+    app_metrics.query_duration_seconds.observe(latency_ms / 1000)
+    app_metrics.chunks_retrieved_total.inc(len(contexts))
+    app_metrics.tokens_used_total.labels(model=used_model).inc(len(answer_chunks))
+
     logger.info(
         "query_json_done model=%s latency_ms=%.1f sources=%s",
         used_model,
