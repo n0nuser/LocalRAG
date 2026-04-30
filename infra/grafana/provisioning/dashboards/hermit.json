@@ -1,0 +1,68 @@
+{
+  "title": "Hermit RAG",
+  "uid": "hermit-rag",
+  "schemaVersion": 39,
+  "version": 1,
+  "panels": [
+    {
+      "id": 1,
+      "title": "Query Rate (req/min)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "rate(hermit_query_duration_seconds_count[1m]) * 60",
+          "legendFormat": "queries/min"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Query Latency P95 (seconds)",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(hermit_query_duration_seconds_bucket[5m]))",
+          "legendFormat": "P95"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Tokens Used (total)",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 8, "w": 8, "h": 4 },
+      "targets": [
+        {
+          "expr": "sum(hermit_tokens_used_total)",
+          "legendFormat": "tokens"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Chunks Retrieved (total)",
+      "type": "stat",
+      "gridPos": { "x": 8, "y": 8, "w": 8, "h": 4 },
+      "targets": [
+        {
+          "expr": "hermit_chunks_retrieved_total",
+          "legendFormat": "chunks"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Documents Ingested (total)",
+      "type": "stat",
+      "gridPos": { "x": 16, "y": 8, "w": 8, "h": 4 },
+      "targets": [
+        {
+          "expr": "hermit_ingested_documents_total",
+          "legendFormat": "documents"
+        }
+      ]
+    }
+  ]
+}

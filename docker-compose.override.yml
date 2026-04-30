@@ -1,0 +1,13 @@
+# Local development overrides — hot reload via uvicorn --reload
+# Usage: docker compose up   (this file is merged automatically)
+services:
+  hermit-api:
+    build:
+      context: .
+      target: base
+    command: >
+      uv run uvicorn localrag.api.main:app
+      --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+      - /app/.venv
