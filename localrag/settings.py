@@ -70,7 +70,7 @@ class Settings(BaseSettings):
         "You are a helpful assistant. Answer only based on the provided context."
     )
 
-    api_host: str = "0.0.0.0"
+    api_host: str = "0.0.0.0"  # nosec B104 — configurable bind address, default intentional
     api_port: int = 8000
 
     # Optional API key enforced on all non-health endpoints via X-API-Key header.

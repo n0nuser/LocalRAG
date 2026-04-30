@@ -69,13 +69,17 @@ jobs:
             -e CHROMA_PERSIST_PATH=/tmp/chroma \
             -p 8000:8000 \
             hermit-api:ci
-          sleep 8
 
-      - name: Health check
+      - name: Health check (with retry)
         run: |
-          status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health)
-          echo "Health status: $status"
-          [ "$status" = "200" ]
+          for i in $(seq 1 15); do
+            status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || echo "000")
+            echo "Attempt $i — status: $status"
+            if [ "$status" = "200" ]; then exit 0; fi
+            sleep 2
+          done
+          docker logs hermit-ci
+          exit 1
 
       - name: Stop container
         if: always()
