@@ -1,14 +1,14 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: hermit-api
+  name: localrag-api
   namespace: default
   labels:
-    app: hermit-api
+    app: localrag-api
 spec:
   type: ClusterIP
   selector:
-    app: hermit-api
+    app: localrag-api
   ports:
     - name: http
       port: 8000

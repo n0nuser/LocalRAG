@@ -1,7 +1,7 @@
 # Local development overrides — hot reload via uvicorn --reload
 # Usage: docker compose up   (this file is merged automatically)
 services:
-  hermit-api:
+  localrag-api:
     build:
       context: .
       target: base

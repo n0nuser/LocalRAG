@@ -1,31 +1,31 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: hermit-api
+  name: localrag-api
   namespace: default
   labels:
-    app: hermit-api
+    app: localrag-api
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app: hermit-api
+      app: localrag-api
   template:
     metadata:
       labels:
-        app: hermit-api
+        app: localrag-api
     spec:
       containers:
-        - name: hermit-api
-          image: hermit-api:latest
+        - name: localrag-api
+          image: localrag-api:latest
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           envFrom:
             - configMapRef:
-                name: hermit-api-config
+                name: localrag-api-config
             - secretRef:
-                name: hermit-api-secrets
+                name: localrag-api-secrets
           livenessProbe:
             httpGet:
               path: /health

@@ -81,10 +81,10 @@
   },
   {
     "question": "What Prometheus metrics does LocalRAG expose?",
-    "ground_truth": "LocalRAG exposes hermit_query_duration_seconds, hermit_tokens_used_total, hermit_chunks_retrieved_total, and hermit_ingested_documents_total at the /metrics endpoint.",
+    "ground_truth": "LocalRAG exposes localrag_query_duration_seconds, localrag_tokens_used_total, localrag_chunks_retrieved_total, and localrag_ingested_documents_total at the /metrics endpoint.",
     "contexts": [
-      "The /metrics endpoint exposes hermit_query_duration_seconds (histogram) and hermit_tokens_used_total (counter).",
-      "hermit_chunks_retrieved_total and hermit_ingested_documents_total track retrieval and ingestion activity."
+      "The /metrics endpoint exposes localrag_query_duration_seconds (histogram) and localrag_tokens_used_total (counter).",
+      "localrag_chunks_retrieved_total and localrag_ingested_documents_total track retrieval and ingestion activity."
     ]
   },
   {

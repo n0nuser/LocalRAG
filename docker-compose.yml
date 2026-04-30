@@ -24,7 +24,7 @@ services:
       timeout: 5s
       retries: 5
 
-  hermit-api:
+  localrag-api:
     build: .
     ports:
       - "8000:8000"
@@ -54,7 +54,7 @@ services:
       - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
     depends_on:
-      hermit-api:
+      localrag-api:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]

@@ -1,4 +1,4 @@
-# LocalRAG (Hermit)
+# LocalRAG
 
 Offline-first RAG system. Your documents, your models, your machine.
 
@@ -140,7 +140,7 @@ uv run localrag collections rebuild
 docker compose up --build
 ```
 
-Starts: `hermit-api`, `ollama`, `chromadb`, `prometheus`, `grafana`.
+Starts: `localrag-api`, `ollama`, `chromadb`, `prometheus`, `grafana`.
 
 Pull models in the Ollama container after startup:
 

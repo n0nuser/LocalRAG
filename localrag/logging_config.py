@@ -80,17 +80,17 @@ def configure_logging(level: str = "INFO") -> None:
         foreign_pre_chain=shared_processors,
     )
 
-    hermit_log = logging.getLogger("localrag")
-    hermit_log.setLevel(numeric)
+    localrag_log = logging.getLogger("localrag")
+    localrag_log.setLevel(numeric)
 
-    if not hermit_log.handlers:
+    if not localrag_log.handlers:
         handler = logging.StreamHandler(sys.stderr)
         handler.setLevel(numeric)
         handler.setFormatter(formatter)
-        hermit_log.addHandler(handler)
-        hermit_log.propagate = False
+        localrag_log.addHandler(handler)
+        localrag_log.propagate = False
     else:
-        for h in hermit_log.handlers:
+        for h in localrag_log.handlers:
             h.setLevel(numeric)
             h.setFormatter(formatter)
 

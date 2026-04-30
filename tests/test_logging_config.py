@@ -23,7 +23,7 @@ def test_parse_level_falls_back_to_info_on_unknown() -> None:
 
 def test_configure_logging_is_idempotent() -> None:
     configure_logging("INFO")
-    hermit_log = logging.getLogger("localrag")
-    initial = len(hermit_log.handlers)
+    localrag_log = logging.getLogger("localrag")
+    initial = len(localrag_log.handlers)
     configure_logging("ERROR")
-    assert len(hermit_log.handlers) == initial
+    assert len(localrag_log.handlers) == initial

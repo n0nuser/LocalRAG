@@ -1,6 +1,6 @@
 {
-  "title": "Hermit RAG",
-  "uid": "hermit-rag",
+  "title": "LocalRAG",
+  "uid": "localrag",
   "schemaVersion": 39,
   "version": 1,
   "panels": [
@@ -11,7 +11,7 @@
       "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
       "targets": [
         {
-          "expr": "rate(hermit_query_duration_seconds_count[1m]) * 60",
+          "expr": "rate(localrag_query_duration_seconds_count[1m]) * 60",
           "legendFormat": "queries/min"
         }
       ]
@@ -23,7 +23,7 @@
       "gridPos": { "x": 12, "y": 0, "w": 12, "h": 8 },
       "targets": [
         {
-          "expr": "histogram_quantile(0.95, rate(hermit_query_duration_seconds_bucket[5m]))",
+          "expr": "histogram_quantile(0.95, rate(localrag_query_duration_seconds_bucket[5m]))",
           "legendFormat": "P95"
         }
       ]
@@ -35,7 +35,7 @@
       "gridPos": { "x": 0, "y": 8, "w": 8, "h": 4 },
       "targets": [
         {
-          "expr": "sum(hermit_tokens_used_total)",
+          "expr": "sum(localrag_tokens_used_total)",
           "legendFormat": "tokens"
         }
       ]
@@ -47,7 +47,7 @@
       "gridPos": { "x": 8, "y": 8, "w": 8, "h": 4 },
       "targets": [
         {
-          "expr": "hermit_chunks_retrieved_total",
+          "expr": "localrag_chunks_retrieved_total",
           "legendFormat": "chunks"
         }
       ]
@@ -59,7 +59,7 @@
       "gridPos": { "x": 16, "y": 8, "w": 8, "h": 4 },
       "targets": [
         {
-          "expr": "hermit_ingested_documents_total",
+          "expr": "localrag_ingested_documents_total",
           "legendFormat": "documents"
         }
       ]

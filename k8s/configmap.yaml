@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: hermit-api-config
+  name: localrag-api-config
   namespace: default
 data:
   OLLAMA_BASE_URL: "http://ollama:11434"
