@@ -1,20 +1,29 @@
-"""Configure the ``localrag`` logger tree for CLI and API."""
+"""Configure structured logging for the ``localrag`` logger tree (CLI and API).
+
+Production/CI → JSON via structlog; local dev → human-readable console renderer.
+Set ``LOG_FORMAT=json`` to force JSON even in a terminal, or ``LOG_FORMAT=console``
+to force human-readable output.
+"""
 
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from contextvars import ContextVar
+
+import structlog
 
 request_id_ctx: ContextVar[str] = ContextVar("request_id", default="-")
 
 
-class RequestIdFilter(logging.Filter):
-    """Attach ``request_id`` for format strings (API middleware sets the context var)."""
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        record.request_id = request_id_ctx.get()
-        return True
+def _add_request_id(
+    _logger: object,
+    _method: str,
+    event_dict: structlog.types.EventDict,
+) -> structlog.types.EventDict:
+    event_dict["correlation_id"] = request_id_ctx.get()
+    return event_dict
 
 
 def _parse_level(name: str) -> int:
@@ -24,29 +33,66 @@ def _parse_level(name: str) -> int:
     return logging.INFO
 
 
-def configure_logging(level: str = "INFO") -> None:
-    """Attach a stderr handler to ``localrag`` and tune third-party noise.
+def _use_json_renderer() -> bool:
+    fmt = os.environ.get("LOG_FORMAT", "").lower()
+    if fmt == "json":
+        return True
+    if fmt == "console":
+        return False
+    return not sys.stderr.isatty()
 
-    Safe to call more than once: adds the handler only once, always updates level.
+
+def configure_logging(level: str = "INFO") -> None:
+    """Configure structlog + stdlib logging.
+
+    Safe to call more than once; only attaches the stdlib handler once.
+    Always updates log level on subsequent calls.
     """
     numeric = _parse_level(level)
+    use_json = _use_json_renderer()
+
+    shared_processors: list[structlog.types.Processor] = [
+        structlog.contextvars.merge_contextvars,
+        _add_request_id,
+        structlog.stdlib.add_log_level,
+        structlog.stdlib.add_logger_name,
+        structlog.processors.TimeStamper(fmt="iso"),
+    ]
+
+    if use_json:
+        renderer: structlog.types.Processor = structlog.processors.JSONRenderer()
+    else:
+        renderer = structlog.dev.ConsoleRenderer()
+
+    structlog.configure(
+        processors=[
+            *shared_processors,
+            structlog.stdlib.ProcessorFormatter.wrap_for_formatter,
+        ],
+        wrapper_class=structlog.make_filtering_bound_logger(numeric),
+        context_class=dict,
+        logger_factory=structlog.stdlib.LoggerFactory(),
+        cache_logger_on_first_use=True,
+    )
+
+    formatter = structlog.stdlib.ProcessorFormatter(
+        processor=renderer,
+        foreign_pre_chain=shared_processors,
+    )
+
     hermit_log = logging.getLogger("localrag")
     hermit_log.setLevel(numeric)
 
     if not hermit_log.handlers:
         handler = logging.StreamHandler(sys.stderr)
         handler.setLevel(numeric)
-        handler.addFilter(RequestIdFilter())
-        formatter = logging.Formatter(
-            fmt="%(asctime)s %(levelname)s [%(request_id)s] %(name)s: %(message)s",
-            datefmt="%Y-%m-%dT%H:%M:%S",
-        )
         handler.setFormatter(formatter)
         hermit_log.addHandler(handler)
         hermit_log.propagate = False
     else:
         for h in hermit_log.handlers:
             h.setLevel(numeric)
+            h.setFormatter(formatter)
 
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("httpcore").setLevel(logging.WARNING)

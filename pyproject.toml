@@ -25,6 +25,7 @@ dependencies = [
     "charset-normalizer>=3.4",
     "sse-starlette>=2.2",
     "prometheus-client>=0.25.0",
+    "structlog>=25.5.0",
 ]
 
 [project.scripts]
