@@ -1,0 +1,39 @@
+name: RAGAS Evals
+
+on:
+  schedule:
+    # Run nightly at 02:00 UTC
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: "LocalRAG API URL"
+        required: false
+        default: "http://localhost:8000"
+
+jobs:
+  evals:
+    name: RAGAS evaluation (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      - name: Run RAGAS evals (offline — no live API required)
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        run: uv run python evals/run_evals.py --offline
+        continue-on-error: true
+
+      - name: Upload eval results
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ github.run_id }}
+          path: evals/results/
+          if-no-files-found: warn
