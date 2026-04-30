@@ -34,6 +34,10 @@ Agents (and humans) move faster when they:
 | Log format, levels, request ID | `localrag/logging_config.py`, `localrag/api/middleware.py`, `LOG_LEVEL` in `localrag/settings.py` |
 | API key auth | `localrag/api/dependencies.py` (`require_api_key`), `API_KEY` in `localrag/settings.py` |
 | Prometheus metrics endpoint | `localrag/api/routers/metrics.py` |
+| LLM provider abstraction | `localrag/llm/providers/`, `localrag/llm/factory.py` |
+| Cost estimation | `localrag/llm/costs.py` |
+| Agent tool-use (search_documents / answer_directly) | `localrag/agent/service.py`, `localrag/api/routers/agent.py` |
+| Architecture decisions | `docs/adr/` |
 | CLI commands | `localrag/cli/app.py`, `localrag/cli/commands/*.py` |
 | Parsing a file type | `localrag/ingestion/parsers/`, `localrag/ingestion/loader.py` |
 | Chunk size / overlap | `localrag/ingestion/chunker.py`, `localrag/settings.py` |
