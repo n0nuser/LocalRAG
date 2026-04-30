@@ -1,0 +1,162 @@
+[
+  {
+    "question": "What is LocalRAG?",
+    "ground_truth": "LocalRAG is an offline-first Retrieval-Augmented Generation system that keeps documents, models, and computation entirely on the local machine.",
+    "contexts": [
+      "LocalRAG is an offline-first RAG system. Your documents, your models, your machine.",
+      "It uses Chroma as the vector store and Ollama for embeddings and LLM inference."
+    ]
+  },
+  {
+    "question": "Which vector store does LocalRAG use?",
+    "ground_truth": "LocalRAG uses ChromaDB as its vector store for persisting and retrieving document embeddings.",
+    "contexts": [
+      "LocalRAG stores all document embeddings in ChromaDB, a persistent on-disk vector database.",
+      "The Chroma collection name and persist path are configurable via environment variables."
+    ]
+  },
+  {
+    "question": "What embedding model is used by default?",
+    "ground_truth": "The default embedding model is nomic-embed-text, which is run locally via Ollama.",
+    "contexts": [
+      "The default embedding model is nomic-embed-text. It is pulled and served by Ollama.",
+      "You can override the embedding model with the OLLAMA_EMBED_MODEL environment variable."
+    ]
+  },
+  {
+    "question": "How do I ingest a PDF file?",
+    "ground_truth": "You can ingest a PDF file using the POST /ingest endpoint with the file path, or with the localrag ingest CLI command.",
+    "contexts": [
+      "Use POST /ingest with a JSON body containing the path field pointing to the PDF file.",
+      "The CLI command `localrag ingest /path/to/file.pdf` also ingests a single file."
+    ]
+  },
+  {
+    "question": "What LLM is used by default for answering questions?",
+    "ground_truth": "The default LLM is llama3.2, served locally via Ollama.",
+    "contexts": [
+      "By default LocalRAG uses llama3.2 for the chat/completion step.",
+      "The LLM model tag is configurable via OLLAMA_LLM_MODEL."
+    ]
+  },
+  {
+    "question": "How do I run the LocalRAG API server?",
+    "ground_truth": "Run the API server with `uv run uvicorn localrag.api.main:app` or via Docker Compose.",
+    "contexts": [
+      "Start the API with: uv run uvicorn localrag.api.main:app --host 0.0.0.0 --port 8000",
+      "Alternatively use docker compose up to start all services including the API."
+    ]
+  },
+  {
+    "question": "What is the chunk size used during ingestion?",
+    "ground_truth": "The default chunk size is 512 characters with a 50-character overlap between adjacent chunks.",
+    "contexts": [
+      "Text is split into chunks of up to CHUNK_CHARS characters (default 512).",
+      "Adjacent chunks share CHUNK_OVERLAP_CHARS characters (default 50) to preserve context at boundaries."
+    ]
+  },
+  {
+    "question": "Can I restrict which directories are allowed for ingestion?",
+    "ground_truth": "Yes, setting INGEST_ROOTS to a list of allowed paths restricts ingestion to those directories only.",
+    "contexts": [
+      "INGEST_ROOTS limits the HTTP ingest API to files under the specified root directories.",
+      "An empty INGEST_ROOTS list (default) disables path restriction and allows any accessible file."
+    ]
+  },
+  {
+    "question": "What authentication mechanism does the API use?",
+    "ground_truth": "The API uses an X-API-Key header for authentication, configured via the API_KEY environment variable. It is disabled when API_KEY is empty.",
+    "contexts": [
+      "Set API_KEY in .env to enable API key authentication via the X-API-Key request header.",
+      "When API_KEY is empty (the default), authentication is disabled and all requests are accepted."
+    ]
+  },
+  {
+    "question": "How do I switch from Ollama to OpenAI?",
+    "ground_truth": "Set LLM_BACKEND=openai and provide your OpenAI API key in OPENAI_API_KEY.",
+    "contexts": [
+      "Change LLM_BACKEND to openai and set OPENAI_API_KEY to your OpenAI secret key.",
+      "OPENAI_MODEL controls which OpenAI model is used (default: gpt-4o-mini)."
+    ]
+  },
+  {
+    "question": "What Prometheus metrics does LocalRAG expose?",
+    "ground_truth": "LocalRAG exposes hermit_query_duration_seconds, hermit_tokens_used_total, hermit_chunks_retrieved_total, and hermit_ingested_documents_total at the /metrics endpoint.",
+    "contexts": [
+      "The /metrics endpoint exposes hermit_query_duration_seconds (histogram) and hermit_tokens_used_total (counter).",
+      "hermit_chunks_retrieved_total and hermit_ingested_documents_total track retrieval and ingestion activity."
+    ]
+  },
+  {
+    "question": "What file formats can LocalRAG ingest?",
+    "ground_truth": "LocalRAG supports PDF, DOCX, Markdown, plain text, and source code files.",
+    "contexts": [
+      "Supported parsers: PDF (pypdf), DOCX (python-docx), Markdown, plain text, and source code files.",
+      "The loader dispatches each file to the appropriate parser based on file extension."
+    ]
+  },
+  {
+    "question": "Where is configuration stored?",
+    "ground_truth": "Configuration is loaded from environment variables and an optional .env file via pydantic-settings.",
+    "contexts": [
+      "All configuration is managed by the Settings class using pydantic-settings.",
+      "Settings are read from the process environment and optionally from a .env file in the working directory."
+    ]
+  },
+  {
+    "question": "How can I see available CLI commands?",
+    "ground_truth": "Run `localrag --help` to see all available commands, or `localrag <command> --help` for command-specific help.",
+    "contexts": [
+      "Use `localrag --help` for a list of commands.",
+      "Each sub-command also supports `--help` for detailed usage."
+    ]
+  },
+  {
+    "question": "What is the health check endpoint?",
+    "ground_truth": "GET /health returns the API status, whether Ollama is reachable, the Chroma persist path, and the list of collections.",
+    "contexts": [
+      "GET /health checks Ollama connectivity and returns status, ollama_ok, chroma_path, and collections.",
+      "The health endpoint does not require API key authentication."
+    ]
+  },
+  {
+    "question": "How is context built for the LLM prompt?",
+    "ground_truth": "The retriever fetches the top-k most similar document chunks, which are assembled into a prompt using a system message and the retrieved context.",
+    "contexts": [
+      "The retriever embeds the question and retrieves the top RAG_TOP_K chunks from ChromaDB.",
+      "build_prompt assembles the system message, retrieved chunks, and question into the final prompt."
+    ]
+  },
+  {
+    "question": "Does LocalRAG support streaming responses?",
+    "ground_truth": "Yes, POST /query/stream streams answer tokens via Server-Sent Events (SSE).",
+    "contexts": [
+      "POST /query/stream returns tokens incrementally as Server-Sent Events.",
+      "Each token event carries the token text; a final event includes source references."
+    ]
+  },
+  {
+    "question": "What is the capital of Mars?",
+    "ground_truth": "I don't know. Mars has no capital city; it is not inhabited.",
+    "contexts": [
+      "LocalRAG is an offline-first RAG system for local document retrieval.",
+      "It uses Chroma and Ollama for vector storage and language model inference."
+    ]
+  },
+  {
+    "question": "What is the cost of using Ollama models?",
+    "ground_truth": "Ollama models run locally and are free; there is no per-token cost.",
+    "contexts": [
+      "Ollama models are served locally and have zero API cost.",
+      "Cloud providers such as OpenAI and Anthropic have per-token pricing; Ollama does not."
+    ]
+  },
+  {
+    "question": "Can I rebuild the vector store collection?",
+    "ground_truth": "Yes, POST /collections/rebuild or `localrag collections rebuild` drops and re-ingests all stored sources.",
+    "contexts": [
+      "POST /collections/rebuild re-embeds all previously ingested sources from scratch.",
+      "Sources that no longer exist on disk are removed from the collection automatically."
+    ]
+  }
+]
