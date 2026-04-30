@@ -26,12 +26,14 @@ Agents (and humans) move faster when they:
 | Environment / defaults | `localrag/settings.py`, `.env.example` |
 | FastAPI routes (HTTP only) | `localrag/api/routers/*.py` |
 | API request/response OpenAPI models | `localrag/api/schemas.py` |
-| API use cases (health, ingest rules, query contexts + SSE, collections including rebuild) | `localrag/api/service.py` |
+| API use cases (health, ingest rules, query JSON + SSE, collections including rebuild) | `localrag/api/service.py` |
 | API persistence boundary (Chroma collections) | `localrag/api/repository.py` |
 | API app factory (lifespan, middleware, error handlers) | `localrag/api/main.py` |
 | HTTP ingest path validation (`INGEST_ROOTS`, URL decode) | `localrag/api/service.py`, `localrag/settings.py` (`is_path_allowed`), `localrag/api/exceptions.py` + `main.py` handler |
 | DI / shared service instances | `localrag/api/dependencies.py` |
 | Log format, levels, request ID | `localrag/logging_config.py`, `localrag/api/middleware.py`, `LOG_LEVEL` in `localrag/settings.py` |
+| API key auth | `localrag/api/dependencies.py` (`require_api_key`), `API_KEY` in `localrag/settings.py` |
+| Prometheus metrics endpoint | `localrag/api/routers/metrics.py` |
 | CLI commands | `localrag/cli/app.py`, `localrag/cli/commands/*.py` |
 | Parsing a file type | `localrag/ingestion/parsers/`, `localrag/ingestion/loader.py` |
 | Chunk size / overlap | `localrag/ingestion/chunker.py`, `localrag/settings.py` |

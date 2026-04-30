@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from http import HTTPStatus
 
-from fastapi import Depends
+from fastapi import Depends, HTTPException, Security
+from fastapi.security import APIKeyHeader
 
 from localrag.api.repository import ChromaCollectionRepository
 from localrag.ingestion.embedder import OllamaEmbedder
@@ -11,6 +13,8 @@ from localrag.rag.engine import RAGEngine
 from localrag.rag.retriever import Retriever
 from localrag.settings import Settings, get_settings
 from localrag.storage.vector_store import VectorStore
+
+_api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
 @lru_cache(maxsize=1)
@@ -49,6 +53,21 @@ def get_ingestion_service() -> IngestionService:
     return IngestionService(
         settings=settings, embedder=get_embedder(), vector_store=get_vector_store()
     )
+
+
+def require_api_key(
+    key: str | None = Security(_api_key_header),
+    settings: Settings = Depends(get_settings),
+) -> None:
+    """Enforce X-API-Key when API_KEY is configured. No-op when API_KEY is empty."""
+    configured = settings.api_key
+    if not configured:
+        return
+    if not key or key != configured:
+        raise HTTPException(
+            status_code=HTTPStatus.UNAUTHORIZED,
+            detail="Invalid or missing API key.",
+        )
 
 
 def get_api_settings() -> Settings:
