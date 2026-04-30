@@ -14,7 +14,7 @@ authors = [
 ]
 dependencies = [
     "fastapi>=0.115",
-    "uvicorn[standard]>=0.34",
+    "uvicorn[standard]>=0.46.0",
     "typer>=0.15",
     "chromadb>=1.0",
     "httpx>=0.28",
