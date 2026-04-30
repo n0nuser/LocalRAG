@@ -13,7 +13,7 @@ authors = [
     { name = "Pablo Jesus Gonzalez Rubio", email = "gonzrubio.pablo@gmail.com" },
 ]
 dependencies = [
-    "fastapi>=0.115",
+    "fastapi>=0.136.1",
     "uvicorn[standard]>=0.34",
     "typer>=0.15",
     "chromadb>=1.0",
