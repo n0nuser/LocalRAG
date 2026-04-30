@@ -45,7 +45,14 @@ repos:
       - id: pytest-unit
         name: pytest (unit tests only)
         language: system
-        entry: uv run pytest -m unit -q --no-header
+        entry: uv run pytest -m "not integration" -q --no-header
+        pass_filenames: false
+        always_run: true
+      - id: integration-tests
+        name: Integration tests (Docker)
+        language: system
+        entry: uv run python scripts/run_integration_tests.py
+        stages: [pre-push]
         pass_filenames: false
         always_run: true
 
