@@ -59,6 +59,38 @@ flowchart LR
 | Storage | `localrag/storage/vector_store.py` | Chroma client wrapper |
 | RAG | `localrag/rag/retriever.py`, `engine.py`, `prompt.py` | Retrieve top-k, build prompt, call LLM |
 | Ollama API models | `localrag/ollama/schemas.py` | Pydantic types + `parse_ollama_json` / `parse_ollama_json_line` for outbound requests and responses |
+| LLM abstraction | `localrag/llm/` | `BaseLLMProvider`, Ollama/OpenAI/Anthropic providers, factory, cost estimator |
+| Agent | `localrag/agent/service.py`, `localrag/api/routers/agent.py` | Anthropic tool-use agent; `POST /agent/query` |
+| Eval | `evals/dataset.json`, `evals/run_evals.py` | RAGAS evaluation dataset and runner; `localrag eval` CLI command |
+
+## LLM abstraction
+
+`localrag/llm/` decouples the RAG engine from a specific model API:
+
+| Path | Role |
+| --- | --- |
+| `localrag/llm/providers/base.py` | `BaseLLMProvider` ABC with `generate(prompt, context)` and `stream(...)` |
+| `localrag/llm/types.py` | `LLMResponse` dataclass (answer, model, tokens_used, latency_ms, estimated_cost_usd) |
+| `localrag/llm/providers/ollama.py` | Ollama HTTP provider (default, local) |
+| `localrag/llm/providers/openai_provider.py` | OpenAI chat completions |
+| `localrag/llm/providers/anthropic_provider.py` | Anthropic messages API |
+| `localrag/llm/factory.py` | `build_provider(settings)` — selects provider by `LLM_BACKEND` env var |
+| `localrag/llm/costs.py` | `estimate_cost_usd(model, tokens)` with prefix-match price table |
+
+## Agent layer
+
+`localrag/agent/service.py` exposes `run_agent(question, engine, api_key, model)`:
+
+1. Calls `anthropic.messages.create(tools=[search_documents, answer_directly])`.
+2. Inspects the `ToolUseBlock` in the response content.
+3. For `search_documents`: calls `engine.answer()` and packages sources.
+4. For `answer_directly`: returns the agent's answer verbatim.
+
+The `reasoning` field records which path was taken. The router in `localrag/api/routers/agent.py` returns HTTP 503 when `ANTHROPIC_API_KEY` is absent.
+
+## Eval system
+
+`evals/run_evals.py` runs RAGAS metrics (`faithfulness`, `answer_relevancy`, `context_precision`, `context_recall`) against `evals/dataset.json` (20 Q/A/context triplets). Results write to `evals/results/`. The CLI command `uv run localrag eval --offline` delegates to this script.
 
 ## Extension points
 
