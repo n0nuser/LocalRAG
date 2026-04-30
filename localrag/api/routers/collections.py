@@ -3,7 +3,11 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from localrag.api import service as api_service
-from localrag.api.dependencies import get_collection_repository, get_ingestion_service
+from localrag.api.dependencies import (
+    get_collection_repository,
+    get_ingestion_service,
+    require_api_key,
+)
 from localrag.api.repository import ChromaCollectionRepository
 from localrag.api.schemas import (
     CollectionDeleteResponse,
@@ -14,7 +18,11 @@ from localrag.api.schemas import (
 )
 from localrag.ingestion.service import IngestionService
 
-router = APIRouter(prefix="/collections", tags=["collections"])
+router = APIRouter(
+    prefix="/collections",
+    tags=["collections"],
+    dependencies=[Depends(require_api_key)],
+)
 
 
 @router.get("", response_model=CollectionListResponse)

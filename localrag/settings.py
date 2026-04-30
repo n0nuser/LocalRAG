@@ -73,6 +73,16 @@ class Settings(BaseSettings):
     api_host: str = "0.0.0.0"
     api_port: int = 8000
 
+    # Optional API key enforced on all non-health endpoints via X-API-Key header.
+    # Leave empty (default) to disable authentication.
+    api_key: str = ""
+
+    # LLM backend selector: "ollama" | "openai" | "anthropic"
+    llm_backend: str = "ollama"
+
+    # Canonical embedding model alias (maps to ollama_embed_model when backend=ollama).
+    embedding_model: str = ""
+
     log_level: str = "INFO"
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from collections.abc import Iterator
 from http import HTTPStatus
 from pathlib import Path
@@ -21,8 +22,10 @@ from localrag.api.schemas import (
     IngestFileRequest,
     IngestFileResponse,
     QueryRequest,
+    QueryResponse,
     RebuildCollectionRequest,
     RebuildCollectionResponse,
+    SourceRef,
 )
 from localrag.ingestion.service import IngestionService
 from localrag.ollama.schemas import OllamaTagsResponse, parse_ollama_json
@@ -166,6 +169,47 @@ def ingest_directory(
         status="ok",
         files_processed=result.files_processed,
         total_chunks=result.total_chunks,
+    )
+
+
+def query_json(request: QueryRequest, engine: RAGEngine) -> QueryResponse:
+    """Blocking JSON query — retrieves context then generates a full answer."""
+    t0 = time.perf_counter()
+    try:
+        contexts = engine.retriever.retrieve(
+            question=request.question,
+            n_results=request.n_results,
+        )
+    except RetrievalError as exc:
+        raise RagApiError(int(exc.status_code), exc.detail) from exc
+
+    answer_chunks: list[str] = []
+    for event in engine.stream_chat_from_contexts(
+        contexts=contexts,
+        question=request.question,
+        model=request.model,
+    ):
+        if event["type"] == "token":
+            answer_chunks.append(str(event["token"]))
+
+    latency_ms = (time.perf_counter() - t0) * 1000
+    used_model = request.model or engine.settings.ollama_llm_model
+    raw_sources = engine._extract_sources(contexts)  # noqa: SLF001
+    sources = [
+        SourceRef(source=str(s.get("source", "")), chunk_index=int(s.get("chunk_index", -1)))
+        for s in raw_sources
+    ]
+    logger.info(
+        "query_json_done model=%s latency_ms=%.1f sources=%s",
+        used_model,
+        latency_ms,
+        len(sources),
+    )
+    return QueryResponse(
+        answer="".join(answer_chunks).strip(),
+        sources=sources,
+        latency_ms=latency_ms,
+        model=used_model,
     )
 
 

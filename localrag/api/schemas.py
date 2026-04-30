@@ -183,6 +183,42 @@ class HealthResponse(BaseModel):
     )
 
 
+class SourceRef(BaseModel):
+    source: str = Field(
+        description="File path or identifier of the source chunk.", examples=["/docs/guide.md"]
+    )
+    chunk_index: int = Field(
+        description="Zero-based index of the chunk within the source.", examples=[0]
+    )
+
+
+class QueryResponse(BaseModel):
+    """Response body for ``POST /query`` (JSON mode)."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [
+                {
+                    "answer": "You can run the API with `uv run uvicorn localrag.api.main:app`.",
+                    "sources": [{"source": "/docs/README.md", "chunk_index": 2}],
+                    "latency_ms": 312.5,
+                    "model": "llama3.2",
+                }
+            ]
+        }
+    )
+
+    answer: str = Field(
+        description="Generated answer text.",
+        examples=["The README describes installation steps."],
+    )
+    sources: list[SourceRef] = Field(description="Source chunks used to generate the answer.")
+    latency_ms: float = Field(
+        description="Total wall-clock latency in milliseconds.", examples=[312.5]
+    )
+    model: str = Field(description="Model tag used to generate the answer.", examples=["llama3.2"])
+
+
 class CollectionListResponse(BaseModel):
     collections: list[str] = Field(
         description="Names of Chroma collections on the configured persist path.",

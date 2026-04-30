@@ -13,6 +13,7 @@ from localrag.api.middleware import RequestContextMiddleware
 from localrag.api.routers.collections import router as collections_router
 from localrag.api.routers.health import router as health_router
 from localrag.api.routers.ingest import router as ingest_router
+from localrag.api.routers.metrics import router as metrics_router
 from localrag.api.routers.query import router as query_router
 from localrag.logging_config import configure_logging
 from localrag.settings import get_settings
@@ -32,6 +33,7 @@ app = FastAPI(title="LocalRAG API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(RequestContextMiddleware)
 
 app.include_router(health_router)
+app.include_router(metrics_router)
 app.include_router(ingest_router)
 app.include_router(query_router)
 app.include_router(collections_router)

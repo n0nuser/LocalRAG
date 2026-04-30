@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from localrag.api import service as api_service
-from localrag.api.dependencies import get_api_settings, get_ingestion_service
+from localrag.api.dependencies import get_api_settings, get_ingestion_service, require_api_key
 from localrag.api.schemas import (
     IngestDirectoryRequest,
     IngestDirectoryResponse,
@@ -13,7 +13,7 @@ from localrag.api.schemas import (
 from localrag.ingestion.service import IngestionService
 from localrag.settings import Settings
 
-router = APIRouter(prefix="", tags=["ingestion"])
+router = APIRouter(prefix="", tags=["ingestion"], dependencies=[Depends(require_api_key)])
 
 
 @router.post("/ingest", response_model=IngestFileResponse)

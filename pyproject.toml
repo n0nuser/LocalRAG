@@ -24,6 +24,7 @@ dependencies = [
     "rich>=13",
     "charset-normalizer>=3.4",
     "sse-starlette>=2.2",
+    "prometheus-client>=0.25.0",
 ]
 
 [project.scripts]
