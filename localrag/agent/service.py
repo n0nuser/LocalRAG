@@ -95,7 +95,7 @@ def run_agent(
         model=model,
         max_tokens=1024,
         system=_SYSTEM_PROMPT,
-        tools=_TOOLS,
+        tools=_TOOLS,  # type: ignore[arg-type]
         messages=[{"role": "user", "content": question}],
     )
 
@@ -114,9 +114,9 @@ def run_agent(
         if block.name == "search_documents":
             query = str(tool_input.get("query", question))
             logger.info("agent_search_documents query=%s", query[:80])
-            result = engine.answer(question=query)
+            result: dict[str, Any] = engine.answer(question=query)
             answer = str(result.get("answer", ""))
-            sources = [dict(s) for s in result.get("sources", [])]
+            sources = [dict(s) for s in result.get("sources") or []]
             reasoning = f"Used search_documents with query: {query!r}"
 
         elif block.name == "answer_directly":
