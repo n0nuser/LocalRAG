@@ -11,6 +11,9 @@ on:
         required: false
         default: "http://localhost:8000"
 
+permissions:
+  contents: read
+
 jobs:
   evals:
     name: RAGAS evaluation (offline)
