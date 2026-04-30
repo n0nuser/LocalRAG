@@ -176,7 +176,7 @@ def test_vector_store_upsert_delete_query_and_list_collections() -> None:
     assert collection.query_calls[0]["n_results"] == 3  # type: ignore[index]
 
     collections = store.list_collections()
-    assert collections == [{"name": "col-1", "count": 2}, {"name": "col-2", "count": 0}]
+    assert collections == ["col-1", "col-2"]
 
     store.delete_collection("col-1")
     assert client.deleted_collections == ["col-1"]

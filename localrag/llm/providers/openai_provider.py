@@ -40,7 +40,7 @@ class OpenAIProvider(BaseLLMProvider):
             {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": f"Context:\n{context_block}\n\nQuestion: {prompt}"},
         ]
-        resp = self._client.chat.completions.create(model=used_model, messages=messages)
+        resp = self._client.chat.completions.create(model=used_model, messages=messages)  # type: ignore[arg-type]
         latency_ms = (time.perf_counter() - t0) * 1000
         answer = resp.choices[0].message.content or ""
         tokens = resp.usage.total_tokens if resp.usage else self.count_tokens(answer)
@@ -65,8 +65,8 @@ class OpenAIProvider(BaseLLMProvider):
             {"role": "system", "content": self._system_prompt},
             {"role": "user", "content": f"Context:\n{context_block}\n\nQuestion: {prompt}"},
         ]
-        with self._client.chat.completions.stream(model=used_model, messages=messages) as stream:
-            for text in stream.text_stream:
+        with self._client.chat.completions.stream(model=used_model, messages=messages) as stream:  # type: ignore[arg-type]
+            for text in stream.text_stream:  # type: ignore[attr-defined]
                 yield {"type": "token", "token": text}
         yield {"type": "final", "sources": []}
 

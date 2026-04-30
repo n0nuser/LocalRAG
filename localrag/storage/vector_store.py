@@ -53,8 +53,8 @@ class VectorStore:
         self.collection.upsert(
             ids=ids,
             documents=chunks,
-            embeddings=embeddings,
-            metadatas=metadatas,
+            embeddings=embeddings,  # type: ignore[arg-type]
+            metadatas=metadatas,  # type: ignore[arg-type]
         )
         logger.debug(
             "vector_upsert source=%s chunk_count=%s",
@@ -68,8 +68,8 @@ class VectorStore:
 
     def query(self, embedding: list[float], top_k: int) -> dict[str, Any]:
         logger.debug("vector_query top_k=%s", top_k)
-        return self.collection.query(
-            query_embeddings=[embedding],
+        return self.collection.query(  # type: ignore[return-value]
+            query_embeddings=[embedding],  # type: ignore[arg-type]
             n_results=top_k,
             include=["documents", "metadatas", "distances"],
         )
@@ -85,12 +85,8 @@ class VectorStore:
                 sources.add(str(md["source"]))
         return sorted(sources)
 
-    def list_collections(self) -> list[dict[str, Any]]:
-        result: list[dict[str, Any]] = []
-        for collection in self.client.list_collections():
-            count = self.client.get_or_create_collection(collection.name).count()
-            result.append({"name": collection.name, "count": count})
-        return result
+    def list_collections(self) -> list[str]:
+        return [c.name for c in self.client.list_collections()]
 
     def delete_collection(self, name: str) -> None:
         self.client.delete_collection(name)

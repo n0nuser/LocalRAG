@@ -36,7 +36,7 @@ def agent_query(
         model=model,
     )
     sources = [
-        SourceRef(source=str(s.get("source", "")), chunk_index=int(s.get("chunk_index", -1)))
+        SourceRef(source=str(s.get("source", "")), chunk_index=int(s.get("chunk_index", -1)))  # type: ignore[call-overload]
         for s in result.sources
     ]
     return AgentQueryResponse(

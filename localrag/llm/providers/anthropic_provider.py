@@ -46,7 +46,7 @@ class AnthropicProvider(BaseLLMProvider):
             messages=[{"role": "user", "content": user_content}],
         )
         latency_ms = (time.perf_counter() - t0) * 1000
-        answer = resp.content[0].text if resp.content else ""
+        answer = next((b.text for b in resp.content if hasattr(b, "text")), "")  # type: ignore[union-attr]
         tokens = resp.usage.input_tokens + resp.usage.output_tokens
         return LLMResponse(
             answer=answer.strip(),

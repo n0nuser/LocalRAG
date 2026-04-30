@@ -12,7 +12,7 @@ class ChromaCollectionRepository:
     _vector_store: VectorStore
 
     def list_collection_names(self) -> list[str]:
-        return self._vector_store.list_collections()
+        return self._vector_store.list_collections()  # now returns list[str]
 
     def delete_collection(self, name: str) -> None:
         self._vector_store.delete_collection(name)
