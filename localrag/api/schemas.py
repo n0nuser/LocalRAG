@@ -219,6 +219,46 @@ class QueryResponse(BaseModel):
     model: str = Field(description="Model tag used to generate the answer.", examples=["llama3.2"])
 
 
+class AgentQueryRequest(BaseModel):
+    """Body for ``POST /agent/query``."""
+
+    model_config = ConfigDict(
+        json_schema_extra={
+            "examples": [{"question": "What does the README say about installation?"}]
+        }
+    )
+
+    question: str = Field(
+        description="User question for the agent to handle.",
+        examples=["What does the README say about installation?"],
+    )
+    model: str = Field(
+        default="claude-haiku-4-5",
+        description="Anthropic model tag to use for tool-use decisions.",
+        examples=["claude-haiku-4-5"],
+    )
+
+
+class AgentQueryResponse(BaseModel):
+    """Response body for ``POST /agent/query``."""
+
+    answer: str = Field(description="Generated answer.", examples=["Installation is described..."])
+    tool_used: str = Field(
+        description="Tool the agent chose: search_documents or answer_directly.",
+        examples=["search_documents"],
+    )
+    reasoning: str = Field(
+        description="Agent reasoning for the tool choice.",
+        examples=["Used search_documents with query: 'installation'"],
+    )
+    sources: list[SourceRef] = Field(
+        description="Source chunks used (empty when tool_used=answer_directly).",
+        default_factory=list,
+    )
+    latency_ms: float = Field(description="Total latency in milliseconds.", examples=[450.0])
+    model: str = Field(description="Model used for agent decisions.", examples=["claude-haiku-4-5"])
+
+
 class CollectionListResponse(BaseModel):
     collections: list[str] = Field(
         description="Names of Chroma collections on the configured persist path.",

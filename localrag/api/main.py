@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from localrag.api.exceptions import HttpMappedError
 from localrag.api.middleware import RequestContextMiddleware
+from localrag.api.routers.agent import router as agent_router
 from localrag.api.routers.collections import router as collections_router
 from localrag.api.routers.health import router as health_router
 from localrag.api.routers.ingest import router as ingest_router
@@ -36,6 +37,7 @@ app.include_router(health_router)
 app.include_router(metrics_router)
 app.include_router(ingest_router)
 app.include_router(query_router)
+app.include_router(agent_router)
 app.include_router(collections_router)
 
 

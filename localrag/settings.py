@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     anthropic_model: str = "claude-haiku-4-5"
 
+    # Agent settings (uses Anthropic tool-use)
+    agent_model: str = "claude-haiku-4-5"
+
     log_level: str = "INFO"
 
 
