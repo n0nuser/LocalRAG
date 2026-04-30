@@ -83,6 +83,14 @@ class Settings(BaseSettings):
     # Canonical embedding model alias (maps to ollama_embed_model when backend=ollama).
     embedding_model: str = ""
 
+    # OpenAI provider settings
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+
+    # Anthropic provider settings
+    anthropic_api_key: str = ""
+    anthropic_model: str = "claude-haiku-4-5"
+
     log_level: str = "INFO"
 
 
