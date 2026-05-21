@@ -8,6 +8,7 @@ from typing import Any
 import httpx
 
 from localrag.ingestion.embedder import OllamaEmbedder
+from localrag.rag.bm25_index import Bm25Index
 from localrag.rag.exceptions import RetrievalError
 from localrag.settings import Settings
 from localrag.storage.vector_store import VectorStore
@@ -20,6 +21,7 @@ class Retriever:
     settings: Settings
     embedder: OllamaEmbedder
     vector_store: VectorStore
+    bm25_index: Bm25Index | None = None
 
     def retrieve(self, question: str, n_results: int | None = None) -> list[dict[str, Any]]:
         top_k = n_results if n_results is not None else self.settings.rag_top_k
@@ -40,6 +42,23 @@ class Retriever:
             logger.error("retrieve_embed_invalid_response error=%s", exc)
             raise RetrievalError(HTTPStatus.BAD_GATEWAY, str(exc)) from exc
 
+        vector_hits = self._retrieve_vector_hits(embedding=embedding, top_k=max(top_k * 2, top_k))
+        if self.settings.retrieval_mode != "hybrid" or self.bm25_index is None:
+            return vector_hits[:top_k]
+
+        bm25_hits = [
+            {
+                "text": hit.text,
+                "source": hit.metadata.get("source", "unknown"),
+                "chunk_index": hit.metadata.get("chunk_index", -1),
+                "score": hit.score,
+                "metadata": hit.metadata,
+            }
+            for hit in self.bm25_index.query(question, top_k=max(top_k * 2, top_k))
+        ]
+        return self._fuse_results(vector_hits=vector_hits, bm25_hits=bm25_hits, top_k=top_k)
+
+    def _retrieve_vector_hits(self, embedding: list[float], top_k: int) -> list[dict[str, Any]]:
         try:
             query_result = self.vector_store.query(embedding=embedding, top_k=top_k)
         except Exception as exc:
@@ -53,16 +72,64 @@ class Retriever:
         documents = query_result.get("documents", [[]])[0]
         metadatas = query_result.get("metadatas", [[]])[0]
         distances = query_result.get("distances", [[]])[0]
-
         contexts: list[dict[str, Any]] = []
         for document, metadata, distance in zip(documents, metadatas, distances, strict=False):
+            metadata_map = metadata if isinstance(metadata, dict) else {}
             contexts.append(
                 {
                     "text": document,
-                    "source": metadata.get("source", "unknown"),
-                    "chunk_index": metadata.get("chunk_index", -1),
-                    "score": distance,
+                    "source": metadata_map.get("source", "unknown"),
+                    "chunk_index": metadata_map.get("chunk_index", -1),
+                    "score": 1.0 / (1.0 + float(distance)),
+                    "distance": float(distance),
+                    "ingested_at": metadata_map.get("ingested_at"),
+                    "metadata": metadata_map,
                 }
             )
-        logger.debug("retrieve_hits count=%s", len(contexts))
+        logger.debug("retrieve_vector_hits count=%s", len(contexts))
         return contexts
+
+    def _fuse_results(
+        self,
+        *,
+        vector_hits: list[dict[str, Any]],
+        bm25_hits: list[dict[str, Any]],
+        top_k: int,
+    ) -> list[dict[str, Any]]:
+        vector_sorted = sorted(vector_hits, key=lambda hit: float(hit["score"]), reverse=True)
+        bm25_sorted = sorted(bm25_hits, key=lambda hit: float(hit["score"]), reverse=True)
+        candidate_map: dict[tuple[str, int], dict[str, Any]] = {}
+        score_map: dict[tuple[str, int], float] = {}
+        rrf_k = max(1, self.settings.rrf_k)
+        vector_weight = 1.0 - self.settings.bm25_weight
+        bm25_weight = self.settings.bm25_weight
+
+        for rank, hit in enumerate(vector_sorted, start=1):
+            key = self._hit_key(hit)
+            candidate_map[key] = hit
+            if self.settings.bm25_weight == 0.5:
+                score_map[key] = score_map.get(key, 0.0) + 1.0 / (rrf_k + rank)
+            else:
+                score_map[key] = score_map.get(key, 0.0) + vector_weight / (rrf_k + rank)
+        for rank, hit in enumerate(bm25_sorted, start=1):
+            key = self._hit_key(hit)
+            candidate_map[key] = hit
+            if self.settings.bm25_weight == 0.5:
+                score_map[key] = score_map.get(key, 0.0) + 1.0 / (rrf_k + rank)
+            else:
+                score_map[key] = score_map.get(key, 0.0) + bm25_weight / (rrf_k + rank)
+
+        ranked_keys = sorted(score_map.keys(), key=lambda key: score_map[key], reverse=True)[:top_k]
+        fused: list[dict[str, Any]] = []
+        for key in ranked_keys:
+            hit = dict(candidate_map[key])
+            hit["score"] = score_map[key]
+            fused.append(hit)
+        logger.debug("retrieve_hybrid_hits count=%s", len(fused))
+        return fused
+
+    @staticmethod
+    def _hit_key(hit: dict[str, Any]) -> tuple[str, int]:
+        source = str(hit.get("source", "unknown"))
+        chunk_index = int(hit.get("chunk_index", -1))
+        return source, chunk_index

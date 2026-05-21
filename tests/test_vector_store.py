@@ -202,6 +202,27 @@ def test_vector_store_list_distinct_sources() -> None:
     assert store.list_distinct_sources() == ["/a.md", "/b.md"]
 
 
+def test_vector_store_get_all_chunks_returns_id_doc_metadata_triplets() -> None:
+    collection = FakeCollection(
+        upsert_calls=[],
+        delete_calls=[],
+        query_calls=[],
+        query_result={},
+        get_return={
+            "ids": ["id-1", "id-2"],
+            "documents": ["doc-1", "doc-2"],
+            "metadatas": [{"source": "/a.md"}, {"source": "/b.md"}],
+        },
+    )
+    client = FakeClient(collections=[], deleted_collections=[])
+    store = VectorStore(client=client, collection=collection)  # type: ignore[arg-type]
+
+    assert store.get_all_chunks() == [
+        ("id-1", "doc-1", {"source": "/a.md"}),
+        ("id-2", "doc-2", {"source": "/b.md"}),
+    ]
+
+
 def test_vector_store_create_initializes_persistent_client(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

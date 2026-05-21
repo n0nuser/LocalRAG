@@ -166,5 +166,13 @@
       "# Pricing\n| Plan | Monthly |\n| --- | --- |\n| Starter | $10 |\n| Pro | $20 |\n| Team | $50 |",
       "The Team tier includes SSO and priority support."
     ]
+  },
+  {
+    "question": "How do I fix ERR_LOCALRAG_42?",
+    "ground_truth": "Fix ERR_LOCALRAG_42 by deleting the stale cache directory and restarting the service.",
+    "contexts": [
+      "Troubleshooting: ERR_LOCALRAG_42 indicates stale cache metadata. Delete ./data/cache and restart.",
+      "General startup issues can also come from missing model pulls."
+    ]
   }
 ]

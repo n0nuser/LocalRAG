@@ -92,6 +92,19 @@ class VectorStore:
         self.client.delete_collection(name)
         logger.warning("vector_collection_deleted name=%s", name)
 
+    def get_all_chunks(self) -> list[tuple[str, str, dict[str, Any]]]:
+        raw = self.collection.get(include=["documents", "metadatas"])
+        ids = raw.get("ids") or []
+        documents = raw.get("documents") or []
+        metadatas = raw.get("metadatas") or []
+        all_chunks: list[tuple[str, str, dict[str, Any]]] = []
+        for chunk_id, document, metadata in zip(ids, documents, metadatas, strict=False):
+            if not isinstance(chunk_id, str) or not isinstance(document, str):
+                continue
+            normalized_metadata = metadata if isinstance(metadata, dict) else {}
+            all_chunks.append((chunk_id, document, normalized_metadata))
+        return all_chunks
+
     @staticmethod
     def _chunk_id(source: str, chunk_index: int) -> str:
         return sha1(f"{source}:{chunk_index}".encode(), usedforsecurity=False).hexdigest()

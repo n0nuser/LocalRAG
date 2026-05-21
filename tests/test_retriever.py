@@ -34,20 +34,34 @@ def test_retriever_returns_contexts() -> None:
     settings = Settings()
     retriever = Retriever(
         settings=settings,
-        embedder=StubEmbedder(),
-        vector_store=StubStore(),
+        embedder=StubEmbedder(),  # type: ignore[arg-type]
+        vector_store=StubStore(),  # type: ignore[arg-type]
     )
 
     contexts = retriever.retrieve("hello")
 
-    assert contexts == [{"text": "chunk-a", "source": "foo.md", "chunk_index": 0, "score": 0.12}]
+    assert contexts == [
+        {
+            "text": "chunk-a",
+            "source": "foo.md",
+            "chunk_index": 0,
+            "score": pytest.approx(0.8928571428571428),
+            "distance": 0.12,
+            "ingested_at": None,
+            "metadata": {"source": "foo.md", "chunk_index": 0},
+        }
+    ]
 
 
 @respx.mock
 def test_retriever_raises_retrieval_failure_when_ollama_embed_fails() -> None:
     respx.post("http://ollama:11434/api/embed").mock(return_value=httpx.Response(503))
     embedder = OllamaEmbedder(base_url="http://ollama:11434", model="nomic-embed-text")
-    retriever = Retriever(settings=Settings(), embedder=embedder, vector_store=StubStore())
+    retriever = Retriever(
+        settings=Settings(),
+        embedder=embedder,
+        vector_store=StubStore(),  # type: ignore[arg-type]
+    )
 
     with pytest.raises(RetrievalError) as excinfo:
         retriever.retrieve("q")
@@ -63,8 +77,8 @@ def test_retriever_raises_retrieval_failure_when_vector_query_fails() -> None:
 
     retriever = Retriever(
         settings=Settings(),
-        embedder=StubEmbedder(),
-        vector_store=ExplodingStore(),
+        embedder=StubEmbedder(),  # type: ignore[arg-type]
+        vector_store=ExplodingStore(),  # type: ignore[arg-type]
     )
 
     with pytest.raises(RetrievalError) as excinfo:

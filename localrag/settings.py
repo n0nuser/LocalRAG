@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     ingest_roots: list[str] = []
 
     rag_top_k: int = 5
+    retrieval_mode: str = "hybrid"
+    bm25_weight: float = 0.5
+    rrf_k: int = 60
     rag_system_prompt: str = (
         "You are a helpful assistant. Answer only based on the provided context."
     )
