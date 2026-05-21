@@ -8,6 +8,7 @@ from pathlib import Path
 from localrag.ingestion.chunker import chunk_text
 from localrag.ingestion.embedder import OllamaEmbedder
 from localrag.ingestion.loader import list_supported_files, parse_file
+from localrag.ingestion.structural_chunker import Chunk, chunk_document
 from localrag.settings import Settings, is_path_allowed
 from localrag.storage.vector_store import VectorStore
 
@@ -97,11 +98,10 @@ class IngestionService:
             except Exception:
                 logger.exception("ingest_parse_failed path=%s", resolved_path)
                 raise
-            chunks = chunk_text(
-                text=text,
-                chunk_chars=self.settings.chunk_chars,
-                overlap_chars=self.settings.chunk_overlap_chars,
+            structural_chunks = self._build_chunks(
+                text=text, file_type=resolved_path.suffix.lower()
             )
+            chunks = [chunk.text for chunk in structural_chunks]
             if not chunks:
                 logger.warning("ingest_skipped_no_chunks path=%s", resolved_path)
                 continue
@@ -121,9 +121,11 @@ class IngestionService:
                     "source": source,
                     "file_type": resolved_path.suffix.lower(),
                     "chunk_index": index,
+                    "heading_path": chunk.heading_path,
+                    "chunk_type": chunk.chunk_type,
                     "ingested_at": created_at,
                 }
-                for index, _ in enumerate(chunks)
+                for index, chunk in enumerate(structural_chunks)
             ]
             self.vector_store.add_chunks(
                 source=source,
@@ -146,3 +148,15 @@ class IngestionService:
             total_chunks=total_chunks,
             processed_sources=processed_sources,
         )
+
+    def _build_chunks(self, text: str, file_type: str) -> list[Chunk]:
+        if self.settings.chunking_mode == "fixed":
+            fixed_chunks = chunk_text(
+                text=text,
+                chunk_chars=self.settings.chunk_chars,
+                overlap_chars=self.settings.chunk_overlap_chars,
+            )
+            return [
+                Chunk(text=chunk, heading_path="", chunk_type="fixed") for chunk in fixed_chunks
+            ]
+        return chunk_document(text=text, file_type=file_type, settings=self.settings)

@@ -40,7 +40,7 @@ Agents (and humans) move faster when they:
 | Architecture decisions | `docs/adr/` |
 | CLI commands | `localrag/cli/app.py`, `localrag/cli/commands/*.py` |
 | Parsing a file type | `localrag/ingestion/parsers/`, `localrag/ingestion/loader.py` |
-| Chunk size / overlap | `localrag/ingestion/chunker.py`, `localrag/settings.py` |
+| Chunking strategy and boundaries | `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/settings.py` |
 | Embeddings / Ollama HTTP for embed | `localrag/ingestion/embedder.py` |
 | Ingest orchestration | `localrag/ingestion/service.py` |
 | Chroma collection / persist path | `localrag/storage/vector_store.py`, settings |

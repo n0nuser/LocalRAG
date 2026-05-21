@@ -158,5 +158,13 @@
       "POST /collections/rebuild re-embeds all previously ingested sources from scratch.",
       "Sources that no longer exist on disk are removed from the collection automatically."
     ]
+  },
+  {
+    "question": "In this pricing table, what is the Team plan monthly price?",
+    "ground_truth": "The Team plan monthly price is $50.",
+    "contexts": [
+      "# Pricing\n| Plan | Monthly |\n| --- | --- |\n| Starter | $10 |\n| Pro | $20 |\n| Team | $50 |",
+      "The Team tier includes SSO and priority support."
+    ]
   }
 ]

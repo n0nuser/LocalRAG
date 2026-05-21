@@ -75,7 +75,11 @@ def test_ingestion_service_ingest_paths_skips_not_allowed_and_empty_chunks(tmp_p
     )
     embedder = StubEmbedder(seen_texts_batches=[])
     vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
-    service = IngestionService(settings=settings, embedder=embedder, vector_store=vector_store)
+    service = IngestionService(
+        settings=settings,
+        embedder=embedder,  # type: ignore[arg-type]
+        vector_store=vector_store,  # type: ignore[arg-type]
+    )
 
     result: IngestionResult = service.ingest_paths([allowed_file, disallowed_file, empty_file])
 
@@ -97,6 +101,8 @@ def test_ingestion_service_ingest_paths_skips_not_allowed_and_empty_chunks(tmp_p
     metadatas = added["metadatas"]
     assert isinstance(metadatas, list)
     assert all(md.get("file_type") == ".md" for md in metadatas)  # type: ignore[union-attr]
+    assert all("heading_path" in md for md in metadatas)  # type: ignore[union-attr]
+    assert all("chunk_type" in md for md in metadatas)  # type: ignore[union-attr]
 
     # Embeddings batching happens inside the embedder; we only need to ensure it ran.
     assert len(embedder.seen_texts_batches) == 1
@@ -117,7 +123,11 @@ def test_ingestion_service_ingest_file_delegates_to_ingest_paths(
     settings = Settings(ingest_roots=[str(allowed_root)])
     embedder = StubEmbedder(seen_texts_batches=[])
     vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
-    service = IngestionService(settings=settings, embedder=embedder, vector_store=vector_store)
+    service = IngestionService(
+        settings=settings,
+        embedder=embedder,  # type: ignore[arg-type]
+        vector_store=vector_store,  # type: ignore[arg-type]
+    )
 
     expected = IngestionResult(files_processed=1, total_chunks=0, processed_sources=[str(path)])
 
@@ -145,7 +155,11 @@ def test_ingestion_service_ingest_directory_uses_settings_ingest_recursive_when_
     settings = Settings(ingest_roots=[str(root)], ingest_recursive=False)
     embedder = StubEmbedder(seen_texts_batches=[])
     vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
-    service = IngestionService(settings=settings, embedder=embedder, vector_store=vector_store)
+    service = IngestionService(
+        settings=settings,
+        embedder=embedder,  # type: ignore[arg-type]
+        vector_store=vector_store,  # type: ignore[arg-type]
+    )
 
     captured: list[bool] = []
 
@@ -180,7 +194,11 @@ def test_ingestion_service_ingest_paths_re_raises_parse_errors(
     settings = Settings(ingest_roots=[str(allowed_root)])
     embedder = StubEmbedder(seen_texts_batches=[])
     vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
-    service = IngestionService(settings=settings, embedder=embedder, vector_store=vector_store)
+    service = IngestionService(
+        settings=settings,
+        embedder=embedder,  # type: ignore[arg-type]
+        vector_store=vector_store,  # type: ignore[arg-type]
+    )
 
     def fake_parse_file(_path: Path) -> str:
         raise ValueError("parse failed")
@@ -200,7 +218,11 @@ def test_ingestion_service_ingest_paths_passes_embed_model_to_embedder(tmp_path:
     settings = Settings(ingest_roots=[str(allowed_root)], chunk_chars=100, chunk_overlap_chars=0)
     embedder = StubEmbedder(seen_texts_batches=[])
     vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
-    service = IngestionService(settings=settings, embedder=embedder, vector_store=vector_store)
+    service = IngestionService(
+        settings=settings,
+        embedder=embedder,  # type: ignore[arg-type]
+        vector_store=vector_store,  # type: ignore[arg-type]
+    )
 
     service.ingest_paths([path], embed_model="custom-embed")
 
@@ -221,7 +243,11 @@ def test_ingestion_service_rebuild_reingests_distinct_sources(tmp_path: Path) ->
         added=[],
         distinct_sources=[str(kept.resolve()), missing],
     )
-    service = IngestionService(settings=settings, embedder=embedder, vector_store=vector_store)
+    service = IngestionService(
+        settings=settings,
+        embedder=embedder,  # type: ignore[arg-type]
+        vector_store=vector_store,  # type: ignore[arg-type]
+    )
 
     result = service.rebuild_collection()
 

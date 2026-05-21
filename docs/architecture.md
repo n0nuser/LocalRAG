@@ -14,7 +14,7 @@ flowchart LR
   end
   subgraph ingestion
     L[loader + parsers]
-    C[chunker]
+    C[structural chunker]
     E[OllamaEmbedder]
     VS[(Chroma VectorStore)]
   end
@@ -33,7 +33,7 @@ flowchart LR
   R --> P --> LLM
 ```
 
-- **Ingest:** files → `loader` / `ingestion/parsers/*` → text → `chunker` → `OllamaEmbedder` → `VectorStore` (Chroma, persistent path from settings). The **HTTP** ingest flow runs path decode, existence checks, and `INGEST_ROOTS` in `localrag/api/service.py` (`ingest_file` / `ingest_directory`), then calls `IngestionService`; optional per-request `embed_model` overrides `OLLAMA_EMBED_MODEL`. Failures raise `IngestApiError` → JSON in `main.py`. CLI ingests call `IngestionService` directly.
+- **Ingest:** files → `loader` / `ingestion/parsers/*` → text → structural chunker (`localrag/ingestion/structural_chunker.py`) or fixed fallback (`localrag/ingestion/chunker.py`) → `OllamaEmbedder` → `VectorStore` (Chroma, persistent path from settings). The **HTTP** ingest flow runs path decode, existence checks, and `INGEST_ROOTS` in `localrag/api/service.py` (`ingest_file` / `ingest_directory`), then calls `IngestionService`; optional per-request `embed_model` overrides `OLLAMA_EMBED_MODEL`. Failures raise `IngestApiError` → JSON in `main.py`. CLI ingests call `IngestionService` directly.
 - **Rebuild:** `POST /collections/rebuild` and `localrag collections rebuild` list distinct `source` values in the active collection, drop vectors for missing files, and re-chunk/re-embed remaining paths (optional `embed_model` override). Implemented in `IngestionService.rebuild_collection`.
 - **Query (JSON):** `POST /query` returns a complete `QueryResponse` (answer, sources, latency_ms, model) from `query_json` in `localrag/api/service.py`. Requires `X-API-Key` when `API_KEY` is set.
 - **Query (SSE stream):** `POST /query/stream` streams tokens as Server-Sent Events. Retrieval runs synchronously first (`get_query_contexts`) so errors map to HTTP before SSE starts, then tokens are mapped via `iter_query_sse_events`.
@@ -55,7 +55,7 @@ flowchart LR
 | CLI | `localrag/cli/app.py`, `localrag/cli/commands/*` | `localrag` Typer entry (`pyproject` `[project.scripts]`) |
 | Ingestion orchestration | `localrag/ingestion/service.py` | `IngestionService`: paths → parse → chunk → embed → upsert |
 | File formats | `localrag/ingestion/parsers/*` | pdf, docx, markdown, text, code |
-| Chunking / embed | `localrag/ingestion/chunker.py`, `localrag/ingestion/embedder.py` | Local text splits; Ollama **`POST /api/embed`** (see `localrag/ollama/schemas.py`) |
+| Chunking / embed | `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/ingestion/embedder.py` | Structural chunking by markdown/code/text boundaries with fixed fallback; Ollama **`POST /api/embed`** (see `localrag/ollama/schemas.py`) |
 | Storage | `localrag/storage/vector_store.py` | Chroma client wrapper |
 | RAG | `localrag/rag/retriever.py`, `engine.py`, `prompt.py` | Retrieve top-k, build prompt, call LLM |
 | Ollama API models | `localrag/ollama/schemas.py` | Pydantic types + `parse_ollama_json` / `parse_ollama_json_line` for outbound requests and responses |
@@ -95,6 +95,7 @@ The `reasoning` field records which path was taken. The router in `localrag/api/
 ## Extension points
 
 - **New file type:** add a parser under `localrag/ingestion/parsers/`, register it via `loader` / parser dispatch (see `localrag/ingestion/loader.py`).
+- **Chunking behavior:** edit `localrag/ingestion/structural_chunker.py` (or fixed fallback `localrag/ingestion/chunker.py`) and related knobs in `localrag/settings.py`.
 - **New HTTP surface:** add schemas in `localrag/api/schemas.py`, application logic in `localrag/api/service.py`, persistence in `localrag/api/repository.py` (if new storage access), thin router in `localrag/api/routers/`, wire DI in `localrag/api/dependencies.py`, include the router in `localrag/api/main.py`.
 - **New CLI command:** new module under `localrag/cli/commands/`, register in `localrag/cli/app.py`.
 - **New config:** field on `Settings` in `localrag/settings.py`, document in `.env.example`, use via `get_settings()`.
