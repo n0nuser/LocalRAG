@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from localrag.ingestion.chunker import chunk_text
 from localrag.ingestion.embedder import OllamaEmbedder
@@ -37,6 +38,7 @@ class IngestionService:
     settings: Settings
     embedder: OllamaEmbedder
     vector_store: VectorStore
+    bm25_index: Any | None = None
 
     def ingest_file(self, path: Path, embed_model: str | None = None) -> IngestionResult:
         return self.ingest_paths([path], embed_model=embed_model)
@@ -142,6 +144,8 @@ class IngestionService:
                 resolved_path,
                 len(chunks),
             )
+            if self.bm25_index is not None:
+                self.bm25_index.refresh()
 
         return IngestionResult(
             files_processed=files_processed,

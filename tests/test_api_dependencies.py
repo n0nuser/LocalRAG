@@ -17,6 +17,10 @@ class FakeVectorStore:
     def delete_collection(self, name: str) -> None:
         self.deleted.append(name)
 
+    @staticmethod
+    def get_all_chunks() -> list[tuple[str, str, dict[str, object]]]:
+        return []
+
 
 def test_api_dependency_constructors_build_expected_objects(
     monkeypatch: pytest.MonkeyPatch,
@@ -26,6 +30,7 @@ def test_api_dependency_constructors_build_expected_objects(
     deps.get_retriever.cache_clear()
     deps.get_engine.cache_clear()
     deps.get_ingestion_service.cache_clear()
+    deps.get_bm25_index.cache_clear()
 
     settings = Settings(
         chroma_persist_path="persist",

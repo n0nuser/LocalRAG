@@ -9,6 +9,7 @@ from fastapi.security import APIKeyHeader
 from localrag.api.repository import ChromaCollectionRepository
 from localrag.ingestion.embedder import OllamaEmbedder
 from localrag.ingestion.service import IngestionService
+from localrag.rag.bm25_index import Bm25Index
 from localrag.rag.engine import RAGEngine
 from localrag.rag.retriever import Retriever
 from localrag.settings import Settings, get_settings
@@ -38,7 +39,12 @@ def get_embedder() -> OllamaEmbedder:
 @lru_cache(maxsize=1)
 def get_retriever() -> Retriever:
     settings = get_settings()
-    return Retriever(settings=settings, embedder=get_embedder(), vector_store=get_vector_store())
+    return Retriever(
+        settings=settings,
+        embedder=get_embedder(),
+        vector_store=get_vector_store(),
+        bm25_index=get_bm25_index(),
+    )
 
 
 @lru_cache(maxsize=1)
@@ -51,8 +57,16 @@ def get_engine() -> RAGEngine:
 def get_ingestion_service() -> IngestionService:
     settings = get_settings()
     return IngestionService(
-        settings=settings, embedder=get_embedder(), vector_store=get_vector_store()
+        settings=settings,
+        embedder=get_embedder(),
+        vector_store=get_vector_store(),
+        bm25_index=get_bm25_index(),
     )
+
+
+@lru_cache(maxsize=1)
+def get_bm25_index() -> Bm25Index:
+    return Bm25Index.from_vector_store(get_vector_store())
 
 
 def require_api_key(

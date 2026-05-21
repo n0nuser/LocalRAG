@@ -17,25 +17,32 @@ flowchart LR
     C[structural chunker]
     E[OllamaEmbedder]
     VS[(Chroma VectorStore)]
+    B[BM25Index]
   end
   subgraph rag
     R[Retriever]
+    V[vector search]
+    X[BM25 search]
     P[prompt]
     LLM[Ollama chat HTTP]
   end
   CLI --> L
   API --> L
   L --> C --> E --> VS
+  VS --> B
   API --> R
   CLI --> R
-  R --> VS
+  R --> V
+  R --> X
+  V --> VS
+  X --> B
   R --> E
   R --> P --> LLM
 ```
 
 - **Ingest:** files → `loader` / `ingestion/parsers/*` → text → structural chunker (`localrag/ingestion/structural_chunker.py`) or fixed fallback (`localrag/ingestion/chunker.py`) → `OllamaEmbedder` → `VectorStore` (Chroma, persistent path from settings). The **HTTP** ingest flow runs path decode, existence checks, and `INGEST_ROOTS` in `localrag/api/service.py` (`ingest_file` / `ingest_directory`), then calls `IngestionService`; optional per-request `embed_model` overrides `OLLAMA_EMBED_MODEL`. Failures raise `IngestApiError` → JSON in `main.py`. CLI ingests call `IngestionService` directly.
 - **Rebuild:** `POST /collections/rebuild` and `localrag collections rebuild` list distinct `source` values in the active collection, drop vectors for missing files, and re-chunk/re-embed remaining paths (optional `embed_model` override). Implemented in `IngestionService.rebuild_collection`.
-- **Query (JSON):** `POST /query` returns a complete `QueryResponse` (answer, sources, latency_ms, model) from `query_json` in `localrag/api/service.py`. Requires `X-API-Key` when `API_KEY` is set.
+- **Query (JSON):** `POST /query` returns a complete `QueryResponse` (answer, sources, latency_ms, model) from `query_json` in `localrag/api/service.py`. Retrieval supports vector-only and hybrid (vector + BM25 with reciprocal-rank fusion). Requires `X-API-Key` when `API_KEY` is set.
 - **Query (SSE stream):** `POST /query/stream` streams tokens as Server-Sent Events. Retrieval runs synchronously first (`get_query_contexts`) so errors map to HTTP before SSE starts, then tokens are mapped via `iter_query_sse_events`.
 - **Metrics:** `GET /metrics` exposes Prometheus metrics via `prometheus_client` (router at `localrag/api/routers/metrics.py`). No auth required.
 
@@ -45,7 +52,7 @@ flowchart LR
 | --- | --- | --- |
 | Settings | `localrag/settings.py` | `Settings` + `get_settings()`; env vars from `.env` (includes `log_level`, `api_key`, `llm_backend`, `embedding_model`) |
 | Logging | `localrag/logging_config.py`, `localrag/api/middleware.py` | `configure_logging()`, stderr handler on `localrag.*`, `X-Request-ID` on HTTP requests |
-| API wiring | `localrag/api/dependencies.py` | Cached factories: vector store, embedder, retriever, RAG engine, ingestion service, `ChromaCollectionRepository` |
+| API wiring | `localrag/api/dependencies.py` | Cached factories: vector store, BM25 index, embedder, retriever, RAG engine, ingestion service, `ChromaCollectionRepository` |
 | HTTP API (transport) | `localrag/api/main.py`, `localrag/api/routers/*` | Lifespan (`configure_logging`), `RequestContextMiddleware` (`X-Request-ID`), global exception + validation handlers + `HttpMappedError`; thin route handlers |
 | HTTP API (contracts) | `localrag/api/schemas.py` | Pydantic request/response models and path aliases (OpenAPI) |
 | HTTP API (use cases) | `localrag/api/service.py` | Health check, ingest HTTP rules, query JSON (`query_json`) + SSE events, collection list/delete/rebuild orchestration |
@@ -57,7 +64,7 @@ flowchart LR
 | File formats | `localrag/ingestion/parsers/*` | pdf, docx, markdown, text, code |
 | Chunking / embed | `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/ingestion/embedder.py` | Structural chunking by markdown/code/text boundaries with fixed fallback; Ollama **`POST /api/embed`** (see `localrag/ollama/schemas.py`) |
 | Storage | `localrag/storage/vector_store.py` | Chroma client wrapper |
-| RAG | `localrag/rag/retriever.py`, `engine.py`, `prompt.py` | Retrieve top-k, build prompt, call LLM |
+| RAG | `localrag/rag/retriever.py`, `bm25_index.py`, `engine.py`, `prompt.py` | Hybrid retrieval (vector + BM25), prompt build, LLM call |
 | Ollama API models | `localrag/ollama/schemas.py` | Pydantic types + `parse_ollama_json` / `parse_ollama_json_line` for outbound requests and responses |
 | LLM abstraction | `localrag/llm/` | `BaseLLMProvider`, Ollama/OpenAI/Anthropic providers, factory, cost estimator |
 | Agent | `localrag/agent/service.py`, `localrag/api/routers/agent.py` | Anthropic tool-use agent; `POST /agent/query` |
@@ -99,6 +106,7 @@ The `reasoning` field records which path was taken. The router in `localrag/api/
 - **New HTTP surface:** add schemas in `localrag/api/schemas.py`, application logic in `localrag/api/service.py`, persistence in `localrag/api/repository.py` (if new storage access), thin router in `localrag/api/routers/`, wire DI in `localrag/api/dependencies.py`, include the router in `localrag/api/main.py`.
 - **New CLI command:** new module under `localrag/cli/commands/`, register in `localrag/cli/app.py`.
 - **New config:** field on `Settings` in `localrag/settings.py`, document in `.env.example`, use via `get_settings()`.
+- **Retrieval ranking:** modify `localrag/rag/retriever.py` and `localrag/rag/bm25_index.py` for fusion/decay behavior.
 - **Stricter HTTP ingest policy:** adjust checks in `localrag/api/service.py` (`ingest_file` / `ingest_directory`) and/or `is_path_allowed` in `localrag/settings.py`.
 
 ## Tests
