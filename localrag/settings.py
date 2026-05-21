@@ -72,6 +72,7 @@ class Settings(BaseSettings):
     retrieval_mode: str = "hybrid"
     bm25_weight: float = 0.5
     rrf_k: int = 60
+    freshness_half_life_days: float = 30.0
     rag_system_prompt: str = (
         "You are a helpful assistant. Answer only based on the provided context."
     )
