@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import Any
 
@@ -44,7 +45,7 @@ class Retriever:
 
         vector_hits = self._retrieve_vector_hits(embedding=embedding, top_k=max(top_k * 2, top_k))
         if self.settings.retrieval_mode != "hybrid" or self.bm25_index is None:
-            return vector_hits[:top_k]
+            return self.apply_freshness(vector_hits[:top_k])
 
         bm25_hits = [
             {
@@ -52,11 +53,14 @@ class Retriever:
                 "source": hit.metadata.get("source", "unknown"),
                 "chunk_index": hit.metadata.get("chunk_index", -1),
                 "score": hit.score,
+                "ingested_at": hit.metadata.get("ingested_at"),
                 "metadata": hit.metadata,
             }
             for hit in self.bm25_index.query(question, top_k=max(top_k * 2, top_k))
         ]
-        return self._fuse_results(vector_hits=vector_hits, bm25_hits=bm25_hits, top_k=top_k)
+        return self.apply_freshness(
+            self._fuse_results(vector_hits=vector_hits, bm25_hits=bm25_hits, top_k=top_k)
+        )
 
     def _retrieve_vector_hits(self, embedding: list[float], top_k: int) -> list[dict[str, Any]]:
         try:
@@ -127,6 +131,34 @@ class Retriever:
             fused.append(hit)
         logger.debug("retrieve_hybrid_hits count=%s", len(fused))
         return fused
+
+    def apply_freshness(self, contexts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        half_life_days = self.settings.freshness_half_life_days
+        if half_life_days <= 0:
+            return [{**context, "freshness_factor": 1.0} for context in contexts]
+
+        now = datetime.now(UTC)
+        rescored: list[dict[str, Any]] = []
+        for context in contexts:
+            freshness_factor = 1.0
+            ingested_at = context.get("ingested_at")
+            if isinstance(ingested_at, str):
+                try:
+                    parsed = datetime.fromisoformat(ingested_at)
+                except ValueError:
+                    parsed = None
+                if parsed is not None:
+                    if parsed.tzinfo is None:
+                        parsed = parsed.replace(tzinfo=UTC)
+                    age_days = max(0.0, (now - parsed).total_seconds() / 86_400)
+                    freshness_factor = 0.5 ** (age_days / half_life_days)
+            rescored_context = dict(context)
+            rescored_context["freshness_factor"] = freshness_factor
+            rescored_context["score"] = float(context.get("score", 0.0)) * freshness_factor
+            rescored.append(rescored_context)
+        rescored.sort(key=lambda hit: float(hit.get("score", 0.0)), reverse=True)
+        logger.debug("retrieve_hits count=%s", len(rescored))
+        return rescored
 
     @staticmethod
     def _hit_key(hit: dict[str, Any]) -> tuple[str, int]:

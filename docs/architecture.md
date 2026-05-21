@@ -23,6 +23,7 @@ flowchart LR
     R[Retriever]
     V[vector search]
     X[BM25 search]
+    F[freshness decay]
     P[prompt]
     LLM[Ollama chat HTTP]
   end
@@ -36,13 +37,14 @@ flowchart LR
   R --> X
   V --> VS
   X --> B
+  R --> F
   R --> E
-  R --> P --> LLM
+  F --> P --> LLM
 ```
 
 - **Ingest:** files → `loader` / `ingestion/parsers/*` → text → structural chunker (`localrag/ingestion/structural_chunker.py`) or fixed fallback (`localrag/ingestion/chunker.py`) → `OllamaEmbedder` → `VectorStore` (Chroma, persistent path from settings). The **HTTP** ingest flow runs path decode, existence checks, and `INGEST_ROOTS` in `localrag/api/service.py` (`ingest_file` / `ingest_directory`), then calls `IngestionService`; optional per-request `embed_model` overrides `OLLAMA_EMBED_MODEL`. Failures raise `IngestApiError` → JSON in `main.py`. CLI ingests call `IngestionService` directly.
 - **Rebuild:** `POST /collections/rebuild` and `localrag collections rebuild` list distinct `source` values in the active collection, drop vectors for missing files, and re-chunk/re-embed remaining paths (optional `embed_model` override). Implemented in `IngestionService.rebuild_collection`.
-- **Query (JSON):** `POST /query` returns a complete `QueryResponse` (answer, sources, latency_ms, model) from `query_json` in `localrag/api/service.py`. Retrieval supports vector-only and hybrid (vector + BM25 with reciprocal-rank fusion). Requires `X-API-Key` when `API_KEY` is set.
+- **Query (JSON):** `POST /query` returns a complete `QueryResponse` (answer, sources, latency_ms, model) from `query_json` in `localrag/api/service.py`. Retrieval supports vector-only and hybrid (vector + BM25 with reciprocal-rank fusion), then applies optional freshness decay based on chunk `ingested_at`. Requires `X-API-Key` when `API_KEY` is set.
 - **Query (SSE stream):** `POST /query/stream` streams tokens as Server-Sent Events. Retrieval runs synchronously first (`get_query_contexts`) so errors map to HTTP before SSE starts, then tokens are mapped via `iter_query_sse_events`.
 - **Metrics:** `GET /metrics` exposes Prometheus metrics via `prometheus_client` (router at `localrag/api/routers/metrics.py`). No auth required.
 
@@ -64,7 +66,7 @@ flowchart LR
 | File formats | `localrag/ingestion/parsers/*` | pdf, docx, markdown, text, code |
 | Chunking / embed | `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/ingestion/embedder.py` | Structural chunking by markdown/code/text boundaries with fixed fallback; Ollama **`POST /api/embed`** (see `localrag/ollama/schemas.py`) |
 | Storage | `localrag/storage/vector_store.py` | Chroma client wrapper |
-| RAG | `localrag/rag/retriever.py`, `bm25_index.py`, `engine.py`, `prompt.py` | Hybrid retrieval (vector + BM25), prompt build, LLM call |
+| RAG | `localrag/rag/retriever.py`, `bm25_index.py`, `engine.py`, `prompt.py` | Hybrid retrieval (vector + BM25), freshness decay reranking, prompt build, LLM call |
 | Ollama API models | `localrag/ollama/schemas.py` | Pydantic types + `parse_ollama_json` / `parse_ollama_json_line` for outbound requests and responses |
 | LLM abstraction | `localrag/llm/` | `BaseLLMProvider`, Ollama/OpenAI/Anthropic providers, factory, cost estimator |
 | Agent | `localrag/agent/service.py`, `localrag/api/routers/agent.py` | Anthropic tool-use agent; `POST /agent/query` |

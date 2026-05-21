@@ -7,6 +7,21 @@ Offline-first RAG system. Your documents, your models, your machine.
 LocalRAG ingests your local documents, stores embeddings in a local ChromaDB database,
 and answers questions using Ollama (or OpenAI / Anthropic) models. No cloud required by default.
 
+### Technical Decisions, In Plain English
+
+If you're new to RAG, this section explains the key design choices and what they mean in practice.
+
+- **Local-first by default:** the happy path runs fully on your machine (`Ollama` + local `ChromaDB`). That means privacy, no mandatory API bills, and easier offline development.
+- **Layered API design:** routes are intentionally thin, business logic sits in services, and storage access is behind repository/vector-store adapters. In practice, this keeps changes safer and easier to test.
+- **ChromaDB as the vector store:** we chose it because it runs embedded with disk persistence and no separate server setup. Good for laptop workflows, and swappable later via `localrag/storage/vector_store.py`.
+- **`nomic-embed-text` as default embeddings:** it gives a strong quality/speed balance for local machines. You can switch models, but rebuilding collections is the expected tradeoff.
+- **Structural chunking over blind slicing:** we chunk by meaningful boundaries (headings, tables, code blocks) instead of fixed windows, so retrieval sends complete facts instead of broken fragments.
+- **Hybrid retrieval (meaning + exact text):** vector search handles semantic similarity, BM25 handles exact tokens (error codes, SKUs, version strings), and the retriever fuses both so each covers the other's blind spots.
+- **Freshness-aware ranking:** newer chunks are favored when content competes on relevance, reducing the common "correct-but-old policy" failure mode.
+- **Provider abstraction, not lock-in:** the LLM layer is behind a provider interface (`ollama`, `openai`, `anthropic`), so changing model vendors is mostly configuration and limited wiring.
+- **Agent mode is explicit and bounded:** the agent endpoint uses a small tool set (`search_documents` or `answer_directly`) instead of a complex autonomous loop, keeping behavior understandable and debuggable.
+- **Evaluation is part of the product, not an afterthought:** there is a bundled eval dataset and repeatable RAGAS run path, so retrieval quality can be measured instead of guessed.
+
 ## Architecture
 
 ```mermaid
@@ -111,7 +126,14 @@ Key settings:
 | `ANTHROPIC_MODEL` | `claude-haiku-4-5` | Anthropic model tag |
 | `CHROMA_PERSIST_PATH` | `./data/chroma` | Where ChromaDB stores vectors |
 | `CHROMA_COLLECTION_NAME` | `localrag` | ChromaDB collection name |
+| `CHUNKING_MODE` | `structural` | Ingestion chunking mode: `structural` or `fixed` |
+| `CHUNK_MAX_CHARS` | `1200` | Max chunk size budget for structural chunking |
+| `CHUNK_MIN_CHARS` | `200` | Small-chunk merge floor for structural chunking |
 | `RAG_TOP_K` | `5` | Chunks retrieved per query |
+| `RETRIEVAL_MODE` | `hybrid` | Retrieval mode: `hybrid` (vector + BM25) or `vector` |
+| `BM25_WEIGHT` | `0.5` | Weight for BM25 when non-default weighted fusion is used |
+| `RRF_K` | `60` | Reciprocal rank fusion smoothing constant |
+| `FRESHNESS_HALF_LIFE_DAYS` | `30.0` | Recency decay half-life; set `0` to disable |
 | `LOG_LEVEL` | `INFO` | Logging level (JSON in production, colored in TTY) |
 
 ## CLI
@@ -177,6 +199,12 @@ The eval dataset (`evals/dataset.json`) contains 20 balanced Q/A/context triplet
 
 Run `uv run localrag eval --offline` to get current numbers.
 
+## Retrieval design notes
+
+LocalRAG now defaults to structural chunking, hybrid vector+BM25 retrieval, and
+freshness-aware reranking. The details (including ranking math and settings)
+live in [docs/rag-retrieval.md](docs/rag-retrieval.md).
+
 ## Kubernetes (k3s)
 
 Apply the manifests under `k8s/`:
@@ -214,4 +242,6 @@ See [docs/agent-navigation.md](docs/agent-navigation.md) for codebase navigation
 - [docs/ollama.md](docs/ollama.md) — Installing Ollama
 - [docs/architecture.md](docs/architecture.md) — Architecture deep-dive
 - [docs/agent-navigation.md](docs/agent-navigation.md) — Fast codebase orientation for agents
+- [docs/rag-retrieval.md](docs/rag-retrieval.md) — Retrieval ranking and chunking details
+- [docs/issues-and-fixes-reddit-rag.md](docs/issues-and-fixes-reddit-rag.md) — Reddit thread issues mapped to LocalRAG fixes
 - [docs/adr/](docs/adr/) — Architecture Decision Records

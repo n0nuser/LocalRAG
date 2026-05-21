@@ -44,7 +44,7 @@ Agents (and humans) move faster when they:
 | Embeddings / Ollama HTTP for embed | `localrag/ingestion/embedder.py` |
 | Ingest orchestration | `localrag/ingestion/service.py` |
 | Chroma collection / persist path | `localrag/storage/vector_store.py`, settings |
-| Retrieval mode / hybrid ranking | `localrag/rag/retriever.py`, `localrag/rag/bm25_index.py`, `localrag/settings.py` |
+| Retrieval mode / hybrid ranking / freshness decay | `localrag/rag/retriever.py`, `localrag/rag/bm25_index.py`, `localrag/settings.py` |
 | Ollama HTTP request/response shapes | `localrag/ollama/schemas.py` (used by embedder, RAG engine, health, setup) |
 | Prompt / answer streaming | `localrag/rag/prompt.py`, `localrag/rag/engine.py` |
 | Human Ollama install (not Python) | [ollama.md](ollama.md) |

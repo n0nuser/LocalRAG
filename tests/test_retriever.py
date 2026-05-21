@@ -49,6 +49,7 @@ def test_retriever_returns_contexts() -> None:
             "distance": 0.12,
             "ingested_at": None,
             "metadata": {"source": "foo.md", "chunk_index": 0},
+            "freshness_factor": 1.0,
         }
     ]
 
