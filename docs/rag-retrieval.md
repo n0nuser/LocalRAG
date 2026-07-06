@@ -15,7 +15,14 @@ Configuration lives in `localrag/settings.py` and `.env.example`.
 
 `localrag/rag/retriever.py` combines candidates from:
 
-1. Vector search (`VectorStore.query`) ranked by embedding distance.
+1. Vector search (`VectorStore.query`) ranked by embedding distance. The Chroma
+   collection is created with `hnsw:space=cosine` (`localrag/storage/vector_store.py`),
+   matching the cosine-similarity objective most embedding models (including the
+   default `nomic-embed-text`) are trained against. Chroma applies collection
+   metadata only at creation time — an existing collection created before this
+   setting keeps its original (`l2`) space; delete and re-ingest (or
+   `POST /collections/rebuild` after a manual `delete_collection`) to pick up
+   `cosine`.
 2. BM25 lexical search (`Bm25Index.query`) ranked by lexical relevance.
 
 Candidates are merged by reciprocal rank fusion:
