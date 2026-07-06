@@ -19,6 +19,8 @@ dependencies = [
     "chromadb>=1.0",
     "httpx>=0.28",
     "pypdf>=5.4",
+    "pypdfium2>=4.30",
+    "pytesseract>=0.3.13",
     "python-docx>=1.1",
     "pydantic-settings>=2.8",
     "rich>=13",
@@ -114,7 +116,6 @@ source = ["localrag"]
 omit = [
     "localrag/cli/*",
     "localrag/cli/**",
-    "localrag/ingestion/parsers/pdf.py",
 ]
 
 [tool.coverage.report]

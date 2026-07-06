@@ -34,6 +34,13 @@ class Settings(BaseSettings):
     non-empty, only files and directories under those paths (after resolving) are
     allowed through the HTTP ingest API; an empty list disables that restriction.
 
+    **PDF OCR** — When ``ocr_enabled`` is true (default), PDF pages whose extracted
+    text layer is shorter than ``ocr_min_chars_per_page`` (scanned/image-only pages)
+    are rasterized and run through Tesseract OCR (``ocr_language`` is a Tesseract
+    language code, e.g. ``eng``). Requires the ``tesseract`` binary on the host; if
+    it is missing, OCR fails silently per-page and the original (possibly empty)
+    text-layer output is kept. See `docs/ocr.md`.
+
     **RAG** — ``rag_top_k`` is how many chunks are retrieved for context.
     ``rag_system_prompt`` is the system message for the answering model.
 
@@ -67,6 +74,10 @@ class Settings(BaseSettings):
 
     ingest_recursive: bool = True
     ingest_roots: list[str] = []
+
+    ocr_enabled: bool = True
+    ocr_language: str = "eng"
+    ocr_min_chars_per_page: int = 20
 
     rag_top_k: int = 5
     retrieval_mode: str = "hybrid"
