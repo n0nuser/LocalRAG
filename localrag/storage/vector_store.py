@@ -21,7 +21,10 @@ class VectorStore:
     def create(cls, persist_path: str, collection_name: str) -> VectorStore:
         Path(persist_path).mkdir(parents=True, exist_ok=True)
         client = chromadb.PersistentClient(path=persist_path)
-        collection = client.get_or_create_collection(name=collection_name)
+        collection = client.get_or_create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"},
+        )
         logger.info(
             "vector_store_ready persist_path=%s collection=%s",
             persist_path,
