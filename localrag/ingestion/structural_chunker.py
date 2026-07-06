@@ -7,6 +7,7 @@ from localrag.ingestion.loader import CODE_EXTENSIONS, MARKDOWN_EXTENSIONS
 from localrag.settings import Settings
 
 _HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.*)$")
+_SENTENCE_BOUNDARY_PATTERN = re.compile(r"(?<=[.!?])\s+")
 
 
 @dataclass
@@ -26,23 +27,26 @@ def chunk_document(text: str, file_type: str, settings: Settings) -> list[Chunk]
             text=cleaned_text,
             min_chars=settings.chunk_min_chars,
             max_chars=settings.chunk_max_chars,
+            overlap_chars=settings.chunk_overlap_chars,
         )
     if file_type in CODE_EXTENSIONS:
         return _chunk_non_markdown(
             text=cleaned_text,
             min_chars=settings.chunk_min_chars,
             max_chars=settings.chunk_max_chars,
+            overlap_chars=settings.chunk_overlap_chars,
             is_code=True,
         )
     return _chunk_non_markdown(
         text=cleaned_text,
         min_chars=settings.chunk_min_chars,
         max_chars=settings.chunk_max_chars,
+        overlap_chars=settings.chunk_overlap_chars,
         is_code=False,
     )
 
 
-def _chunk_markdown(text: str, min_chars: int, max_chars: int) -> list[Chunk]:
+def _chunk_markdown(text: str, min_chars: int, max_chars: int, overlap_chars: int) -> list[Chunk]:
     lines = text.splitlines()
     heading_stack: list[str] = []
     sections: list[tuple[str, str]] = []
@@ -74,12 +78,15 @@ def _chunk_markdown(text: str, min_chars: int, max_chars: int) -> list[Chunk]:
             text=text,
             min_chars=min_chars,
             max_chars=max_chars,
+            overlap_chars=overlap_chars,
             is_code=False,
         )
 
     chunks: list[Chunk] = []
     for section_text, heading_path in sections:
-        for item in _pack_blocks(section_text, min_chars=min_chars, max_chars=max_chars):
+        for item in _pack_blocks(
+            section_text, min_chars=min_chars, max_chars=max_chars, overlap_chars=overlap_chars
+        ):
             chunk_type = "markdown_section"
             if _looks_like_table(item):
                 chunk_type = "markdown_table"
@@ -89,16 +96,20 @@ def _chunk_markdown(text: str, min_chars: int, max_chars: int) -> list[Chunk]:
     return chunks
 
 
-def _chunk_non_markdown(text: str, min_chars: int, max_chars: int, *, is_code: bool) -> list[Chunk]:
+def _chunk_non_markdown(
+    text: str, min_chars: int, max_chars: int, overlap_chars: int, *, is_code: bool
+) -> list[Chunk]:
     chunks: list[Chunk] = []
-    for item in _pack_blocks(text, min_chars=min_chars, max_chars=max_chars, is_code=is_code):
+    for item in _pack_blocks(
+        text, min_chars=min_chars, max_chars=max_chars, overlap_chars=overlap_chars, is_code=is_code
+    ):
         chunk_type = "code_block" if is_code else "text_block"
         chunks.append(Chunk(text=item, heading_path="", chunk_type=chunk_type))
     return chunks
 
 
 def _pack_blocks(  # noqa: C901
-    text: str, min_chars: int, max_chars: int, *, is_code: bool = False
+    text: str, min_chars: int, max_chars: int, overlap_chars: int = 0, *, is_code: bool = False
 ) -> list[str]:
     blocks = _split_blocks(text=text, is_code=is_code)
     if not blocks:
@@ -118,7 +129,9 @@ def _pack_blocks(  # noqa: C901
             if current:
                 packed.append(current)
                 current = ""
-            packed.extend(_split_long_paragraph(normalized, effective_max_chars))
+            packed.extend(
+                _split_long_paragraph(normalized, effective_max_chars, overlap_chars)
+            )
             continue
 
         candidate = normalized if not current else f"{current}\n\n{normalized}"
@@ -208,15 +221,31 @@ def _split_blocks(text: str, *, is_code: bool) -> list[tuple[str, str]]:  # noqa
     return blocks
 
 
-def _split_long_paragraph(text: str, max_chars: int) -> list[str]:
+def _split_long_paragraph(text: str, max_chars: int, overlap_chars: int) -> list[str]:
+    text_len = len(text)
+    safe_overlap = max(0, min(overlap_chars, max_chars - 1))
     chunks: list[str] = []
     start = 0
-    while start < len(text):
-        chunk = text[start : start + max_chars].strip()
+    while start < text_len:
+        end = min(start + max_chars, text_len)
+        if end < text_len:
+            end = _snap_to_boundary(text, start, end)
+        chunk = text[start:end].strip()
         if chunk:
             chunks.append(chunk)
-        start += max_chars
+        start = end - safe_overlap if end < text_len else text_len
     return chunks
+
+
+def _snap_to_boundary(text: str, start: int, end: int) -> int:
+    window = text[start:end]
+    sentence_breaks = [start + m.start() for m in _SENTENCE_BOUNDARY_PATTERN.finditer(window)]
+    if sentence_breaks:
+        return sentence_breaks[-1]
+    last_space = window.rfind(" ")
+    if last_space > 0:
+        return start + last_space
+    return end
 
 
 def _is_table_row(line: str) -> bool:

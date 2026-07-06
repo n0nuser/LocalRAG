@@ -234,9 +234,13 @@ def test_vector_store_create_initializes_persistent_client(
         def __init__(self, path: str) -> None:
             self.path = path
             self.got_collection_name: str | None = None
+            self.got_metadata: dict[str, object] | None = None
 
-        def get_or_create_collection(self, name: str) -> object:
+        def get_or_create_collection(
+            self, name: str, metadata: dict[str, object] | None = None
+        ) -> object:
             self.got_collection_name = name
+            self.got_metadata = metadata
             return sentinel_collection
 
     def fake_persistent_client(path: str) -> FakeClient:
@@ -248,3 +252,4 @@ def test_vector_store_create_initializes_persistent_client(
 
     assert created_dir.exists()
     assert store.collection is sentinel_collection
+    assert store.client.got_metadata == {"hnsw:space": "cosine"}

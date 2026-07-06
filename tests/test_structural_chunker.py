@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from itertools import pairwise
+
 from localrag.ingestion.structural_chunker import chunk_document
 from localrag.settings import Settings
 
@@ -50,6 +52,33 @@ def test_chunk_document_markdown_splits_oversized_paragraph() -> None:
 
     assert len(chunks) > 1
     assert all(chunk.heading_path == "Long" for chunk in chunks)
+
+
+def test_chunk_document_oversized_paragraph_overlaps_between_chunks() -> None:
+    oversized = "A" * 30
+    markdown_text = f"# Long\n\n{oversized}"
+    settings = Settings(chunk_max_chars=10, chunk_min_chars=1, chunk_overlap_chars=3)
+
+    chunks = chunk_document(markdown_text, ".md", settings)
+
+    body_chunks = [chunk for chunk in chunks if chunk.text != "# Long"]
+    assert len(body_chunks) > 1
+    for prev_chunk, next_chunk in pairwise(body_chunks):
+        assert prev_chunk.text[-3:] == next_chunk.text[:3]
+
+
+def test_chunk_document_oversized_paragraph_splits_on_sentence_boundary() -> None:
+    sentence = "This is one sentence."
+    long_text = " ".join([sentence] * 6)
+    markdown_text = f"# Notes\n\n{long_text}"
+    settings = Settings(chunk_max_chars=30, chunk_min_chars=1, chunk_overlap_chars=0)
+
+    chunks = chunk_document(markdown_text, ".md", settings)
+
+    body_chunks = [chunk for chunk in chunks if chunk.text != "# Notes"]
+    assert len(body_chunks) > 1
+    for chunk in body_chunks:
+        assert chunk.text == sentence
 
 
 def test_chunk_document_non_markdown_packs_paragraphs() -> None:
