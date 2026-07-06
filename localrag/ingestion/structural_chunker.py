@@ -129,9 +129,7 @@ def _pack_blocks(  # noqa: C901
             if current:
                 packed.append(current)
                 current = ""
-            packed.extend(
-                _split_long_paragraph(normalized, effective_max_chars, overlap_chars)
-            )
+            packed.extend(_split_long_paragraph(normalized, effective_max_chars, overlap_chars))
             continue
 
         candidate = normalized if not current else f"{current}\n\n{normalized}"
