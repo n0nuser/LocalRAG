@@ -63,7 +63,7 @@ flowchart LR
 | HTTP API (persistence) | `localrag/api/repository.py` | `ChromaCollectionRepository` → `VectorStore` for collection list/delete and health’s collection list |
 | CLI | `localrag/cli/app.py`, `localrag/cli/commands/*` | `localrag` Typer entry (`pyproject` `[project.scripts]`) |
 | Ingestion orchestration | `localrag/ingestion/service.py` | `IngestionService`: paths → parse → chunk → embed → upsert |
-| File formats | `localrag/ingestion/parsers/*` | pdf, docx, markdown, text, code |
+| File formats | `localrag/ingestion/parsers/*` | pdf (with OCR fallback via pypdfium2 + pytesseract), docx, markdown, text, code |
 | Chunking / embed | `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/ingestion/embedder.py` | Structural chunking by markdown/code/text boundaries with fixed fallback; Ollama **`POST /api/embed`** (see `localrag/ollama/schemas.py`) |
 | Storage | `localrag/storage/vector_store.py` | Chroma client wrapper |
 | RAG | `localrag/rag/retriever.py`, `bm25_index.py`, `engine.py`, `prompt.py` | Hybrid retrieval (vector + BM25), freshness decay reranking, prompt build, LLM call |
@@ -104,6 +104,7 @@ The `reasoning` field records which path was taken. The router in `localrag/api/
 ## Extension points
 
 - **New file type:** add a parser under `localrag/ingestion/parsers/`, register it via `loader` / parser dispatch (see `localrag/ingestion/loader.py`).
+- **PDF OCR behavior:** edit `localrag/ingestion/parsers/pdf.py` and the `OCR_*` settings in `localrag/settings.py`; see [ocr.md](ocr.md) for the Tesseract install requirement.
 - **Chunking behavior:** edit `localrag/ingestion/structural_chunker.py` (or fixed fallback `localrag/ingestion/chunker.py`) and related knobs in `localrag/settings.py`.
 - **New HTTP surface:** add schemas in `localrag/api/schemas.py`, application logic in `localrag/api/service.py`, persistence in `localrag/api/repository.py` (if new storage access), thin router in `localrag/api/routers/`, wire DI in `localrag/api/dependencies.py`, include the router in `localrag/api/main.py`.
 - **New CLI command:** new module under `localrag/cli/commands/`, register in `localrag/cli/app.py`.

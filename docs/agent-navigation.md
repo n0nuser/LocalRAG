@@ -40,6 +40,7 @@ Agents (and humans) move faster when they:
 | Architecture decisions | `docs/adr/` |
 | CLI commands | `localrag/cli/app.py`, `localrag/cli/commands/*.py` |
 | Parsing a file type | `localrag/ingestion/parsers/`, `localrag/ingestion/loader.py` |
+| PDF OCR (scanned/image-only pages) | `localrag/ingestion/parsers/pdf.py`, `OCR_*` in `localrag/settings.py`, [ocr.md](ocr.md) |
 | Chunking strategy and boundaries | `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/settings.py` |
 | Embeddings / Ollama HTTP for embed | `localrag/ingestion/embedder.py` |
 | Ingest orchestration | `localrag/ingestion/service.py` |
@@ -48,6 +49,7 @@ Agents (and humans) move faster when they:
 | Ollama HTTP request/response shapes | `localrag/ollama/schemas.py` (used by embedder, RAG engine, health, setup) |
 | Prompt / answer streaming | `localrag/rag/prompt.py`, `localrag/rag/engine.py` |
 | Human Ollama install (not Python) | [ollama.md](ollama.md) |
+| Human Tesseract install (not Python) | [ocr.md](ocr.md) |
 
 ## Commands (uv)
 

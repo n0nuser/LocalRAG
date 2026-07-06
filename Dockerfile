@@ -2,6 +2,11 @@ FROM python:3.13-slim AS base
 
 WORKDIR /app
 
+# tesseract-ocr: required at runtime for scanned/image-only PDF pages (see docs/ocr.md).
+RUN apt-get update \
+    && apt-get install --no-install-recommends -y tesseract-ocr \
+    && rm -rf /var/lib/apt/lists/*
+
 RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml README.md /app/
