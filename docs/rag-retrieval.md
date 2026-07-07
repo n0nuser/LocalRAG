@@ -84,6 +84,26 @@ DSL. Every key/value pair in `metadata_filter` must match exactly
 support for ranges, negation, or boolean combinators. Pairs naturally with the
 `source`/`file_type` fields already written on every chunk during ingestion.
 
+## Parent-section expansion
+
+After ranking, fusion, and freshness decay, `Retriever._expand_to_parent_section`
+(`localrag/rag/retriever.py`) expands top retrieval hits that carry a non-empty
+`heading_path` chunk metadata value to the **full sibling-chunk section** they
+belong to, via `VectorStore.get_chunks_by_heading(source, heading_path)`
+(`localrag/storage/vector_store.py`), which fetches every chunk sharing that
+`source` + `heading_path` pair and returns them sorted by `chunk_index`. The
+merged section text is joined with `"\n\n"` and stored on the context dict as
+`expanded_text`, while the originally matched chunk's `text` (and
+`chunk_index`) are retained unchanged so citations (`SourceRef`) still point at
+the precise matched chunk. `localrag/rag/prompt.py::build_prompt` prefers
+`expanded_text` over `text` when present when composing the LLM prompt, so the
+model sees the whole section instead of just the one matching sentence.
+
+Controlled by `PARENT_EXPANSION_ENABLED` (default `true`); set to `false` to
+skip expansion and prompt with only the originally matched chunk text. Hits
+with an empty `heading_path`, or whose section has only a single chunk, are
+left unexpanded.
+
 ## Ingestion metadata dependencies
 
 Freshness and debugging depend on chunk metadata written during ingestion:

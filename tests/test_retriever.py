@@ -112,3 +112,65 @@ def test_retriever_raises_retrieval_failure_when_vector_query_fails() -> None:
         retriever.retrieve("q")
 
     assert excinfo.value.status_code == HTTPStatus.SERVICE_UNAVAILABLE
+
+
+def test_retriever_expands_top_hits_to_full_heading_section() -> None:
+    @dataclass
+    class ExpandableStore:
+        @staticmethod
+        def query(
+            embedding: list[float], top_k: int, where: dict[str, object] | None = None
+        ) -> dict[str, object]:
+            _ = (embedding, top_k, where)
+            return {
+                "documents": [["Section intro sentence."]],
+                "metadatas": [[{"source": "guide.md", "chunk_index": 0, "heading_path": "Setup"}]],
+                "distances": [[0.05]],
+            }
+
+        @staticmethod
+        def get_chunks_by_heading(source: str, heading_path: str) -> list[tuple[int, str]]:
+            assert source == "guide.md"
+            assert heading_path == "Setup"
+            return [
+                (0, "Section intro sentence."),
+                (1, "Second sentence with the install command."),
+            ]
+
+    retriever = Retriever(
+        settings=Settings(),
+        embedder=StubEmbedder(),  # type: ignore[arg-type]
+        vector_store=ExpandableStore(),  # type: ignore[arg-type]
+    )
+
+    contexts = retriever.retrieve("how do I install this")
+
+    assert contexts[0]["expanded_text"] == (
+        "Section intro sentence.\n\nSecond sentence with the install command."
+    )
+    assert contexts[0]["text"] == "Section intro sentence."
+
+
+def test_retriever_skips_expansion_when_heading_path_empty() -> None:
+    @dataclass
+    class FlatStore:
+        @staticmethod
+        def query(
+            embedding: list[float], top_k: int, where: dict[str, object] | None = None
+        ) -> dict[str, object]:
+            _ = (embedding, top_k, where)
+            return {
+                "documents": [["plain text chunk"]],
+                "metadatas": [[{"source": "notes.txt", "chunk_index": 0, "heading_path": ""}]],
+                "distances": [[0.05]],
+            }
+
+    retriever = Retriever(
+        settings=Settings(),
+        embedder=StubEmbedder(),  # type: ignore[arg-type]
+        vector_store=FlatStore(),  # type: ignore[arg-type]
+    )
+
+    contexts = retriever.retrieve("q")
+
+    assert "expanded_text" not in contexts[0]

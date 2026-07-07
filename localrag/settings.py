@@ -45,6 +45,9 @@ class Settings(BaseSettings):
 
     **RAG** — ``rag_top_k`` is how many chunks are retrieved for context.
     ``rag_system_prompt`` is the system message for the answering model.
+    When ``parent_expansion_enabled`` is true (default), top hits with a
+    non-empty ``heading_path`` are expanded to their full sibling-chunk
+    section before prompting; set false to disable.
 
     **API** — ``api_host`` / ``api_port`` are the uvicorn bind address and port.
 
@@ -89,6 +92,7 @@ class Settings(BaseSettings):
     bm25_weight: float = 0.5
     rrf_k: int = 60
     freshness_half_life_days: float = 30.0
+    parent_expansion_enabled: bool = True
     rag_system_prompt: str = (
         "You are a helpful assistant. Answer only based on the provided context."
     )
