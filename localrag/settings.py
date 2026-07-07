@@ -68,7 +68,7 @@ class Settings(BaseSettings):
     chroma_collection_name: str = "localrag"
 
     chunk_chars: int = 512
-    chunk_overlap_chars: int = 50
+    chunk_overlap_chars: int = 150
     chunking_mode: str = "structural"
     chunk_max_chars: int = 1200
     chunk_min_chars: int = 200
