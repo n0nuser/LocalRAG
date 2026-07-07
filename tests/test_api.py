@@ -22,8 +22,13 @@ _STUB_CONTEXTS = [{"source": "doc.md", "chunk_index": 1, "text": "chunk"}]
 
 @dataclass
 class StubRetriever:
-    def retrieve(self, question: str, n_results: int | None = None) -> list[dict[str, Any]]:
-        _ = (question, n_results)
+    def retrieve(
+        self,
+        question: str,
+        n_results: int | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        _ = (question, n_results, metadata_filter)
         return _STUB_CONTEXTS
 
 

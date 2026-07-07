@@ -27,11 +27,17 @@ class RAGEngine:
     timeout_seconds: float = 180.0
 
     def answer(
-        self, question: str, model: str | None = None, n_results: int | None = None
+        self,
+        question: str,
+        model: str | None = None,
+        n_results: int | None = None,
+        metadata_filter: dict[str, Any] | None = None,
     ) -> dict[str, object]:
         chunks: list[str] = []
         sources: list[dict[str, object]] = []
-        for event in self.stream_answer(question=question, model=model, n_results=n_results):
+        for event in self.stream_answer(
+            question=question, model=model, n_results=n_results, metadata_filter=metadata_filter
+        ):
             if event["type"] == "token":
                 chunks.append(str(event["token"]))
             if event["type"] == "final":
@@ -39,7 +45,11 @@ class RAGEngine:
         return {"answer": "".join(chunks).strip(), "sources": sources}
 
     def stream_answer(
-        self, question: str, model: str | None = None, n_results: int | None = None
+        self,
+        question: str,
+        model: str | None = None,
+        n_results: int | None = None,
+        metadata_filter: dict[str, Any] | None = None,
     ) -> Generator[dict[str, Any]]:
         logger.info(
             "rag_stream_start question_chars=%s model=%s n_results=%s",
@@ -47,7 +57,9 @@ class RAGEngine:
             model,
             n_results,
         )
-        contexts = self.retriever.retrieve(question=question, n_results=n_results)
+        contexts = self.retriever.retrieve(
+            question=question, n_results=n_results, metadata_filter=metadata_filter
+        )
         return self.stream_chat_from_contexts(contexts=contexts, question=question, model=model)
 
     def stream_chat_from_contexts(
