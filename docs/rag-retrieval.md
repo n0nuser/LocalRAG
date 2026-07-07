@@ -54,6 +54,12 @@ Freshness and debugging depend on chunk metadata written during ingestion:
 - `ingested_at`
 - `heading_path`
 - `chunk_type`
+- `content_hash`
+- `source_mtime`
+- `git_commit`
 
 The retriever returns `freshness_factor` and `ingested_at` in contexts so rank
 decisions are visible in API and test traces.
+
+`content_hash` also drives incremental rebuild — `POST /collections/rebuild` skips
+re-embedding any source whose file bytes haven't changed.
