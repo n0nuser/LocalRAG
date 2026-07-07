@@ -1371,6 +1371,7 @@ dependencies = [
     { name = "httpx" },
     { name = "openai" },
     { name = "prometheus-client" },
+    { name = "pybreaker" },
     { name = "pydantic-settings" },
     { name = "pypdf" },
     { name = "pypdfium2" },
@@ -1382,6 +1383,7 @@ dependencies = [
     { name = "rich" },
     { name = "sse-starlette" },
     { name = "structlog" },
+    { name = "tenacity" },
     { name = "typer" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -1407,6 +1409,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.28" },
     { name = "openai", specifier = ">=2.33.0" },
     { name = "prometheus-client", specifier = ">=0.25.0" },
+    { name = "pybreaker", specifier = ">=1" },
     { name = "pydantic-settings", specifier = ">=2.8" },
     { name = "pypdf", specifier = ">=5.4" },
     { name = "pypdfium2", specifier = ">=4.30" },
@@ -1418,6 +1421,7 @@ requires-dist = [
     { name = "rich", specifier = ">=13" },
     { name = "sse-starlette", specifier = ">=2.2" },
     { name = "structlog", specifier = ">=25.5.0" },
+    { name = "tenacity", specifier = ">=9" },
     { name = "typer", specifier = ">=0.15" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
 ]
@@ -2464,6 +2468,15 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/28/86/a236ecfc5b494e1e922da149689f690abc84248c7c1358f5605b8c9fdd60/pybase64-1.4.3-cp314-cp314t-win32.whl", hash = "sha256:343b1901103cc72362fd1f842524e3bb24978e31aea7ff11e033af7f373f66ab", size = 34513, upload-time = "2025-12-06T13:25:24.592Z" },
     { url = "https://files.pythonhosted.org/packages/56/ce/ca8675f8d1352e245eb012bfc75429ee9cf1f21c3256b98d9a329d44bf0f/pybase64-1.4.3-cp314-cp314t-win_amd64.whl", hash = "sha256:57aff6f7f9dea6705afac9d706432049642de5b01080d3718acc23af87c5af76", size = 36702, upload-time = "2025-12-06T13:25:25.72Z" },
     { url = "https://files.pythonhosted.org/packages/3b/30/4a675864877397179b09b720ee5fcb1cf772cf7bebc831989aff0a5f79c1/pybase64-1.4.3-cp314-cp314t-win_arm64.whl", hash = "sha256:e906aa08d4331e799400829e0f5e4177e76a3281e8a4bc82ba114c6b30e405c9", size = 31904, upload-time = "2025-12-06T13:25:26.826Z" },
+]
+
+[[package]]
+name = "pybreaker"
+version = "1.4.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/f2/89/fbf98e383f1ec6d117af2cd983efdb3eb7018b63834c427025764194cac2/pybreaker-1.4.1.tar.gz", hash = "sha256:8df2d245c73ba40c8242c56ffb4f12138fbadc23e296224740c2028ea9dc1178", size = 15555, upload-time = "2025-09-21T15:12:04.499Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/44/75/e64d3d40a741e2be21d69154f4e5c43a66f0c603c5ef11f49e01429a5932/pybreaker-1.4.1-py3-none-any.whl", hash = "sha256:b4dab4a05195b7f2a64a6c1a6c4ba7a96534ef56ea7210e6bcb59f28897160e0", size = 12915, upload-time = "2025-09-21T15:12:02.284Z" },
 ]
 
 [[package]]
