@@ -52,12 +52,14 @@ class FakeCollection:
         query_embeddings: list[list[float]],
         n_results: int,
         include: list[str],
+        where: dict[str, object] | None = None,
     ) -> dict[str, object]:
         self.query_calls.append(
             {
                 "query_embeddings": query_embeddings,
                 "n_results": n_results,
                 "include": include,
+                "where": where,
             }
         )
         return self.query_result
@@ -180,6 +182,22 @@ def test_vector_store_upsert_delete_query_and_list_collections() -> None:
 
     store.delete_collection("col-1")
     assert client.deleted_collections == ["col-1"]
+
+
+def test_vector_store_query_passes_where_filter_to_collection() -> None:
+    collection = FakeCollection(
+        upsert_calls=[],
+        delete_calls=[],
+        query_calls=[],
+        query_result={"documents": [[]], "metadatas": [[]], "distances": [[]]},
+        get_return={},
+    )
+    client = FakeClient(collections=[], deleted_collections=[])
+    store = VectorStore(client=client, collection=collection)  # type: ignore[arg-type]
+
+    store.query(embedding=[0.1], top_k=3, where={"source": "a.md"})
+
+    assert collection.query_calls[0]["where"] == {"source": "a.md"}  # type: ignore[index]
 
 
 def test_vector_store_list_distinct_sources() -> None:

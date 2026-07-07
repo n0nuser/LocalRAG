@@ -52,8 +52,10 @@ def test_freshness_decay_prefers_recent_chunk() -> None:
 
     class FreshnessStore:
         @staticmethod
-        def query(embedding: list[float], top_k: int) -> dict[str, object]:
-            _ = (embedding, top_k)
+        def query(
+            embedding: list[float], top_k: int, where: dict[str, object] | None = None
+        ) -> dict[str, object]:
+            _ = (embedding, top_k, where)
             return {
                 "documents": [["old policy", "new policy"]],
                 "metadatas": [

@@ -69,11 +69,14 @@ class VectorStore:
         self.collection.delete(where={"source": source})
         logger.debug("vector_delete_by_source source=%s", source)
 
-    def query(self, embedding: list[float], top_k: int) -> dict[str, Any]:
-        logger.debug("vector_query top_k=%s", top_k)
+    def query(
+        self, embedding: list[float], top_k: int, where: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        logger.debug("vector_query top_k=%s where=%s", top_k, where)
         return self.collection.query(  # type: ignore[return-value]
             query_embeddings=[embedding],  # type: ignore[arg-type]
             n_results=top_k,
+            where=where,
             include=["documents", "metadatas", "distances"],
         )
 

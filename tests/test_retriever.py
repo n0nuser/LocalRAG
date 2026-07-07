@@ -21,8 +21,10 @@ class StubEmbedder:
 
 @dataclass
 class StubStore:
-    def query(self, embedding: list[float], top_k: int) -> dict[str, object]:
-        _ = (embedding, top_k)
+    def query(
+        self, embedding: list[float], top_k: int, where: dict[str, object] | None = None
+    ) -> dict[str, object]:
+        _ = (embedding, top_k, where)
         return {
             "documents": [["chunk-a"]],
             "metadatas": [[{"source": "foo.md", "chunk_index": 0}]],
@@ -68,6 +70,30 @@ def test_retriever_raises_retrieval_failure_when_ollama_embed_fails() -> None:
         retriever.retrieve("q")
 
     assert excinfo.value.status_code == HTTPStatus.BAD_GATEWAY
+
+
+def test_retriever_threads_metadata_filter_to_vector_store_where() -> None:
+    captured: dict[str, object] = {}
+
+    @dataclass
+    class CapturingStore:
+        @staticmethod
+        def query(
+            embedding: list[float], top_k: int, where: dict[str, object] | None = None
+        ) -> dict[str, object]:
+            _ = (embedding, top_k)
+            captured["where"] = where
+            return {"documents": [[]], "metadatas": [[]], "distances": [[]]}
+
+    retriever = Retriever(
+        settings=Settings(),
+        embedder=StubEmbedder(),  # type: ignore[arg-type]
+        vector_store=CapturingStore(),  # type: ignore[arg-type]
+    )
+
+    retriever.retrieve("q", metadata_filter={"source": "a.md"})
+
+    assert captured["where"] == {"source": "a.md"}
 
 
 def test_retriever_raises_retrieval_failure_when_vector_query_fails() -> None:

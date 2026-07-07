@@ -55,6 +55,35 @@ deliberately disjoint with zero overlap: boundary-awareness (never splitting
 mid-table, mid-code-block, or mid-heading-section) substitutes for overlap
 there. This is an intentional design choice, not an oversight.
 
+## Metadata pre-filtering
+
+`POST /query`'s `QueryRequest.metadata_filter` (`localrag/api/schemas.py`) accepts
+an optional equality-only `dict[str, str]` filter applied to chunk metadata
+**before** ranking, e.g.:
+
+```json
+{"question": "...", "metadata_filter": {"source": "/docs/handbook.pdf"}}
+```
+
+It threads through `RAGEngine.answer` / `RAGEngine.stream_answer`
+(`localrag/rag/engine.py`) into `Retriever.retrieve`'s `metadata_filter`
+parameter (`localrag/rag/retriever.py`), which applies it on **both** retrieval
+paths:
+
+1. **Vector search** — passed natively as Chroma's `where=` clause via
+   `VectorStore.query(embedding, top_k, where=...)`
+   (`localrag/storage/vector_store.py`), so Chroma itself excludes
+   non-matching chunks before the HNSW search returns results.
+2. **BM25 search** (hybrid mode only) — applied client-side as an equality
+   check against each BM25 hit's metadata via the `_matches_filter` helper in
+   `localrag/rag/retriever.py`, since `rank_bm25` has no native filter concept.
+
+This is **equality-only** — it is not a full Chroma `$and`/`$or`/`$in` query
+DSL. Every key/value pair in `metadata_filter` must match exactly
+(`metadata.get(key) == value`) for a chunk to survive filtering; there is no
+support for ranges, negation, or boolean combinators. Pairs naturally with the
+`source`/`file_type` fields already written on every chunk during ingestion.
+
 ## Ingestion metadata dependencies
 
 Freshness and debugging depend on chunk metadata written during ingestion:
