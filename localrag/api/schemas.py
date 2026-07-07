@@ -144,18 +144,38 @@ class IngestFileResponse(BaseModel):
     )
 
 
+class FailedSourceRef(BaseModel):
+    """A source that still failed after one end-of-batch retry."""
+
+    source: str = Field(
+        description="File path that failed to ingest.", examples=["/docs/corrupt.pdf"]
+    )
+    error: str = Field(
+        description="Error message from the final (post-retry) attempt.",
+        examples=["invalid PDF header"],
+    )
+
+
 class IngestDirectoryResponse(BaseModel):
     status: str = Field(
-        description="Literal status for a successful directory ingest.",
+        description="Literal status for a directory ingest (`ok` even with partial failures — "
+        "check `failed_sources`).",
         examples=["ok"],
     )
     files_processed: int = Field(
-        description="Number of files ingested under the directory (after filters).",
+        description="Number of files successfully ingested under the directory (after filters).",
         examples=[8],
     )
     total_chunks: int = Field(
-        description="Total chunks added across all files in this run.",
+        description="Total chunks added across all successfully ingested files in this run.",
         examples=[42],
+    )
+    failed_sources: list[FailedSourceRef] = Field(
+        default_factory=list,
+        description=(
+            "Files that failed even after one automatic end-of-batch retry. Other files in "
+            "the batch still ingested normally; also logged server-side at ERROR level."
+        ),
     )
 
 
@@ -315,4 +335,11 @@ class RebuildCollectionResponse(BaseModel):
             "their vectors were removed."
         ),
         examples=[["/old/path/removed.md"]],
+    )
+    failed_sources: list[FailedSourceRef] = Field(
+        default_factory=list,
+        description=(
+            "Sources that failed to re-embed even after one automatic end-of-batch retry. "
+            "Their old vectors remain in place (not removed); also logged at ERROR level."
+        ),
     )

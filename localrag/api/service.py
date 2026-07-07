@@ -6,8 +6,9 @@ import time
 from collections.abc import Iterator
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 from urllib.parse import unquote
+from uuid import uuid4
 
 import httpx
 
@@ -17,6 +18,7 @@ from localrag.api.repository import ChromaCollectionRepository
 from localrag.api.schemas import (
     CollectionDeleteResponse,
     CollectionListResponse,
+    FailedSourceRef,
     HealthResponse,
     IngestDirectoryRequest,
     IngestDirectoryResponse,
@@ -28,7 +30,8 @@ from localrag.api.schemas import (
     RebuildCollectionResponse,
     SourceRef,
 )
-from localrag.ingestion.service import IngestionService
+from localrag.ingestion.loader import SUPPORTED_EXTENSIONS
+from localrag.ingestion.service import IngestionResult, IngestionService
 from localrag.ollama.schemas import OllamaTagsResponse, parse_ollama_json
 from localrag.rag.engine import RAGEngine
 from localrag.rag.exceptions import RetrievalError
@@ -92,16 +95,20 @@ def rebuild_collection_response(
     logger.info("collection_rebuild_start embed_model=%s", request.embed_model)
     result = ingestion_service.rebuild_collection(embed_model=request.embed_model)
     logger.info(
-        "collection_rebuild_done files=%s chunks=%s missing=%s",
+        "collection_rebuild_done files=%s chunks=%s missing=%s failed=%s",
         result.files_processed,
         result.total_chunks,
         len(result.missing_sources),
+        len(result.failed_sources),
     )
     return RebuildCollectionResponse(
         status="ok",
         files_processed=result.files_processed,
         total_chunks=result.total_chunks,
         missing_sources=result.missing_sources,
+        failed_sources=[
+            FailedSourceRef(source=f.source, error=f.error) for f in result.failed_sources
+        ],
     )
 
 
@@ -122,6 +129,7 @@ def ingest_file(
         )
     logger.info("ingest_file_start path=%s", path)
     result = ingestion_service.ingest_file(path, embed_model=request.embed_model)
+    _raise_if_failed(result)
     logger.info(
         "ingest_file_done path=%s chunks=%s",
         path,
@@ -133,6 +141,21 @@ def ingest_file(
         status="ok",
         chunks_added=result.total_chunks,
         source=str(source),
+    )
+
+
+def _raise_if_failed(result: IngestionResult) -> None:
+    """Single-file endpoints retry once internally, then surface a hard failure as an error.
+
+    Batch endpoints (`ingest_directory`, `rebuild_collection`) instead report
+    `failed_sources` in their JSON response, since partial success there is expected.
+    """
+    if not result.failed_sources:
+        return
+    failure = result.failed_sources[0]
+    raise IngestApiError(
+        HTTPStatus.BAD_GATEWAY,
+        f"Ingest failed after retry: {failure.error}",
     )
 
 
@@ -162,17 +185,91 @@ def ingest_directory(
         embed_model=request.embed_model,
     )
     logger.info(
-        "ingest_directory_done path=%s files=%s chunks=%s",
+        "ingest_directory_done path=%s files=%s chunks=%s failed=%s",
         path,
         result.files_processed,
         result.total_chunks,
+        len(result.failed_sources),
     )
     app_metrics.ingested_documents_total.inc(result.files_processed)
     return IngestDirectoryResponse(
         status="ok",
         files_processed=result.files_processed,
         total_chunks=result.total_chunks,
+        failed_sources=[
+            FailedSourceRef(source=f.source, error=f.error) for f in result.failed_sources
+        ],
     )
+
+
+def ingest_upload(
+    file_name: str,
+    file_obj: BinaryIO,
+    embed_model: str | None,
+    settings: Settings,
+    ingestion_service: IngestionService,
+) -> IngestFileResponse:
+    extension = Path(file_name).suffix.lower()
+    if extension not in SUPPORTED_EXTENSIONS:
+        logger.warning("ingest_upload_rejected unsupported_extension name=%s", file_name)
+        raise IngestApiError(
+            HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
+            f"Unsupported file extension '{extension}'. Supported: "
+            f"{', '.join(sorted(SUPPORTED_EXTENSIONS))}.",
+        )
+
+    dest_dir = Path(settings.upload_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest_path = _unique_upload_destination(dest_dir, Path(file_name).name)
+    bytes_written = _stream_upload_to_disk(file_obj, dest_path, settings.upload_max_bytes)
+
+    logger.info("ingest_upload_saved path=%s bytes=%s", dest_path, bytes_written)
+    result = ingestion_service.ingest_file(dest_path, embed_model=embed_model)
+    _raise_if_failed(result)
+    logger.info(
+        "ingest_upload_done path=%s chunks=%s",
+        dest_path,
+        result.total_chunks,
+    )
+    app_metrics.ingested_documents_total.inc(1)
+    source = result.processed_sources[0] if result.processed_sources else dest_path
+    return IngestFileResponse(
+        status="ok",
+        chunks_added=result.total_chunks,
+        source=str(source),
+    )
+
+
+def _stream_upload_to_disk(file_obj: BinaryIO, dest_path: Path, max_bytes: int) -> int:
+    chunk_size = 1024 * 1024
+    bytes_written = 0
+    completed = False
+    try:
+        with dest_path.open("wb") as out:
+            while True:
+                chunk = file_obj.read(chunk_size)
+                if not chunk:
+                    break
+                bytes_written += len(chunk)
+                if bytes_written > max_bytes:
+                    raise IngestApiError(
+                        HTTPStatus.REQUEST_ENTITY_TOO_LARGE,
+                        f"File exceeds the {max_bytes}-byte upload limit.",
+                    )
+                out.write(chunk)
+        completed = True
+        return bytes_written
+    finally:
+        if not completed:
+            dest_path.unlink(missing_ok=True)
+
+
+def _unique_upload_destination(directory: Path, file_name: str) -> Path:
+    candidate = directory / file_name
+    if not candidate.exists():
+        return candidate
+    stem, suffix = Path(file_name).stem, Path(file_name).suffix
+    return directory / f"{stem}-{uuid4().hex[:8]}{suffix}"
 
 
 def query_json(request: QueryRequest, engine: RAGEngine) -> QueryResponse:
