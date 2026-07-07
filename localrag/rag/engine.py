@@ -5,14 +5,7 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from typing import Any
 
-import httpx
-
-from localrag.ollama.schemas import (
-    OllamaChatMessage,
-    OllamaChatRequest,
-    OllamaChatStreamChunk,
-    parse_ollama_json_line,
-)
+from localrag.llm.providers.base import BaseLLMProvider
 from localrag.rag.prompt import build_prompt
 from localrag.rag.retriever import Retriever
 from localrag.settings import Settings
@@ -24,7 +17,7 @@ logger = logging.getLogger(__name__)
 class RAGEngine:
     settings: Settings
     retriever: Retriever
-    timeout_seconds: float = 180.0
+    provider: BaseLLMProvider
 
     def answer(
         self,
@@ -85,47 +78,10 @@ class RAGEngine:
             question=question,
             contexts=contexts,
         )
-        runtime_model = model or self.settings.ollama_llm_model
-        chat_request = OllamaChatRequest(
-            model=runtime_model,
-            messages=[OllamaChatMessage(role="user", content=prompt)],
-            stream=True,
-        )
-
-        try:
-            with (
-                httpx.Client(timeout=self.timeout_seconds) as client,
-                client.stream(
-                    "POST",
-                    f"{self.settings.ollama_base_url}/api/chat",
-                    json=chat_request.model_dump(mode="json", exclude_none=True),
-                ) as resp,
-            ):
-                resp.raise_for_status()
-                for line in resp.iter_lines():
-                    if not line:
-                        continue
-                    try:
-                        chunk = parse_ollama_json_line(line, OllamaChatStreamChunk)
-                    except ValueError:
-                        logger.warning("rag_ollama_bad_chunk line_chars=%s", len(line))
-                        continue
-                    msg = chunk.message
-                    token = msg.content if msg and msg.content else ""
-                    if token:
-                        yield {"type": "token", "token": token}
-                    if chunk.done:
-                        break
-        except httpx.HTTPError as exc:
-            logger.error(
-                "rag_ollama_chat_http_error url=%s model=%s error=%s",
-                self.settings.ollama_base_url,
-                runtime_model,
-                exc,
-            )
-            raise
-
-        logger.info("rag_stream_done model=%s", runtime_model)
+        for event in self.provider.stream_from_prompt(prompt, model=model):
+            if event["type"] == "token":
+                yield event
+        logger.info("rag_stream_done")
         yield {"type": "final", "sources": self._extract_sources(contexts)}
 
     @staticmethod

@@ -9,6 +9,7 @@ from fastapi.security import APIKeyHeader
 from localrag.api.repository import ChromaCollectionRepository
 from localrag.ingestion.embedder import OllamaEmbedder
 from localrag.ingestion.service import IngestionService
+from localrag.llm.factory import build_provider
 from localrag.rag.bm25_index import Bm25Index
 from localrag.rag.engine import RAGEngine
 from localrag.rag.retriever import Retriever
@@ -50,7 +51,9 @@ def get_retriever() -> Retriever:
 @lru_cache(maxsize=1)
 def get_engine() -> RAGEngine:
     settings = get_settings()
-    return RAGEngine(settings=settings, retriever=get_retriever())
+    return RAGEngine(
+        settings=settings, retriever=get_retriever(), provider=build_provider(settings)
+    )
 
 
 @lru_cache(maxsize=1)

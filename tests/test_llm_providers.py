@@ -33,6 +33,17 @@ class _ConcreteProvider(BaseLLMProvider):
         yield {"type": "token", "token": "ok"}
         yield {"type": "final", "sources": []}
 
+    def generate_from_prompt(self, prompt: str, *, model: str | None = None) -> LLMResponse:
+        return LLMResponse(
+            answer="ok", model="test", tokens_used=1, latency_ms=0.0, estimated_cost_usd=0.0
+        )
+
+    def stream_from_prompt(
+        self, prompt: str, *, model: str | None = None
+    ) -> Generator[dict[str, Any]]:
+        yield {"type": "token", "token": "ok"}
+        yield {"type": "final", "sources": []}
+
     def count_tokens(self, text: str) -> int:
         return len(text.split())
 
