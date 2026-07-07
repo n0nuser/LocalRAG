@@ -343,3 +343,11 @@ class RebuildCollectionResponse(BaseModel):
             "Their old vectors remain in place (not removed); also logged at ERROR level."
         ),
     )
+    skipped_unchanged_sources: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sources whose file content hash matched the previously stored chunk metadata; "
+            "skipped entirely (no re-parse/re-embed) by the incremental rebuild."
+        ),
+        examples=[["/docs/unchanged.md"]],
+    )
