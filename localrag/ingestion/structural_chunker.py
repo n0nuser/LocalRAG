@@ -231,7 +231,16 @@ def _split_long_paragraph(text: str, max_chars: int, overlap_chars: int) -> list
         chunk = text[start:end].strip()
         if chunk:
             chunks.append(chunk)
-        start = end - safe_overlap if end < text_len else text_len
+        if end >= text_len:
+            start = text_len
+            continue
+        # Boundary snapping can make `end` land much earlier than start + max_chars;
+        # capping overlap to (end - start - 1) guarantees start always advances by at
+        # least one character, regardless of where the boundary snapped to. Without
+        # this, a large overlap_chars relative to a short snapped chunk can push the
+        # next start backward (or leave it unchanged), looping forever.
+        effective_overlap = min(safe_overlap, end - start - 1)
+        start = end - effective_overlap
     return chunks
 
 
