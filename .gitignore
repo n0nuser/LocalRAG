@@ -209,5 +209,8 @@ __marimo__/
 # Chroma
 data/chroma/
 
+# POST /ingest/upload destination (user-uploaded documents, not repo content)
+data/uploads/
+
 # Eval results (timestamped JSON files generated at runtime)
 evals/results/*.json
