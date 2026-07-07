@@ -58,7 +58,7 @@ uv sync
 ```bash
 ollama serve
 ollama pull nomic-embed-text
-ollama pull llama3.2
+ollama pull gemma3:4b
 ```
 
 4. **Copy the example env file:**
@@ -91,8 +91,9 @@ Open `http://127.0.0.1:8000/docs` for interactive API docs.
 | Method | Path | Description |
 | --- | --- | --- |
 | `GET` | `/health` | Readiness check (Ollama + ChromaDB) |
-| `POST` | `/ingest` | Ingest a single file |
+| `POST` | `/ingest` | Ingest a single file by server-side path |
 | `POST` | `/ingest/directory` | Ingest a directory recursively |
+| `POST` | `/ingest/upload` | Ingest a file uploaded via multipart form (browser file picker) |
 | `POST` | `/query` | JSON answer with sources and latency |
 | `POST` | `/query/stream` | SSE token stream |
 | `POST` | `/agent/query` | Agentic RAG (Anthropic tool-use) |
@@ -119,7 +120,7 @@ Key settings:
 | `LLM_BACKEND` | `ollama` | LLM provider: `ollama`, `openai`, or `anthropic` |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model |
-| `OLLAMA_LLM_MODEL` | `llama3.2` | Chat model for Ollama backend |
+| `OLLAMA_LLM_MODEL` | `gemma3:4b` | Chat model for Ollama backend |
 | `OPENAI_API_KEY` | _(empty)_ | OpenAI key (required for `openai` backend) |
 | `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model tag |
 | `ANTHROPIC_API_KEY` | _(empty)_ | Anthropic key (required for `anthropic` backend or agent) |
@@ -134,6 +135,8 @@ Key settings:
 | `BM25_WEIGHT` | `0.5` | Weight for BM25 when non-default weighted fusion is used |
 | `RRF_K` | `60` | Reciprocal rank fusion smoothing constant |
 | `FRESHNESS_HALF_LIFE_DAYS` | `30.0` | Recency decay half-life; set `0` to disable |
+| `UPLOAD_DIR` | `./data/uploads` | Where `POST /ingest/upload` saves multipart uploads |
+| `UPLOAD_MAX_BYTES` | `100000000` | Max size accepted by `POST /ingest/upload` |
 | `LOG_LEVEL` | `INFO` | Logging level (JSON in production, colored in TTY) |
 
 ## CLI
@@ -162,14 +165,17 @@ uv run localrag collections rebuild
 docker compose up --build
 ```
 
-Starts: `localrag-api`, `ollama`, `chromadb`, `prometheus`, `grafana`.
+Starts: `localrag-api`, `ollama`, `chromadb`, `prometheus`, `grafana`. A one-shot
+`localrag-setup` service pulls `OLLAMA_EMBED_MODEL` / `OLLAMA_LLM_MODEL` (via
+`uv run localrag setup`, reusing the CLI's own pull logic) before `localrag-api`
+starts — no manual `docker exec ... ollama pull` step needed. It exits 0 once
+done; that's expected, not a failure.
 
-Pull models in the Ollama container after startup:
-
-```bash
-docker exec -it <ollama_container_name> ollama pull nomic-embed-text
-docker exec -it <ollama_container_name> ollama pull llama3.2
-```
+`docker-compose.override.yml` is merged automatically for local dev — it's
+otherwise identical to the base file, plus a bind mount for a Windows-side
+folder (WSL2 only) so you can drag-and-drop documents instead of copying them
+into the WSL2 filesystem by hand. Edit the path in that file if it doesn't
+match your Windows username, or delete the volume line if you don't need it.
 
 Then open:
 - API: `http://localhost:8000/docs`

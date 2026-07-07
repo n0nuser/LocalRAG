@@ -1,13 +1,12 @@
-# Local development overrides — hot reload via uvicorn --reload
-# Usage: docker compose up   (this file is merged automatically)
+# Local development overrides — same image/command as the base compose file;
+# the only addition is a Windows-side folder for drag-and-drop document
+# copying (WSL2 only; see docs/ingest-upload.md). Files dropped here land at
+# /app/uploads-inbox in the container — ingest them with:
+#   POST /ingest/directory {"path": "/app/uploads-inbox"}
+# or `uv run localrag ingest-dir /app/uploads-inbox` via `docker compose exec`.
+# Edit or delete the volume line below if this path doesn't match your
+# Windows username. Usage: docker compose up (merged automatically).
 services:
   localrag-api:
-    build:
-      context: .
-      target: base
-    command: >
-      uv run uvicorn localrag.api.main:app
-      --host 0.0.0.0 --port 8000 --reload
     volumes:
-      - .:/app
-      - /app/.venv
+      - /mnt/c/Users/pjgr2/Desktop/LocalRAG-Ingest:/app/uploads-inbox
