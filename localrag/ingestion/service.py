@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import logging
+import subprocess
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,6 +43,7 @@ class RebuildCollectionResult:
     processed_sources: list[str]
     missing_sources: list[str]
     failed_sources: list[FailedSource] = field(default_factory=list)
+    skipped_unchanged_sources: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -68,27 +71,41 @@ class IngestionService:
 
     def rebuild_collection(self, embed_model: str | None = None) -> RebuildCollectionResult:
         sources = self.vector_store.list_distinct_sources()
+        stored_hashes = self._stored_content_hashes()
         missing_sources: list[str] = []
+        skipped_unchanged: list[str] = []
         paths_to_ingest: list[Path] = []
         for source in sources:
             path = Path(source)
-            if path.is_file():
-                paths_to_ingest.append(path)
-            else:
+            if not path.is_file():
                 missing_sources.append(source)
                 self.vector_store.delete_by_source(source)
-                logger.warning(
-                    "rebuild_skip_missing_file source=%s",
-                    source,
-                )
+                logger.warning("rebuild_skip_missing_file source=%s", source)
+                continue
+            current_hash = _file_content_hash(path)
+            if stored_hashes.get(source) == current_hash:
+                skipped_unchanged.append(source)
+                continue
+            paths_to_ingest.append(path)
         ingest = self.ingest_paths(paths_to_ingest, embed_model=embed_model)
+        logger.info("rebuild_skipped_unchanged count=%s", len(skipped_unchanged))
         return RebuildCollectionResult(
             files_processed=ingest.files_processed,
             total_chunks=ingest.total_chunks,
             processed_sources=ingest.processed_sources,
             missing_sources=sorted(missing_sources),
             failed_sources=ingest.failed_sources,
+            skipped_unchanged_sources=sorted(skipped_unchanged),
         )
+
+    def _stored_content_hashes(self) -> dict[str, str]:
+        hashes: dict[str, str] = {}
+        for _chunk_id, _document, metadata in self.vector_store.get_all_chunks():
+            source = metadata.get("source")
+            content_hash = metadata.get("content_hash")
+            if isinstance(source, str) and isinstance(content_hash, str) and source not in hashes:
+                hashes[source] = content_hash
+        return hashes
 
     def ingest_paths(self, paths: list[Path], embed_model: str | None = None) -> IngestionResult:
         total_chunks = 0
@@ -172,6 +189,9 @@ class IngestionService:
         # embed call leaves the previous (still valid) vectors for this source in place.
         self.vector_store.delete_by_source(source)
         created_at = datetime.now(UTC).isoformat()
+        content_hash = _file_content_hash(resolved_path)
+        source_mtime = resolved_path.stat().st_mtime
+        git_commit = _git_commit_for_path(resolved_path) or ""
         metadatas = [
             {
                 "source": source,
@@ -180,6 +200,9 @@ class IngestionService:
                 "heading_path": chunk.heading_path,
                 "chunk_type": chunk.chunk_type,
                 "ingested_at": created_at,
+                "content_hash": content_hash,
+                "source_mtime": source_mtime,
+                "git_commit": git_commit,
             }
             for index, chunk in enumerate(structural_chunks)
         ]
@@ -203,3 +226,23 @@ class IngestionService:
                 Chunk(text=chunk, heading_path="", chunk_type="fixed") for chunk in fixed_chunks
             ]
         return chunk_document(text=text, file_type=file_type, settings=self.settings)
+
+
+def _file_content_hash(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _git_commit_for_path(path: Path) -> str | None:
+    try:
+        result = subprocess.run(  # noqa: S603
+            ["git", "log", "-1", "--format=%H", "--", path.name],  # noqa: S607
+            cwd=path.parent,
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    commit = result.stdout.strip()
+    return commit or None

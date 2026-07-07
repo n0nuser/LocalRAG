@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import hashlib
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
@@ -26,12 +27,16 @@ class StubVectorStore:
     deleted_sources: list[str]
     added: list[dict[str, object]]
     distinct_sources: list[str] | None = None
+    all_chunks: list[tuple[str, str, dict[str, object]]] = field(default_factory=list)
 
     def list_distinct_sources(self) -> list[str]:
         return list(self.distinct_sources or [])
 
     def delete_by_source(self, source: str) -> None:
         self.deleted_sources.append(source)
+
+    def get_all_chunks(self) -> list[tuple[str, str, dict[str, object]]]:
+        return list(self.all_chunks)
 
     def add_chunks(
         self,
@@ -301,3 +306,68 @@ def test_ingestion_service_rebuild_reingests_distinct_sources(tmp_path: Path) ->
     assert vector_store.deleted_sources[0] == missing
     assert str(kept.resolve()) in result.processed_sources
     assert result.files_processed == 1
+
+
+def test_ingestion_service_ingest_one_writes_content_hash_and_git_metadata(tmp_path: Path) -> None:
+    allowed_root = tmp_path / "allowed"
+    allowed_root.mkdir()
+    path = allowed_root / "a.md"
+    path.write_text("hello world", encoding="utf-8")
+
+    settings = Settings(ingest_roots=[str(allowed_root)], chunk_chars=100, chunk_overlap_chars=0)
+    embedder = StubEmbedder(seen_texts_batches=[])
+    vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
+    service = IngestionService(
+        settings=settings,
+        embedder=embedder,  # type: ignore[arg-type]
+        vector_store=vector_store,  # type: ignore[arg-type]
+    )
+
+    service.ingest_paths([path])
+
+    added = vector_store.added[0]
+    metadatas = added["metadatas"]
+    expected_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert all(md["content_hash"] == expected_hash for md in metadatas)  # type: ignore[union-attr]
+    assert all("source_mtime" in md for md in metadatas)  # type: ignore[union-attr]
+    assert all(md["git_commit"] == "" for md in metadatas)  # type: ignore[union-attr]
+
+
+def test_ingestion_service_rebuild_skips_unchanged_sources(tmp_path: Path) -> None:
+    allowed_root = tmp_path / "allowed"
+    allowed_root.mkdir()
+    unchanged = allowed_root / "unchanged.md"
+    unchanged.write_text("same content", encoding="utf-8")
+    changed = allowed_root / "changed.md"
+    changed.write_text("new content", encoding="utf-8")
+
+    settings = Settings(ingest_roots=[str(allowed_root)], chunk_chars=100, chunk_overlap_chars=0)
+    embedder = StubEmbedder(seen_texts_batches=[])
+    unchanged_hash = hashlib.sha256(unchanged.read_bytes()).hexdigest()
+    vector_store = StubVectorStore(
+        deleted_sources=[],
+        added=[],
+        distinct_sources=[str(unchanged.resolve()), str(changed.resolve())],
+        all_chunks=[
+            (
+                "id-1",
+                "same content",
+                {"source": str(unchanged.resolve()), "content_hash": unchanged_hash},
+            ),
+            (
+                "id-2",
+                "old content",
+                {"source": str(changed.resolve()), "content_hash": "stale-hash"},
+            ),
+        ],
+    )
+    service = IngestionService(
+        settings=settings,
+        embedder=embedder,  # type: ignore[arg-type]
+        vector_store=vector_store,  # type: ignore[arg-type]
+    )
+
+    result = service.rebuild_collection()
+
+    assert result.skipped_unchanged_sources == [str(unchanged.resolve())]
+    assert result.processed_sources == [str(changed.resolve())]

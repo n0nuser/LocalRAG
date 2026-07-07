@@ -109,6 +109,7 @@ def rebuild_collection_response(
         failed_sources=[
             FailedSourceRef(source=f.source, error=f.error) for f in result.failed_sources
         ],
+        skipped_unchanged_sources=result.skipped_unchanged_sources,
     )
 
 
