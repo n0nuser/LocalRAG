@@ -6,7 +6,7 @@ def build_prompt(system_prompt: str, question: str, contexts: list[dict[str, obj
     for index, context in enumerate(contexts, start=1):
         source = context.get("source", "unknown")
         chunk_index = context.get("chunk_index", -1)
-        text = context.get("text", "")
+        text = context.get("expanded_text") or context.get("text", "")
         context_blocks.append(f"[{index}] source={source} chunk={chunk_index}\n{text}")
 
     joined_context = "\n\n".join(context_blocks) if context_blocks else "No context found."

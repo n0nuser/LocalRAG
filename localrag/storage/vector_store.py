@@ -80,6 +80,24 @@ class VectorStore:
             include=["documents", "metadatas", "distances"],
         )
 
+    def get_chunks_by_heading(self, source: str, heading_path: str) -> list[tuple[int, str]]:
+        raw = self.collection.get(
+            where={"$and": [{"source": source}, {"heading_path": heading_path}]},
+            include=["documents", "metadatas"],
+        )
+        documents = raw.get("documents") or []
+        metadatas = raw.get("metadatas") or []
+        pairs: list[tuple[int, str]] = []
+        for document, metadata in zip(documents, metadatas, strict=False):
+            if not isinstance(document, str):
+                continue
+            metadata_map = metadata if isinstance(metadata, dict) else {}
+            chunk_index = metadata_map.get("chunk_index")
+            if isinstance(chunk_index, int):
+                pairs.append((chunk_index, document))
+        pairs.sort(key=lambda pair: pair[0])
+        return pairs
+
     def list_distinct_sources(self) -> list[str]:
         raw = self.collection.get(include=["metadatas"])
         metadatas = raw.get("metadatas")

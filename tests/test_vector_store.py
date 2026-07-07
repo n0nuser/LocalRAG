@@ -241,6 +241,28 @@ def test_vector_store_get_all_chunks_returns_id_doc_metadata_triplets() -> None:
     ]
 
 
+def test_vector_store_get_chunks_by_heading_returns_sorted_pairs() -> None:
+    collection = FakeCollection(
+        upsert_calls=[],
+        delete_calls=[],
+        query_calls=[],
+        query_result={},
+        get_return={
+            "documents": ["second", "first"],
+            "metadatas": [
+                {"source": "guide.md", "chunk_index": 1, "heading_path": "Setup"},
+                {"source": "guide.md", "chunk_index": 0, "heading_path": "Setup"},
+            ],
+        },
+    )
+    client = FakeClient(collections=[], deleted_collections=[])
+    store = VectorStore(client=client, collection=collection)  # type: ignore[arg-type]
+
+    pairs = store.get_chunks_by_heading(source="guide.md", heading_path="Setup")
+
+    assert pairs == [(0, "first"), (1, "second")]
+
+
 def test_vector_store_create_initializes_persistent_client(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
