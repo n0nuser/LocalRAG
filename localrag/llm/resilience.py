@@ -104,5 +104,36 @@ class ResilientProvider(BaseLLMProvider):
             yield first_event
         yield from gen
 
+    def generate_from_prompt(self, prompt: str, *, model: str | None = None) -> LLMResponse:
+        try:
+            return self._breaker.call(
+                self._retrying, lambda: self._provider.generate_from_prompt(prompt, model=model)
+            )
+        except pybreaker.CircuitBreakerError:
+            logger.warning("llm_circuit_open falling_back=%s", self._fallback_provider is not None)
+            if self._fallback_provider is not None:
+                return self._fallback_provider.generate_from_prompt(prompt, model=model)
+            raise
+
+    def stream_from_prompt(
+        self, prompt: str, *, model: str | None = None
+    ) -> Generator[dict[str, Any]]:
+        def start() -> tuple[Generator[dict[str, Any]], dict[str, Any] | None]:
+            gen = self._provider.stream_from_prompt(prompt, model=model)
+            first_event = next(gen, None)
+            return gen, first_event
+
+        try:
+            gen, first_event = self._breaker.call(self._retrying, start)
+        except pybreaker.CircuitBreakerError:
+            logger.warning("llm_circuit_open falling_back=%s", self._fallback_provider is not None)
+            if self._fallback_provider is not None:
+                yield from self._fallback_provider.stream_from_prompt(prompt, model=model)
+                return
+            raise
+        if first_event is not None:
+            yield first_event
+        yield from gen
+
     def count_tokens(self, text: str) -> int:
         return self._provider.count_tokens(text)

@@ -35,6 +35,14 @@ class FlakyProvider(BaseLLMProvider):
         yield {"type": "token", "token": "ok"}
         yield {"type": "final", "sources": []}
 
+    def generate_from_prompt(self, prompt: str, *, model: str | None = None) -> LLMResponse:
+        return self.generate(prompt, [], model=model)
+
+    def stream_from_prompt(
+        self, prompt: str, *, model: str | None = None
+    ) -> Generator[dict[str, Any]]:
+        yield from self.stream(prompt, [], model=model)
+
     def count_tokens(self, text: str) -> int:
         return len(text.split())
 
@@ -53,6 +61,14 @@ class AlwaysFailsProvider(BaseLLMProvider):
     ) -> Generator[dict[str, Any]]:
         raise NotImplementedError
 
+    def generate_from_prompt(self, prompt: str, *, model: str | None = None) -> LLMResponse:
+        return self.generate(prompt, [], model=model)
+
+    def stream_from_prompt(
+        self, prompt: str, *, model: str | None = None
+    ) -> Generator[dict[str, Any]]:
+        yield from self.stream(prompt, [], model=model)
+
     def count_tokens(self, text: str) -> int:
         return len(text.split())
 
@@ -69,6 +85,14 @@ class FallbackProvider(BaseLLMProvider):
     ) -> Generator[dict[str, Any]]:
         yield {"type": "token", "token": "fallback"}
         yield {"type": "final", "sources": []}
+
+    def generate_from_prompt(self, prompt: str, *, model: str | None = None) -> LLMResponse:
+        return self.generate(prompt, [], model=model)
+
+    def stream_from_prompt(
+        self, prompt: str, *, model: str | None = None
+    ) -> Generator[dict[str, Any]]:
+        yield from self.stream(prompt, [], model=model)
 
     def count_tokens(self, text: str) -> int:
         return len(text.split())

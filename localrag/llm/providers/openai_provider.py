@@ -70,5 +70,31 @@ class OpenAIProvider(BaseLLMProvider):
                 yield {"type": "token", "token": text}
         yield {"type": "final", "sources": []}
 
+    def generate_from_prompt(self, prompt: str, *, model: str | None = None) -> LLMResponse:
+        t0 = time.perf_counter()
+        used_model = model or self._default_model
+        messages = [{"role": "user", "content": prompt}]
+        resp = self._client.chat.completions.create(model=used_model, messages=messages)  # type: ignore[arg-type]
+        latency_ms = (time.perf_counter() - t0) * 1000
+        answer = resp.choices[0].message.content or ""
+        tokens = resp.usage.total_tokens if resp.usage else self.count_tokens(answer)
+        return LLMResponse(
+            answer=answer.strip(),
+            model=used_model,
+            tokens_used=tokens,
+            latency_ms=latency_ms,
+            estimated_cost_usd=estimate_cost_usd(used_model, tokens),
+        )
+
+    def stream_from_prompt(
+        self, prompt: str, *, model: str | None = None
+    ) -> Generator[dict[str, Any]]:
+        used_model = model or self._default_model
+        messages = [{"role": "user", "content": prompt}]
+        with self._client.chat.completions.stream(model=used_model, messages=messages) as stream:  # type: ignore[arg-type]
+            for text in stream.text_stream:  # type: ignore[attr-defined]
+                yield {"type": "token", "token": text}
+        yield {"type": "final", "sources": []}
+
     def count_tokens(self, text: str) -> int:
         return len(text.split())

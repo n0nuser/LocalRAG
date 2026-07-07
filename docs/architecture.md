@@ -44,8 +44,8 @@ flowchart LR
 
 - **Ingest:** files → `loader` / `ingestion/parsers/*` → text → structural chunker (`localrag/ingestion/structural_chunker.py`) or fixed fallback (`localrag/ingestion/chunker.py`) → `OllamaEmbedder` → `VectorStore` (Chroma, persistent path from settings). The **HTTP** ingest flow runs path decode, existence checks, and `INGEST_ROOTS` in `localrag/api/service.py` (`ingest_file` / `ingest_directory`), then calls `IngestionService`; optional per-request `embed_model` overrides `OLLAMA_EMBED_MODEL`. Failures raise `IngestApiError` → JSON in `main.py`. CLI ingests call `IngestionService` directly. `POST /ingest/upload` (`ingest_upload` in `service.py`) takes a multipart file instead of a server path: it validates the extension against `loader.SUPPORTED_EXTENSIONS`, streams it to disk under `UPLOAD_DIR` in 1 MiB chunks while enforcing `UPLOAD_MAX_BYTES` (bypassing `INGEST_ROOTS`, since the server picks the destination), then calls `IngestionService.ingest_file` the same way. See the endpoint's OpenAPI description for upload limitations (no AV scan, extension-only validation, single file per request).
 - **Rebuild:** `POST /collections/rebuild` and `localrag collections rebuild` list distinct `source` values in the active collection, drop vectors for missing files, and re-chunk/re-embed remaining paths (optional `embed_model` override). Implemented in `IngestionService.rebuild_collection`.
-- **Query (JSON):** `POST /query` returns a complete `QueryResponse` (answer, sources, latency_ms, model) from `query_json` in `localrag/api/service.py`. Retrieval supports vector-only and hybrid (vector + BM25 with reciprocal-rank fusion), then applies optional freshness decay based on chunk `ingested_at`. Requires `X-API-Key` when `API_KEY` is set.
-- **Query (SSE stream):** `POST /query/stream` streams tokens as Server-Sent Events. Retrieval runs synchronously first (`get_query_contexts`) so errors map to HTTP before SSE starts, then tokens are mapped via `iter_query_sse_events`.
+- **Query (JSON):** `POST /query` returns a complete `QueryResponse` (answer, sources, latency_ms, model) from `query_json` in `localrag/api/service.py`. Retrieval supports vector-only and hybrid (vector + BM25 with reciprocal-rank fusion), then applies optional freshness decay based on chunk `ingested_at`. `RAGEngine` generates the answer via its injected `provider` (a `BaseLLMProvider` built by `llm/factory.py::build_provider`, resilience-wrapped), so `LLM_BACKEND` genuinely governs which backend answers `/query` — it is no longer hard-wired to Ollama. Requires `X-API-Key` when `API_KEY` is set.
+- **Query (SSE stream):** `POST /query/stream` streams tokens as Server-Sent Events. Retrieval runs synchronously first (`get_query_contexts`) so errors map to HTTP before SSE starts, then tokens are mapped via `iter_query_sse_events`. Token streaming likewise goes through `RAGEngine.provider.stream_from_prompt(...)`, so `LLM_BACKEND` governs the streaming path too.
 - **Metrics:** `GET /metrics` exposes Prometheus metrics via `prometheus_client` (router at `localrag/api/routers/metrics.py`). No auth required.
 
 ## Package map
@@ -78,14 +78,16 @@ flowchart LR
 
 | Path | Role |
 | --- | --- |
-| `localrag/llm/providers/base.py` | `BaseLLMProvider` ABC with `generate(prompt, context)` and `stream(...)` |
+| `localrag/llm/providers/base.py` | `BaseLLMProvider` ABC with `generate(prompt, context)` / `stream(...)` (context-list contract for direct scripting use) and `generate_from_prompt(prompt)` / `stream_from_prompt(prompt)` (already-built-prompt contract used by `RAGEngine`) |
 | `localrag/llm/types.py` | `LLMResponse` dataclass (answer, model, tokens_used, latency_ms, estimated_cost_usd) |
 | `localrag/llm/providers/ollama.py` | Ollama HTTP provider (default, local) |
 | `localrag/llm/providers/openai_provider.py` | OpenAI chat completions |
 | `localrag/llm/providers/anthropic_provider.py` | Anthropic messages API |
-| `localrag/llm/resilience.py` | `ResilientProvider` — retry-with-backoff (tenacity) + circuit breaker (pybreaker) wrapping any `BaseLLMProvider`; optional fallback provider on sustained failure |
+| `localrag/llm/resilience.py` | `ResilientProvider` — retry-with-backoff (tenacity) + circuit breaker (pybreaker) wrapping any `BaseLLMProvider` (including the `*_from_prompt` methods); optional fallback provider on sustained failure |
 | `localrag/llm/factory.py` | `build_provider(settings)` — selects provider by `LLM_BACKEND` env var; always returns a `ResilientProvider`-wrapped instance |
 | `localrag/llm/costs.py` | `estimate_cost_usd(model, tokens)` with prefix-match price table |
+
+`RAGEngine` (`localrag/rag/engine.py`) holds a `provider: BaseLLMProvider` field (injected in `localrag/api/dependencies.py::get_engine` via `build_provider(settings)`) and builds its own citation-rich prompt with `localrag.rag.prompt.build_prompt`, then calls `self.provider.stream_from_prompt(prompt, model=model)` — it no longer talks to Ollama's `/api/chat` directly, so switching `LLM_BACKEND` to `openai` or `anthropic` actually changes what answers `/query` and `/query/stream`.
 
 ## Agent layer
 

@@ -99,5 +99,56 @@ class OllamaProvider(BaseLLMProvider):
                     break
         yield {"type": "final", "sources": []}
 
+    def generate_from_prompt(self, prompt: str, *, model: str | None = None) -> LLMResponse:
+        t0 = time.perf_counter()
+        chunks: list[str] = []
+        for event in self.stream_from_prompt(prompt, model=model):
+            if event["type"] == "token":
+                chunks.append(str(event["token"]))
+        latency_ms = (time.perf_counter() - t0) * 1000
+        used_model = model or self._default_model
+        answer = "".join(chunks).strip()
+        tokens = len(answer.split())
+        return LLMResponse(
+            answer=answer,
+            model=used_model,
+            tokens_used=tokens,
+            latency_ms=latency_ms,
+            estimated_cost_usd=estimate_cost_usd("_default_ollama", tokens),
+        )
+
+    def stream_from_prompt(
+        self, prompt: str, *, model: str | None = None
+    ) -> Generator[dict[str, Any]]:
+        used_model = model or self._default_model
+        chat_request = OllamaChatRequest(
+            model=used_model,
+            messages=[OllamaChatMessage(role="user", content=prompt)],
+            stream=True,
+        )
+        with (
+            httpx.Client(timeout=self._timeout) as client,
+            client.stream(
+                "POST",
+                f"{self._base_url}/api/chat",
+                json=chat_request.model_dump(mode="json", exclude_none=True),
+            ) as resp,
+        ):
+            resp.raise_for_status()
+            for line in resp.iter_lines():
+                if not line:
+                    continue
+                try:
+                    chunk = parse_ollama_json_line(line, OllamaChatStreamChunk)
+                except ValueError:
+                    continue
+                msg = chunk.message
+                token = msg.content if msg and msg.content else ""
+                if token:
+                    yield {"type": "token", "token": token}
+                if chunk.done:
+                    break
+        yield {"type": "final", "sources": []}
+
     def count_tokens(self, text: str) -> int:
         return len(text.split())
