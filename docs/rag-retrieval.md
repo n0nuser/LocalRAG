@@ -45,6 +45,16 @@ Final score becomes:
 
 Set `FRESHNESS_HALF_LIFE_DAYS=0` to disable this behavior.
 
+## Chunk overlap
+
+`CHUNK_OVERLAP_CHARS` (default 150, ~12.5% of `CHUNK_MAX_CHARS=1200`) only applies
+where `localrag/ingestion/structural_chunker.py::_split_long_paragraph` must
+hard-split a single paragraph that exceeds `chunk_max_chars`. Adjacent
+*packed* structural chunks (the common case — `_pack_blocks`) are
+deliberately disjoint with zero overlap: boundary-awareness (never splitting
+mid-table, mid-code-block, or mid-heading-section) substitutes for overlap
+there. This is an intentional design choice, not an oversight.
+
 ## Ingestion metadata dependencies
 
 Freshness and debugging depend on chunk metadata written during ingestion:
