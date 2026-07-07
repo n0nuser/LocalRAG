@@ -58,7 +58,7 @@ class Retriever:
             embedding=embedding, top_k=max(top_k * 2, top_k), where=metadata_filter
         )
         if self.settings.retrieval_mode != "hybrid" or self.bm25_index is None:
-            return self.apply_freshness(vector_hits[:top_k])
+            return self._expand_to_parent_section(self.apply_freshness(vector_hits[:top_k]))
 
         bm25_hits = [
             {
@@ -72,9 +72,8 @@ class Retriever:
             for hit in self.bm25_index.query(question, top_k=max(top_k * 2, top_k))
             if _matches_filter(hit.metadata, metadata_filter)
         ]
-        return self.apply_freshness(
-            self._fuse_results(vector_hits=vector_hits, bm25_hits=bm25_hits, top_k=top_k)
-        )
+        fused = self._fuse_results(vector_hits=vector_hits, bm25_hits=bm25_hits, top_k=top_k)
+        return self._expand_to_parent_section(self.apply_freshness(fused))
 
     def _retrieve_vector_hits(
         self, embedding: list[float], top_k: int, where: dict[str, Any] | None = None
@@ -181,3 +180,26 @@ class Retriever:
         source = str(hit.get("source", "unknown"))
         chunk_index = int(hit.get("chunk_index", -1))
         return source, chunk_index
+
+    def _expand_to_parent_section(self, contexts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not self.settings.parent_expansion_enabled:
+            return contexts
+        expanded: list[dict[str, Any]] = []
+        for context in contexts:
+            metadata = context.get("metadata") or {}
+            heading_path = metadata.get("heading_path", "")
+            source = context.get("source", "unknown")
+            if not heading_path:
+                expanded.append(context)
+                continue
+            siblings = self.vector_store.get_chunks_by_heading(
+                source=str(source), heading_path=str(heading_path)
+            )
+            if len(siblings) <= 1:
+                expanded.append(context)
+                continue
+            merged_text = "\n\n".join(text for _, text in siblings)
+            new_context = dict(context)
+            new_context["expanded_text"] = merged_text
+            expanded.append(new_context)
+        return expanded
