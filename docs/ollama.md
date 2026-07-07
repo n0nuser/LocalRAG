@@ -29,7 +29,7 @@ Follow the steps there for your OS (Windows, macOS, or Linux). The site covers i
 
    ```bash
    ollama pull nomic-embed-text
-   ollama pull llama3.2
+   ollama pull gemma3:4b
    ```
 
    You can change models via `OLLAMA_EMBED_MODEL` and `OLLAMA_LLM_MODEL` in `.env`.
@@ -42,7 +42,7 @@ Follow the steps there for your OS (Windows, macOS, or Linux). The site covers i
 
 ## Docker
 
-If you use LocalRAG’s `docker-compose.yml`, Ollama runs in a container; pull models **inside that container** (see the [README](../README.md) Docker section). You do not need a host install of Ollama for that path—only for **native** `uv run localrag` / local API usage.
+If you use LocalRAG's `docker-compose.yml`, Ollama runs in a container and a one-shot `localrag-setup` service pulls the configured models automatically on `docker compose up` (see the [README](../README.md) Docker section) — no manual pull step. You do not need a host install of Ollama for that path—only for **native** `uv run localrag` / local API usage.
 
 ## More help
 
