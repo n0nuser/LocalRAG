@@ -81,6 +81,24 @@ def test_chunk_document_oversized_paragraph_splits_on_sentence_boundary() -> Non
         assert chunk.text == sentence
 
 
+def test_chunk_document_oversized_paragraph_early_boundary_does_not_hang() -> None:
+    # Regression test: a sentence boundary very close to the start of the
+    # window, followed by a long run with no further boundaries or spaces.
+    # With overlap_chars large relative to max_chars, computing the next
+    # start as `end - overlap_chars` (without capping to the actual chunk
+    # length) can push start backward or leave it unchanged, looping forever.
+    text = "X. " + ("Y" * 5000)
+    markdown_text = f"# Doc\n\n{text}"
+    settings = Settings(chunk_max_chars=50, chunk_min_chars=1, chunk_overlap_chars=40)
+
+    chunks = chunk_document(markdown_text, ".md", settings)
+
+    body_chunks = [chunk for chunk in chunks if chunk.text != "# Doc"]
+    assert len(body_chunks) > 1
+    # Reaching the end of input (rather than hanging) is the actual regression check.
+    assert body_chunks[-1].text.rstrip().endswith("Y")
+
+
 def test_chunk_document_non_markdown_packs_paragraphs() -> None:
     text = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
     settings = Settings(chunk_max_chars=40, chunk_min_chars=20)
