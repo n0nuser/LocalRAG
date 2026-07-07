@@ -22,4 +22,4 @@ If `tesseract` is missing from `PATH`, OCR fails silently per page (logged as a 
 
 ## Docker
 
-The provided `Dockerfile` installs `tesseract-ocr` (English only) in the base image. To OCR other languages inside Docker, add the relevant `tesseract-ocr-<lang>` package to the `apt-get install` line and set `OCR_LANGUAGE` accordingly.
+The provided `Dockerfile` installs `tesseract-ocr` (English) and `tesseract-ocr-spa` (Spanish) in the base image. To OCR other languages inside Docker, add the relevant `tesseract-ocr-<lang>` package to the `apt-get install` line and set `OCR_LANGUAGE` accordingly.
