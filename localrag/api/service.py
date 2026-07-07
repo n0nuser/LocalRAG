@@ -280,6 +280,7 @@ def query_json(request: QueryRequest, engine: RAGEngine) -> QueryResponse:
         contexts = engine.retriever.retrieve(
             question=request.question,
             n_results=request.n_results,
+            metadata_filter=request.metadata_filter,
         )
     except RetrievalError as exc:
         raise RagApiError(int(exc.status_code), exc.detail) from exc
@@ -325,6 +326,7 @@ def get_query_contexts(request: QueryRequest, engine: RAGEngine) -> list[dict[st
         return engine.retriever.retrieve(
             question=request.question,
             n_results=request.n_results,
+            metadata_filter=request.metadata_filter,
         )
     except RetrievalError as exc:
         raise RagApiError(int(exc.status_code), exc.detail) from exc

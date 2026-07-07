@@ -58,6 +58,16 @@ class QueryRequest(BaseModel):
         ),
         examples=[5],
     )
+    metadata_filter: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Optional equality filters applied to chunk metadata before ranking, e.g. "
+            '{"source": "/docs/handbook.pdf"}. Applied natively to the vector search '
+            "via Chroma's `where` clause and, for parity, as an equality check against "
+            "BM25 candidate metadata in hybrid mode."
+        ),
+        examples=[{"source": "/docs/handbook.pdf"}],
+    )
 
 
 class IngestFileRequest(BaseModel):

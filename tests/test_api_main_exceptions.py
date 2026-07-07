@@ -59,7 +59,13 @@ def test_unhandled_exception_results_in_500() -> None:
 
 @dataclass
 class FailingRetriever:
-    def retrieve(self, question: str, n_results: int | None = None) -> list[object]:
+    def retrieve(
+        self,
+        question: str,
+        n_results: int | None = None,
+        metadata_filter: dict[str, object] | None = None,
+    ) -> list[object]:
+        _ = (question, n_results, metadata_filter)
         raise RetrievalError(HTTPStatus.BAD_GATEWAY, "Embedding service unavailable.")
 
 

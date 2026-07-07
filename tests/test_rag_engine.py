@@ -15,8 +15,13 @@ from localrag.settings import Settings
 class StubRetriever:
     contexts: list[dict[str, object]]
 
-    def retrieve(self, question: str, n_results: int | None = None) -> list[dict[str, object]]:
-        _ = (question, n_results)
+    def retrieve(
+        self,
+        question: str,
+        n_results: int | None = None,
+        metadata_filter: dict[str, object] | None = None,
+    ) -> list[dict[str, object]]:
+        _ = (question, n_results, metadata_filter)
         return self.contexts
 
 
@@ -65,9 +70,12 @@ def test_rag_engine_answer_concatenates_tokens_and_returns_sources(
     engine = RAGEngine(settings=settings, retriever=StubRetriever(contexts=[]))  # type: ignore[arg-type]
 
     def fake_stream_answer(
-        question: str, model: str | None = None, n_results: int | None = None
+        question: str,
+        model: str | None = None,
+        n_results: int | None = None,
+        metadata_filter: dict[str, object] | None = None,
     ) -> Generator[dict[str, object]]:
-        _ = (question, model, n_results)
+        _ = (question, model, n_results, metadata_filter)
         yield {"type": "token", "token": "Hello "}
         yield {"type": "token", "token": "World"}
         yield {

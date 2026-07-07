@@ -17,6 +17,12 @@ from localrag.storage.vector_store import VectorStore
 logger = logging.getLogger(__name__)
 
 
+def _matches_filter(metadata: dict[str, Any], metadata_filter: dict[str, Any] | None) -> bool:
+    if not metadata_filter:
+        return True
+    return all(metadata.get(key) == value for key, value in metadata_filter.items())
+
+
 @dataclass
 class Retriever:
     settings: Settings
@@ -24,7 +30,12 @@ class Retriever:
     vector_store: VectorStore
     bm25_index: Bm25Index | None = None
 
-    def retrieve(self, question: str, n_results: int | None = None) -> list[dict[str, Any]]:
+    def retrieve(
+        self,
+        question: str,
+        n_results: int | None = None,
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         top_k = n_results if n_results is not None else self.settings.rag_top_k
         logger.debug("retrieve_embed_question top_k=%s question_chars=%s", top_k, len(question))
         try:
@@ -43,7 +54,9 @@ class Retriever:
             logger.error("retrieve_embed_invalid_response error=%s", exc)
             raise RetrievalError(HTTPStatus.BAD_GATEWAY, str(exc)) from exc
 
-        vector_hits = self._retrieve_vector_hits(embedding=embedding, top_k=max(top_k * 2, top_k))
+        vector_hits = self._retrieve_vector_hits(
+            embedding=embedding, top_k=max(top_k * 2, top_k), where=metadata_filter
+        )
         if self.settings.retrieval_mode != "hybrid" or self.bm25_index is None:
             return self.apply_freshness(vector_hits[:top_k])
 
@@ -57,14 +70,17 @@ class Retriever:
                 "metadata": hit.metadata,
             }
             for hit in self.bm25_index.query(question, top_k=max(top_k * 2, top_k))
+            if _matches_filter(hit.metadata, metadata_filter)
         ]
         return self.apply_freshness(
             self._fuse_results(vector_hits=vector_hits, bm25_hits=bm25_hits, top_k=top_k)
         )
 
-    def _retrieve_vector_hits(self, embedding: list[float], top_k: int) -> list[dict[str, Any]]:
+    def _retrieve_vector_hits(
+        self, embedding: list[float], top_k: int, where: dict[str, Any] | None = None
+    ) -> list[dict[str, Any]]:
         try:
-            query_result = self.vector_store.query(embedding=embedding, top_k=top_k)
+            query_result = self.vector_store.query(embedding=embedding, top_k=top_k, where=where)
         except Exception as exc:
             logger.exception("retrieve_vector_store_query_failed top_k=%s", top_k)
             raise RetrievalError(
