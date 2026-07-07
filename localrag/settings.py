@@ -14,7 +14,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # Defaults for Ollama model tags (`ollama pull` / `ollama list`).
 # Keep in sync with docs and API examples.
 DEFAULT_OLLAMA_EMBED_MODEL = "nomic-embed-text"
-DEFAULT_OLLAMA_LLM_MODEL = "llama3.2"
+DEFAULT_OLLAMA_LLM_MODEL = "gemma3:4b"
 
 
 class Settings(BaseSettings):
@@ -33,6 +33,8 @@ class Settings(BaseSettings):
     ``ingest_recursive`` when not overridden per request. If ``ingest_roots`` is
     non-empty, only files and directories under those paths (after resolving) are
     allowed through the HTTP ingest API; an empty list disables that restriction.
+    ``POST /ingest/upload`` bypasses ``ingest_roots`` (the server chooses the
+    destination) but enforces ``upload_max_bytes`` and saves under ``upload_dir``.
 
     **PDF OCR** — When ``ocr_enabled`` is true (default), PDF pages whose extracted
     text layer is shorter than ``ocr_min_chars_per_page`` (scanned/image-only pages)
@@ -74,6 +76,9 @@ class Settings(BaseSettings):
 
     ingest_recursive: bool = True
     ingest_roots: list[str] = []
+
+    upload_dir: str = "./data/uploads"
+    upload_max_bytes: int = 100_000_000
 
     ocr_enabled: bool = True
     ocr_language: str = "eng"
