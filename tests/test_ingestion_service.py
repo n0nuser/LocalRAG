@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from localrag.ingestion.service import IngestionResult, IngestionService
+from localrag.ingestion import service as service_module
+from localrag.ingestion.service import FailedSource, IngestionResult, IngestionService
 from localrag.settings import Settings
 
 
@@ -183,7 +184,7 @@ def test_ingestion_service_ingest_directory_uses_settings_ingest_recursive_when_
     assert captured == [False]
 
 
-def test_ingestion_service_ingest_paths_re_raises_parse_errors(
+def test_ingestion_service_ingest_paths_retries_once_then_reports_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     allowed_root = tmp_path / "allowed"
@@ -200,13 +201,58 @@ def test_ingestion_service_ingest_paths_re_raises_parse_errors(
         vector_store=vector_store,  # type: ignore[arg-type]
     )
 
+    call_count = 0
+
     def fake_parse_file(_path: Path) -> str:
+        nonlocal call_count
+        call_count += 1
         raise ValueError("parse failed")
 
     monkeypatch.setattr("localrag.ingestion.service.parse_file", fake_parse_file)  # type: ignore[arg-type]
 
-    with pytest.raises(ValueError, match="parse failed"):
-        service.ingest_paths([path])
+    result = service.ingest_paths([path])
+
+    # Failed once, retried once at the end — never raised, and not attempted a third time.
+    assert call_count == 2
+    assert result.files_processed == 0
+    assert result.failed_sources == [FailedSource(source=str(path.resolve()), error="parse failed")]
+
+
+def test_ingestion_service_ingest_paths_succeeds_on_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    allowed_root = tmp_path / "allowed"
+    allowed_root.mkdir()
+    path = allowed_root / "a.md"
+    path.write_text("hello world", encoding="utf-8")
+
+    settings = Settings(ingest_roots=[str(allowed_root)], chunk_chars=100, chunk_overlap_chars=0)
+    embedder = StubEmbedder(seen_texts_batches=[])
+    vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
+    service = IngestionService(
+        settings=settings,
+        embedder=embedder,  # type: ignore[arg-type]
+        vector_store=vector_store,  # type: ignore[arg-type]
+    )
+
+    real_parse_file = service_module.parse_file
+    call_count = 0
+
+    def flaky_parse_file(p: Path) -> str:
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise ValueError("transient failure")
+        return real_parse_file(p)
+
+    monkeypatch.setattr("localrag.ingestion.service.parse_file", flaky_parse_file)  # type: ignore[arg-type]
+
+    result = service.ingest_paths([path])
+
+    assert call_count == 2
+    assert result.files_processed == 1
+    assert result.failed_sources == []
+    assert result.processed_sources == [str(path.resolve())]
 
 
 def test_ingestion_service_ingest_paths_passes_embed_model_to_embedder(tmp_path: Path) -> None:

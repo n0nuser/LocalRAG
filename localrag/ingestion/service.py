@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -17,10 +17,19 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class FailedSource:
+    """A source that still failed after the one-time end-of-batch retry."""
+
+    source: str
+    error: str
+
+
+@dataclass
 class IngestionResult:
     files_processed: int
     total_chunks: int
     processed_sources: list[str]
+    failed_sources: list[FailedSource] = field(default_factory=list)
 
 
 @dataclass
@@ -31,6 +40,7 @@ class RebuildCollectionResult:
     total_chunks: int
     processed_sources: list[str]
     missing_sources: list[str]
+    failed_sources: list[FailedSource] = field(default_factory=list)
 
 
 @dataclass
@@ -77,13 +87,57 @@ class IngestionService:
             total_chunks=ingest.total_chunks,
             processed_sources=ingest.processed_sources,
             missing_sources=sorted(missing_sources),
+            failed_sources=ingest.failed_sources,
         )
 
     def ingest_paths(self, paths: list[Path], embed_model: str | None = None) -> IngestionResult:
         total_chunks = 0
         files_processed = 0
         processed_sources: list[str] = []
+        retry_queue: list[Path] = []
 
+        for resolved_path in self._allowed_paths(paths):
+            try:
+                chunks_added = self._ingest_one(resolved_path, embed_model)
+            except Exception as exc:  # retried once below, not fatal yet
+                logger.warning("ingest_file_failed_will_retry path=%s error=%s", resolved_path, exc)
+                retry_queue.append(resolved_path)
+                continue
+            if chunks_added is None:
+                continue
+            files_processed += 1
+            total_chunks += chunks_added
+            processed_sources.append(str(resolved_path))
+
+        failed_sources: list[FailedSource] = []
+        if retry_queue:
+            logger.info("ingest_retry_start count=%s", len(retry_queue))
+        for resolved_path in retry_queue:
+            try:
+                chunks_added = self._ingest_one(resolved_path, embed_model)
+            except Exception as exc:  # collected for the caller, not raised
+                logger.error("ingest_file_failed_permanently path=%s error=%s", resolved_path, exc)
+                failed_sources.append(FailedSource(source=str(resolved_path), error=str(exc)))
+                continue
+            if chunks_added is None:
+                continue
+            files_processed += 1
+            total_chunks += chunks_added
+            processed_sources.append(str(resolved_path))
+
+        # Rebuilding the BM25 corpus is O(total chunks); do it once per batch, not per file.
+        if self.bm25_index is not None and files_processed > 0:
+            self.bm25_index.refresh()
+
+        return IngestionResult(
+            files_processed=files_processed,
+            total_chunks=total_chunks,
+            processed_sources=processed_sources,
+            failed_sources=failed_sources,
+        )
+
+    def _allowed_paths(self, paths: list[Path]) -> list[Path]:
+        allowed: list[Path] = []
         for path in paths:
             resolved_path = path.resolve()
             if not is_path_allowed(resolved_path, self.settings.ingest_roots):
@@ -93,65 +147,50 @@ class IngestionService:
                     self.settings.ingest_roots,
                 )
                 continue
+            allowed.append(resolved_path)
+        return allowed
 
-            logger.debug("ingest_parse_start path=%s", resolved_path)
-            try:
-                text = parse_file(resolved_path)
-            except Exception:
-                logger.exception("ingest_parse_failed path=%s", resolved_path)
-                raise
-            structural_chunks = self._build_chunks(
-                text=text, file_type=resolved_path.suffix.lower()
-            )
-            chunks = [chunk.text for chunk in structural_chunks]
-            if not chunks:
-                logger.warning("ingest_skipped_no_chunks path=%s", resolved_path)
-                continue
+    def _ingest_one(self, resolved_path: Path, embed_model: str | None) -> int | None:
+        """Parse, chunk, embed, and upsert one file. Returns chunks added, or None if skipped."""
+        logger.debug("ingest_parse_start path=%s", resolved_path)
+        text = parse_file(resolved_path)
+        structural_chunks = self._build_chunks(text=text, file_type=resolved_path.suffix.lower())
+        chunks = [chunk.text for chunk in structural_chunks]
+        if not chunks:
+            logger.warning("ingest_skipped_no_chunks path=%s", resolved_path)
+            return None
 
-            source = str(resolved_path)
-            self.vector_store.delete_by_source(source)
-            logger.debug("ingest_embed_start path=%s chunk_count=%s", resolved_path, len(chunks))
+        source = str(resolved_path)
+        logger.debug("ingest_embed_start path=%s chunk_count=%s", resolved_path, len(chunks))
 
-            embeddings = self.embedder.embed_texts(
-                chunks,
-                self.settings.embedding_batch_size,
-                model=embed_model,
-            )
-            created_at = datetime.now(UTC).isoformat()
-            metadatas = [
-                {
-                    "source": source,
-                    "file_type": resolved_path.suffix.lower(),
-                    "chunk_index": index,
-                    "heading_path": chunk.heading_path,
-                    "chunk_type": chunk.chunk_type,
-                    "ingested_at": created_at,
-                }
-                for index, chunk in enumerate(structural_chunks)
-            ]
-            self.vector_store.add_chunks(
-                source=source,
-                chunks=chunks,
-                embeddings=embeddings,
-                metadatas=metadatas,
-            )
-
-            files_processed += 1
-            total_chunks += len(chunks)
-            processed_sources.append(source)
-            logger.info(
-                "ingest_file_success path=%s chunks=%s",
-                resolved_path,
-                len(chunks),
-            )
-            if self.bm25_index is not None:
-                self.bm25_index.refresh()
-
-        return IngestionResult(
-            files_processed=files_processed,
-            total_chunks=total_chunks,
-            processed_sources=processed_sources,
+        embeddings = self.embedder.embed_texts(
+            chunks,
+            self.settings.embedding_batch_size,
+            model=embed_model,
         )
+        # Only drop the old vectors once the new embeddings are in hand, so a failed
+        # embed call leaves the previous (still valid) vectors for this source in place.
+        self.vector_store.delete_by_source(source)
+        created_at = datetime.now(UTC).isoformat()
+        metadatas = [
+            {
+                "source": source,
+                "file_type": resolved_path.suffix.lower(),
+                "chunk_index": index,
+                "heading_path": chunk.heading_path,
+                "chunk_type": chunk.chunk_type,
+                "ingested_at": created_at,
+            }
+            for index, chunk in enumerate(structural_chunks)
+        ]
+        self.vector_store.add_chunks(
+            source=source,
+            chunks=chunks,
+            embeddings=embeddings,
+            metadatas=metadatas,
+        )
+        logger.info("ingest_file_success path=%s chunks=%s", resolved_path, len(chunks))
+        return len(chunks)
 
     def _build_chunks(self, text: str, file_type: str) -> list[Chunk]:
         if self.settings.chunking_mode == "fixed":
