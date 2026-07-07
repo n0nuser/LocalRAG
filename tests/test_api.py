@@ -191,3 +191,63 @@ def test_ingest_directory_rejects_file(tmp_path: Path) -> None:
     assert response.status_code == 400
     assert response.json()["detail"] == "Path must be an existing directory."
     app.dependency_overrides.clear()
+
+
+def test_ingest_upload_saves_and_ingests_file(tmp_path: Path) -> None:
+    @dataclass
+    class RecordingIngestionService:
+        seen: list[Path]
+
+        def ingest_file(self, path: Path, embed_model: str | None = None) -> IngestionResult:
+            self.seen.append(path)
+            assert path.read_bytes() == b"hello world"
+            return IngestionResult(files_processed=1, total_chunks=3, processed_sources=[str(path)])
+
+    recording = RecordingIngestionService(seen=[])
+    app.dependency_overrides[get_api_settings] = lambda: Settings(upload_dir=str(tmp_path))
+    app.dependency_overrides[get_ingestion_service] = lambda: recording
+    client = TestClient(app)
+
+    response = client.post(
+        "/ingest/upload",
+        files={"file": ("notes.txt", b"hello world", "text/plain")},
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["chunks_added"] == 3
+    assert len(recording.seen) == 1
+    assert recording.seen[0].parent == tmp_path
+    app.dependency_overrides.clear()
+
+
+def test_ingest_upload_rejects_unsupported_extension(tmp_path: Path) -> None:
+    app.dependency_overrides[get_api_settings] = lambda: Settings(upload_dir=str(tmp_path))
+    app.dependency_overrides[get_ingestion_service] = lambda: UnusedIngestionService()
+    client = TestClient(app)
+
+    response = client.post(
+        "/ingest/upload",
+        files={"file": ("payload.exe", b"binary", "application/octet-stream")},
+    )
+
+    assert response.status_code == 415
+    assert list(tmp_path.iterdir()) == []
+    app.dependency_overrides.clear()
+
+
+def test_ingest_upload_rejects_oversized_file(tmp_path: Path) -> None:
+    app.dependency_overrides[get_api_settings] = lambda: Settings(
+        upload_dir=str(tmp_path), upload_max_bytes=5
+    )
+    app.dependency_overrides[get_ingestion_service] = lambda: UnusedIngestionService()
+    client = TestClient(app)
+
+    response = client.post(
+        "/ingest/upload",
+        files={"file": ("big.txt", b"this is more than five bytes", "text/plain")},
+    )
+
+    assert response.status_code == 413
+    assert list(tmp_path.iterdir()) == []
+    app.dependency_overrides.clear()
