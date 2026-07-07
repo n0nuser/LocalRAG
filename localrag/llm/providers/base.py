@@ -33,5 +33,15 @@ class BaseLLMProvider(ABC):
         """Yield token/final events matching the existing RAG engine contract."""
 
     @abstractmethod
+    def generate_from_prompt(self, prompt: str, *, model: str | None = None) -> LLMResponse:
+        """Return a complete response for an already-fully-built prompt string."""
+
+    @abstractmethod
+    def stream_from_prompt(
+        self, prompt: str, *, model: str | None = None
+    ) -> Generator[dict[str, Any]]:
+        """Yield token/final events for an already-fully-built prompt string."""
+
+    @abstractmethod
     def count_tokens(self, text: str) -> int:
         """Approximate token count for ``text``."""

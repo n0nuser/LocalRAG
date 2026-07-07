@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Generator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any
 
-import httpx
 import pytest
-import respx
 
+from localrag.llm.providers.base import BaseLLMProvider
+from localrag.llm.types import LLMResponse
 from localrag.rag.engine import RAGEngine
 from localrag.settings import Settings
 
@@ -25,32 +26,44 @@ class StubRetriever:
         return self.contexts
 
 
-@respx.mock
+@dataclass
+class FakeProvider(BaseLLMProvider):
+    tokens: list[str]
+    prompts_seen: list[str] = field(default_factory=list)
+
+    def generate(self, prompt: str, context: list[str], *, model: str | None = None) -> LLMResponse:
+        raise NotImplementedError
+
+    def stream(
+        self, prompt: str, context: list[str], *, model: str | None = None
+    ) -> Generator[dict[str, Any]]:
+        raise NotImplementedError
+
+    def generate_from_prompt(self, prompt: str, *, model: str | None = None) -> LLMResponse:
+        raise NotImplementedError
+
+    def stream_from_prompt(
+        self, prompt: str, *, model: str | None = None
+    ) -> Generator[dict[str, Any]]:
+        self.prompts_seen.append(prompt)
+        for token in self.tokens:
+            yield {"type": "token", "token": token}
+        yield {"type": "final", "sources": []}
+
+    def count_tokens(self, text: str) -> int:
+        return len(text.split())
+
+
 def test_rag_engine_stream_answer_yields_tokens_and_dedupes_sources() -> None:
-    settings = Settings(
-        ollama_base_url="http://ollama:11434",
-        rag_system_prompt="SYS",
-        ollama_llm_model="llm",
-    )
+    settings = Settings(rag_system_prompt="SYS")
     contexts = [
         {"text": "chunk-one", "source": "a.md", "chunk_index": 1},
         # Duplicate (same source + chunk_index) to exercise dedupe.
         {"text": "chunk-one", "source": "a.md", "chunk_index": 1},
     ]
-    engine = RAGEngine(settings=settings, retriever=StubRetriever(contexts=contexts))
-
-    url = f"{settings.ollama_base_url}/api/chat"
-    ndjson_lines = [
-        '{"model":"llm","message":{"role":"assistant","content":"Hello"},"done":false}',
-        "not-json",
-        "",
-        '{"model":"llm","message":{"role":"assistant","content":" world"},"done":false}',
-        '{"model":"llm","message":{"role":"assistant","content":""},"done":true}',
-    ]
-    content = ("\n".join(ndjson_lines) + "\n").encode("utf-8")
-
-    respx.post(url).mock(
-        return_value=httpx.Response(200, content=content),
+    provider = FakeProvider(tokens=["Hello", " world"])
+    engine = RAGEngine(
+        settings=settings, retriever=StubRetriever(contexts=contexts), provider=provider
     )
 
     events = list(engine.stream_answer(question="Q", model="llm", n_results=3))
@@ -61,13 +74,16 @@ def test_rag_engine_stream_answer_yields_tokens_and_dedupes_sources() -> None:
     final = events[-1]
     assert final["type"] == "final"
     assert final["sources"] == [{"source": "a.md", "chunk_index": 1}]
+    assert "SYS" in provider.prompts_seen[0]
+    assert "chunk-one" in provider.prompts_seen[0]
 
 
 def test_rag_engine_answer_concatenates_tokens_and_returns_sources(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    settings = Settings(rag_system_prompt="SYS", ollama_base_url="http://ollama:11434")
-    engine = RAGEngine(settings=settings, retriever=StubRetriever(contexts=[]))  # type: ignore[arg-type]
+    settings = Settings(rag_system_prompt="SYS")
+    provider = FakeProvider(tokens=[])
+    engine = RAGEngine(settings=settings, retriever=StubRetriever(contexts=[]), provider=provider)
 
     def fake_stream_answer(
         question: str,
@@ -93,17 +109,36 @@ def test_rag_engine_answer_concatenates_tokens_and_returns_sources(
     ]
 
 
-@respx.mock
-def test_rag_engine_stream_answer_raises_on_http_error() -> None:
-    settings = Settings(
-        ollama_base_url="http://ollama:11434",
-        rag_system_prompt="SYS",
-        ollama_llm_model="llm",
+def test_rag_engine_stream_answer_propagates_provider_error() -> None:
+    settings = Settings(rag_system_prompt="SYS")
+
+    @dataclass
+    class ExplodingProvider(BaseLLMProvider):
+        def generate(
+            self, prompt: str, context: list[str], *, model: str | None = None
+        ) -> LLMResponse:
+            raise NotImplementedError
+
+        def stream(
+            self, prompt: str, context: list[str], *, model: str | None = None
+        ) -> Generator[dict[str, Any]]:
+            raise NotImplementedError
+
+        def generate_from_prompt(self, prompt: str, *, model: str | None = None) -> LLMResponse:
+            raise NotImplementedError
+
+        def stream_from_prompt(
+            self, prompt: str, *, model: str | None = None
+        ) -> Generator[dict[str, Any]]:
+            raise RuntimeError("provider down")
+            yield  # pragma: no cover — unreachable, keeps this a generator
+
+        def count_tokens(self, text: str) -> int:
+            return len(text.split())
+
+    engine = RAGEngine(
+        settings=settings, retriever=StubRetriever(contexts=[]), provider=ExplodingProvider()
     )
-    engine = RAGEngine(settings=settings, retriever=StubRetriever(contexts=[]))
 
-    url = f"{settings.ollama_base_url}/api/chat"
-    respx.post(url).mock(return_value=httpx.Response(500, content=b"oops\n"))
-
-    with pytest.raises(httpx.HTTPStatusError):
+    with pytest.raises(RuntimeError, match="provider down"):
         list(engine.stream_answer(question="Q", model="llm", n_results=1))
