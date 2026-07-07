@@ -136,7 +136,12 @@ def test_ingest_directory_success_and_forbidden_outside_roots(tmp_path: Path) ->
         json={"path": str(inside_dir), "recursive": False},
     )
     assert ok.status_code == 200
-    assert ok.json() == {"status": "ok", "files_processed": 2, "total_chunks": 3}
+    assert ok.json() == {
+        "status": "ok",
+        "files_processed": 2,
+        "total_chunks": 3,
+        "failed_sources": [],
+    }
     assert ingestion.called[0][0] == inside_dir.resolve()
     assert ingestion.called[0][1] is False
     assert ingestion.called[0][2] is None
