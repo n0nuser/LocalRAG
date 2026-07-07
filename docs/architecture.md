@@ -83,7 +83,8 @@ flowchart LR
 | `localrag/llm/providers/ollama.py` | Ollama HTTP provider (default, local) |
 | `localrag/llm/providers/openai_provider.py` | OpenAI chat completions |
 | `localrag/llm/providers/anthropic_provider.py` | Anthropic messages API |
-| `localrag/llm/factory.py` | `build_provider(settings)` — selects provider by `LLM_BACKEND` env var |
+| `localrag/llm/resilience.py` | `ResilientProvider` — retry-with-backoff (tenacity) + circuit breaker (pybreaker) wrapping any `BaseLLMProvider`; optional fallback provider on sustained failure |
+| `localrag/llm/factory.py` | `build_provider(settings)` — selects provider by `LLM_BACKEND` env var; always returns a `ResilientProvider`-wrapped instance |
 | `localrag/llm/costs.py` | `estimate_cost_usd(model, tokens)` with prefix-match price table |
 
 ## Agent layer

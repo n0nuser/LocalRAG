@@ -14,6 +14,7 @@ from localrag.llm.providers.anthropic_provider import AnthropicProvider
 from localrag.llm.providers.base import BaseLLMProvider
 from localrag.llm.providers.ollama import OllamaProvider
 from localrag.llm.providers.openai_provider import OpenAIProvider
+from localrag.llm.resilience import ResilientProvider
 from localrag.llm.types import LLMResponse
 from localrag.settings import Settings
 
@@ -91,7 +92,7 @@ def test_ollama_provider_cost_is_zero() -> None:
         ("ollama", OllamaProvider),
     ],
 )
-def test_build_provider_returns_correct_type(
+def test_build_provider_wraps_correct_type_in_resilient_provider(
     backend: str, expected_type: type[BaseLLMProvider]
 ) -> None:
     settings = Settings(
@@ -100,4 +101,5 @@ def test_build_provider_returns_correct_type(
         anthropic_api_key="sk-ant-test",
     )
     provider = build_provider(settings)
-    assert isinstance(provider, expected_type)
+    assert isinstance(provider, ResilientProvider)
+    assert isinstance(provider._provider, expected_type)  # noqa: SLF001

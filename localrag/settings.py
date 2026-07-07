@@ -117,6 +117,13 @@ class Settings(BaseSettings):
     # Agent settings (uses Anthropic tool-use)
     agent_model: str = "claude-haiku-4-5"
 
+    # Optional automatic failover backend when the primary trips its circuit breaker
+    # ("ollama" | "openai" | "anthropic"); empty disables fallback.
+    llm_fallback_backend: str = ""
+    llm_retry_max_attempts: int = 3
+    llm_circuit_fail_max: int = 5
+    llm_circuit_reset_timeout_seconds: float = 30.0
+
     log_level: str = "INFO"
 
 
