@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import statistics
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
@@ -25,11 +27,11 @@ from pathlib import Path
 import httpx
 from datasets import Dataset
 from ragas import evaluate
-from ragas.metrics.collections import (
-    answer_relevancy,
-    context_precision,
-    context_recall,
-    faithfulness,
+from ragas.metrics import (
+    AnswerRelevancy,
+    ContextPrecision,
+    ContextRecall,
+    Faithfulness,
 )
 
 DATASET_PATH = Path(__file__).parent / "dataset.json"
@@ -93,6 +95,12 @@ def _build_hf_dataset(
     return Dataset.from_list(rows)
 
 
+def _mean_score(values: list[float]) -> float:
+    """Average a metric's per-row scores, ignoring NaNs (ragas returns a list per key)."""
+    clean = [v for v in values if not math.isnan(v)]
+    return statistics.fmean(clean) if clean else math.nan
+
+
 def _print_summary(scores: dict[str, float]) -> bool:
     all_pass = True
     print("\n╔══════════════════════════════════╗")
@@ -124,14 +132,14 @@ def main() -> None:
     print("Running RAGAS evaluation...")
     result = evaluate(
         dataset=dataset,
-        metrics=[faithfulness, answer_relevancy, context_precision, context_recall],
+        metrics=[Faithfulness(), AnswerRelevancy(), ContextPrecision(), ContextRecall()],
     )
 
     scores: dict[str, float] = {
-        "faithfulness": float(result["faithfulness"]),
-        "answer_relevancy": float(result["answer_relevancy"]),
-        "context_precision": float(result["context_precision"]),
-        "context_recall": float(result["context_recall"]),
+        "faithfulness": _mean_score(result["faithfulness"]),
+        "answer_relevancy": _mean_score(result["answer_relevancy"]),
+        "context_precision": _mean_score(result["context_precision"]),
+        "context_recall": _mean_score(result["context_recall"]),
     }
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
