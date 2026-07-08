@@ -217,3 +217,29 @@ def test_retriever_skips_expansion_when_heading_path_empty() -> None:
     contexts = retriever.retrieve("q")
 
     assert "expanded_text" not in contexts[0]
+
+
+def test_retriever_uses_rewritten_query_for_embedding_when_enabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "localrag.rag.retriever.rewrite_query",
+        lambda question, _settings: "rewritten " + question,
+    )
+    seen_questions: list[str] = []
+
+    @dataclass
+    class RecordingEmbedder:
+        def embed_text(self, text: str, *, model: str | None = None) -> list[float]:
+            seen_questions.append(text)
+            return [0.1, 0.2, 0.3]
+
+    retriever = Retriever(
+        settings=Settings(query_rewrite_enabled=True),
+        embedder=RecordingEmbedder(),  # type: ignore[arg-type]
+        vector_store=StubStore(),  # type: ignore[arg-type]
+    )
+
+    retriever.retrieve("original question")
+
+    assert seen_questions == ["rewritten original question"]
