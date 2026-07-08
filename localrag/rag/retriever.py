@@ -11,6 +11,7 @@ import httpx
 from localrag.ingestion.embedder import OllamaEmbedder
 from localrag.rag.bm25_index import Bm25Index
 from localrag.rag.exceptions import RetrievalError
+from localrag.rag.query_rewrite import rewrite_query
 from localrag.rag.reranker import CrossEncoderReranker
 from localrag.settings import Settings
 from localrag.storage.vector_store import VectorStore
@@ -44,9 +45,19 @@ class Retriever:
             if self.reranker is not None
             else max(top_k * 2, top_k)
         )
-        logger.debug("retrieve_embed_question top_k=%s question_chars=%s", top_k, len(question))
+        search_question = question
+        if self.settings.query_rewrite_enabled:
+            search_question = rewrite_query(question, self.settings)
+            logger.debug(
+                "query_rewritten original_chars=%s rewritten_chars=%s",
+                len(question),
+                len(search_question),
+            )
+        logger.debug(
+            "retrieve_embed_question top_k=%s question_chars=%s", top_k, len(search_question)
+        )
         try:
-            embedding = self.embedder.embed_text(question)
+            embedding = self.embedder.embed_text(search_question)
         except httpx.HTTPError as exc:
             logger.error(
                 "retrieve_embed_ollama_http_error url=%s error=%s",
@@ -76,7 +87,7 @@ class Retriever:
                     "ingested_at": hit.metadata.get("ingested_at"),
                     "metadata": hit.metadata,
                 }
-                for hit in self.bm25_index.query(question, top_k=fetch_k)
+                for hit in self.bm25_index.query(search_question, top_k=fetch_k)
                 if _matches_filter(hit.metadata, metadata_filter)
             ]
             candidates = self._fuse_results(
