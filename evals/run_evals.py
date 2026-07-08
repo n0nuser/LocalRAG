@@ -8,15 +8,24 @@ Usage:
     uv run python evals/run_evals.py [--api-url URL] [--api-key KEY] [--offline]
 
 Options:
-    --api-url   LocalRAG API base URL (default: http://localhost:8000)
-    --api-key   X-API-Key header value (empty = no auth)
-    --offline   Skip live API calls; use stored contexts from dataset only
-                (requires ground-truth answers to already be in the dataset)
+    --api-url       LocalRAG API base URL (default: http://localhost:8000)
+    --api-key       X-API-Key header value (empty = no auth)
+    --offline       Skip live API calls; use stored contexts from dataset only
+                    (requires ground-truth answers to already be in the dataset)
+    --judge-model   Ollama model used as the RAGAS LLM judge (default: gemma3:4b)
+    --ollama-url    Ollama base URL for the judge/embeddings (default: http://localhost:11434)
+
+The RAGAS judge LLM and embeddings run on the same local Ollama instance
+LocalRAG itself uses, via Ollama's OpenAI-compatible `/v1` endpoint and the
+`openai` client already a core dependency of this project — no LangChain, no
+new dependency, no external API key required. This matches LocalRAG's
+offline-first positioning.
 """
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import math
 import statistics
@@ -25,9 +34,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
-from datasets import Dataset
-from ragas import evaluate
-from ragas.metrics import (
+from openai import AsyncOpenAI
+from ragas.embeddings import OpenAIEmbeddings
+from ragas.llms import llm_factory
+from ragas.metrics.collections import (
     AnswerRelevancy,
     ContextPrecision,
     ContextRecall,
@@ -64,12 +74,12 @@ def _query_api(question: str, api_url: str, api_key: str) -> tuple[str, list[str
     return answer, contexts
 
 
-def _build_hf_dataset(
+def _build_rows(
     records: list[dict],
     api_url: str,
     api_key: str,
     offline: bool,
-) -> Dataset:
+) -> list[dict]:
     rows: list[dict] = []
     for rec in records:
         question = rec["question"]
@@ -92,13 +102,52 @@ def _build_hf_dataset(
                 "ground_truth": ground_truth,
             }
         )
-    return Dataset.from_list(rows)
+    return rows
 
 
 def _mean_score(values: list[float]) -> float:
-    """Average a metric's per-row scores, ignoring NaNs (ragas returns a list per key)."""
+    """Average a metric's per-row scores, ignoring NaNs."""
     clean = [v for v in values if not math.isnan(v)]
     return statistics.fmean(clean) if clean else math.nan
+
+
+async def _score_rows(
+    rows: list[dict],
+    *,
+    faithfulness: Faithfulness,
+    answer_relevancy: AnswerRelevancy,
+    context_precision: ContextPrecision,
+    context_recall: ContextRecall,
+) -> dict[str, list[float]]:
+    per_metric: dict[str, list[float]] = {
+        "faithfulness": [],
+        "answer_relevancy": [],
+        "context_precision": [],
+        "context_recall": [],
+    }
+    for i, row in enumerate(rows, start=1):
+        print(f"  scoring {i}/{len(rows)}: {row['question'][:60]}...")
+        user_input = row["question"]
+        response = row["answer"]
+        retrieved_contexts = row["contexts"]
+        reference = row["ground_truth"]
+
+        faithfulness_result = await faithfulness.ascore(
+            user_input=user_input, response=response, retrieved_contexts=retrieved_contexts
+        )
+        relevancy_result = await answer_relevancy.ascore(user_input=user_input, response=response)
+        precision_result = await context_precision.ascore(
+            user_input=user_input, reference=reference, retrieved_contexts=retrieved_contexts
+        )
+        recall_result = await context_recall.ascore(
+            user_input=user_input, retrieved_contexts=retrieved_contexts, reference=reference
+        )
+
+        per_metric["faithfulness"].append(float(faithfulness_result.value))
+        per_metric["answer_relevancy"].append(float(relevancy_result.value))
+        per_metric["context_precision"].append(float(precision_result.value))
+        per_metric["context_recall"].append(float(recall_result.value))
+    return per_metric
 
 
 def _print_summary(scores: dict[str, float]) -> bool:
@@ -121,26 +170,31 @@ def main() -> None:
     parser.add_argument("--api-url", default="http://localhost:8000")
     parser.add_argument("--api-key", default="")
     parser.add_argument("--offline", action="store_true")
+    parser.add_argument("--judge-model", default="gemma3:4b")
+    parser.add_argument("--ollama-url", default="http://localhost:11434")
     args = parser.parse_args()
 
     records: list[dict] = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
     print(f"Loaded {len(records)} evaluation examples from {DATASET_PATH}")
 
     print("Building dataset" + (" (offline mode)" if args.offline else " (live API)") + "...")
-    dataset = _build_hf_dataset(records, args.api_url, args.api_key, offline=args.offline)
+    rows = _build_rows(records, args.api_url, args.api_key, offline=args.offline)
 
-    print("Running RAGAS evaluation...")
-    result = evaluate(
-        dataset=dataset,
-        metrics=[Faithfulness(), AnswerRelevancy(), ContextPrecision(), ContextRecall()],
+    print(f"Running RAGAS evaluation (judge={args.judge_model} via {args.ollama_url})...")
+    ollama_client = AsyncOpenAI(base_url=f"{args.ollama_url.rstrip('/')}/v1", api_key="ollama")
+    judge_llm = llm_factory(args.judge_model, client=ollama_client, adapter="instructor")
+    judge_embeddings = OpenAIEmbeddings(client=ollama_client, model="nomic-embed-text")
+    per_metric = asyncio.run(
+        _score_rows(
+            rows,
+            faithfulness=Faithfulness(llm=judge_llm),
+            answer_relevancy=AnswerRelevancy(llm=judge_llm, embeddings=judge_embeddings),
+            context_precision=ContextPrecision(llm=judge_llm),
+            context_recall=ContextRecall(llm=judge_llm),
+        )
     )
 
-    scores: dict[str, float] = {
-        "faithfulness": _mean_score(result["faithfulness"]),
-        "answer_relevancy": _mean_score(result["answer_relevancy"]),
-        "context_precision": _mean_score(result["context_precision"]),
-        "context_recall": _mean_score(result["context_recall"]),
-    }
+    scores: dict[str, float] = {name: _mean_score(values) for name, values in per_metric.items()}
 
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
