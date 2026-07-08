@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import threading
 import time
 
-from localrag.api.jobs import Job, JobRegistry, JobStatus
+import pytest
+
+from localrag.api.jobs import Job, JobRegistry, JobStatus, TooManyPendingJobsError
 
 
 def _wait_for_terminal(registry: JobRegistry, job_id: str, timeout: float = 5.0) -> Job | None:
@@ -44,3 +47,16 @@ def test_job_registry_marks_failed_on_exception() -> None:
 def test_job_registry_get_returns_none_for_unknown_job() -> None:
     registry = JobRegistry()
     assert registry.get("nope") is None
+
+
+def test_job_registry_submit_rejects_past_pending_cap() -> None:
+    registry = JobRegistry()
+    release = threading.Event()
+    job_ids = [registry.submit(release.wait, max_pending=2) for _ in range(2)]
+
+    with pytest.raises(TooManyPendingJobsError):
+        registry.submit(lambda: {"value": 1}, max_pending=2)
+
+    release.set()
+    for job_id in job_ids:
+        _wait_for_terminal(registry, job_id)

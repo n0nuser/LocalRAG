@@ -14,7 +14,7 @@ import httpx
 
 from localrag import metrics as app_metrics
 from localrag.api.exceptions import IngestApiError, RagApiError
-from localrag.api.jobs import JobRegistry
+from localrag.api.jobs import JobRegistry, TooManyPendingJobsError
 from localrag.api.repository import ChromaCollectionRepository
 from localrag.api.schemas import (
     CollectionDeleteResponse,
@@ -89,6 +89,8 @@ def list_collections_response(
 def delete_collection_response(
     collection_repo: ChromaCollectionRepository, name: str
 ) -> CollectionDeleteResponse:
+    if name not in collection_repo.list_collection_names():
+        raise IngestApiError(HTTPStatus.NOT_FOUND, f"Collection '{name}' not found.")
     logger.warning("collection_delete name=%s", name)
     collection_repo.delete_collection(name)
     return CollectionDeleteResponse(status="ok")
@@ -234,7 +236,10 @@ def ingest_directory_async(
             ],
         }
 
-    job_id = job_registry.submit(work)
+    try:
+        job_id = job_registry.submit(work, max_pending=settings.max_pending_ingest_jobs)
+    except TooManyPendingJobsError as exc:
+        raise IngestApiError(HTTPStatus.TOO_MANY_REQUESTS, str(exc)) from exc
     logger.info("ingest_directory_async_submitted job_id=%s path=%s", job_id, path)
     return IngestJobResponse(job_id=job_id, status="pending")
 
@@ -356,16 +361,7 @@ def query_json(
 
     latency_ms = (time.perf_counter() - t0) * 1000
     used_model = request.model or engine.settings.ollama_llm_model
-    raw_sources = engine.extract_sources(contexts)
-    sources = [
-        SourceRef(
-            source=str(s.get("source", "")),
-            chunk_index=int(s.get("chunk_index", -1)),  # type: ignore[call-overload]
-            heading_path=s.get("heading_path"),  # type: ignore[arg-type]
-            chunk_type=s.get("chunk_type"),  # type: ignore[arg-type]
-        )
-        for s in raw_sources
-    ]
+    sources = [SourceRef(**s) for s in engine.extract_sources(contexts)]
 
     app_metrics.query_duration_seconds.observe(latency_ms / 1000)
     app_metrics.chunks_retrieved_total.inc(len(contexts))

@@ -16,3 +16,7 @@ class IngestApiError(HttpMappedError):
 
 class RagApiError(HttpMappedError):
     """Raised when RAG query cannot complete (embedding or vector store failure)."""
+
+
+class AgentApiError(HttpMappedError):
+    """Raised when the agent endpoint cannot run (e.g. missing provider credentials)."""
