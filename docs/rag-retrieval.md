@@ -143,6 +143,29 @@ per-corpus after inspecting typical top scores for known-good and known-bad
 queries. This is a lightweight heuristic gate, not a replacement for a real
 guardrails layer (e.g. NeMo Guardrails) in a regulated setting.
 
+## Query rewriting (optional)
+
+Disabled by default (`QUERY_REWRITE_ENABLED=false`). When enabled,
+`Retriever.retrieve` (`localrag/rag/retriever.py`) calls
+`rewrite_query(question, settings)` (`localrag/rag/query_rewrite.py`) before
+embedding/BM25 search. `rewrite_query` reuses
+`localrag/llm/factory.py::build_provider` (the same `ResilientProvider`-wrapped
+provider abstraction used for answering) with a retrieval-specific system
+prompt that asks for a short, keyword-dense reformulation of the question,
+preserving exact identifiers/codes/names verbatim.
+
+The rewrite is retrieval-only: it replaces the text sent to
+`OllamaEmbedder.embed_text` and `Bm25Index.query`, but the original question is
+still what gets passed to the reranker (if enabled) and to the final answer
+prompt — rewriting never affects citations or the text the LLM sees when
+generating the answer. On any provider failure (timeout, exception, empty
+response) `rewrite_query` logs and falls back to the original question, so
+retrieval degrades to its normal behavior rather than failing the request.
+
+This adds one extra LLM round-trip per query, so it is off by default; enable
+it when lexical/embedding mismatch between conversational questions and
+indexed document phrasing is hurting retrieval recall.
+
 ## Ingestion metadata dependencies
 
 Freshness and debugging depend on chunk metadata written during ingestion:

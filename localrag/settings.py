@@ -57,6 +57,11 @@ class Settings(BaseSettings):
     candidates and a local cross-encoder (``rerank_model``) re-scores and
     trims them to ``rag_top_k`` before freshness/expansion.
 
+    **Query rewriting** — When ``query_rewrite_enabled`` is true (default
+    false), an extra LLM round-trip rewrites the question into a keyword-dense
+    search query before embedding/BM25 retrieval; the original question is
+    still used for the final answer prompt.
+
     **API** — ``api_host`` / ``api_port`` are the uvicorn bind address and port.
 
     **Logging** — ``log_level`` is the minimum level for the ``localrag`` logger
@@ -102,6 +107,7 @@ class Settings(BaseSettings):
     rrf_k: int = 60
     freshness_half_life_days: float = 30.0
     parent_expansion_enabled: bool = True
+    query_rewrite_enabled: bool = False
     rag_system_prompt: str = (
         "You are a helpful assistant. Answer only based on the provided context."
     )
