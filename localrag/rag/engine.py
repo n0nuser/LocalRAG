@@ -102,10 +102,10 @@ class RAGEngine:
             if event["type"] == "token":
                 yield event
         logger.info("rag_stream_done")
-        yield {"type": "final", "sources": self._extract_sources(contexts), "low_confidence": False}
+        yield {"type": "final", "sources": self.extract_sources(contexts), "low_confidence": False}
 
     @staticmethod
-    def _extract_sources(contexts: list[dict[str, Any]]) -> list[dict[str, object]]:
+    def extract_sources(contexts: list[dict[str, Any]]) -> list[dict[str, object]]:
         seen: set[tuple[str, int]] = set()
         sources: list[dict[str, object]] = []
         for context in contexts:

@@ -96,7 +96,7 @@ def test_rag_engine_extract_sources_includes_heading_path_and_chunk_type() -> No
         provider=FakeProvider(tokens=[]),
     )
 
-    sources = engine._extract_sources(contexts)  # noqa: SLF001
+    sources = engine.extract_sources(contexts)
 
     assert sources == [
         {
