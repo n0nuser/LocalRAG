@@ -71,6 +71,7 @@ flowchart LR
 | LLM abstraction | `localrag/llm/` | `BaseLLMProvider`, Ollama/OpenAI/Anthropic providers, factory, cost estimator |
 | Agent | `localrag/agent/service.py`, `localrag/api/routers/agent.py` | Anthropic tool-use agent; `POST /agent/query` |
 | Eval | `evals/dataset.json`, `evals/run_evals.py` | RAGAS evaluation dataset and runner; `localrag eval` CLI command |
+| Audit log | `localrag/audit.py` | `write_audit_record` — durable local JSONL trail (question, sources, answer, model, latency); disabled by default via `AUDIT_LOG_PATH` |
 
 ## LLM abstraction
 

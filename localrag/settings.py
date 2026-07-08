@@ -96,6 +96,8 @@ class Settings(BaseSettings):
     upload_dir: str = "./data/uploads"
     upload_max_bytes: int = 100_000_000
 
+    audit_log_path: str = ""
+
     ocr_enabled: bool = True
     ocr_language: str = "eng"
     ocr_min_chars_per_page: int = 20

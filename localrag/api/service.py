@@ -30,8 +30,10 @@ from localrag.api.schemas import (
     RebuildCollectionResponse,
     SourceRef,
 )
+from localrag.audit import write_audit_record
 from localrag.ingestion.loader import SUPPORTED_EXTENSIONS
 from localrag.ingestion.service import IngestionResult, IngestionService
+from localrag.logging_config import request_id_ctx
 from localrag.ollama.schemas import OllamaTagsResponse, parse_ollama_json
 from localrag.rag.engine import RAGEngine
 from localrag.rag.exceptions import RetrievalError
@@ -320,13 +322,23 @@ def query_json(request: QueryRequest, engine: RAGEngine) -> QueryResponse:
         latency_ms,
         len(sources),
     )
-    return QueryResponse(
+    response = QueryResponse(
         answer="".join(answer_chunks).strip(),
         sources=sources,
         latency_ms=latency_ms,
         model=used_model,
         low_confidence=low_confidence,
     )
+    write_audit_record(
+        engine.settings.audit_log_path,
+        correlation_id=request_id_ctx.get(""),
+        question=request.question,
+        sources=[s.model_dump() for s in sources],
+        answer=response.answer,
+        model=used_model,
+        latency_ms=latency_ms,
+    )
+    return response
 
 
 def get_query_contexts(request: QueryRequest, engine: RAGEngine) -> list[dict[str, Any]]:
@@ -346,6 +358,7 @@ def iter_query_sse_events(
     engine: RAGEngine,
     contexts: list[dict[str, Any]],
 ) -> Iterator[dict[str, Any]]:
+    t0 = time.perf_counter()
     logger.info(
         "query_start model=%s n_results=%s question_chars=%s",
         request.model,
@@ -357,12 +370,24 @@ def iter_query_sse_events(
         question=request.question,
         model=request.model,
     )
+    answer_chunks: list[str] = []
     for event in stream:
         if event["type"] == "token":
-            yield {"event": "token", "data": str(event["token"])}
+            token = str(event["token"])
+            answer_chunks.append(token)
+            yield {"event": "token", "data": token}
         if event["type"] == "final":
             payload = {
                 "sources": event["sources"],
                 "low_confidence": event.get("low_confidence", False),
             }
+            write_audit_record(
+                engine.settings.audit_log_path,
+                correlation_id=request_id_ctx.get(""),
+                question=request.question,
+                sources=event["sources"],
+                answer="".join(answer_chunks).strip(),
+                model=request.model or engine.settings.ollama_llm_model,
+                latency_ms=(time.perf_counter() - t0) * 1000,
+            )
             yield {"event": "final", "data": json.dumps(payload)}
