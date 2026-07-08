@@ -3,15 +3,16 @@ from __future__ import annotations
 import hashlib
 import logging
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
 
 from localrag.ingestion.chunker import chunk_text
 from localrag.ingestion.embedder import OllamaEmbedder
 from localrag.ingestion.loader import list_supported_files, parse_file
 from localrag.ingestion.structural_chunker import Chunk, chunk_document
+from localrag.rag.bm25_index import Bm25Index
 from localrag.settings import Settings, is_path_allowed
 from localrag.storage.vector_store import VectorStore
 
@@ -51,7 +52,7 @@ class IngestionService:
     settings: Settings
     embedder: OllamaEmbedder
     vector_store: VectorStore
-    bm25_index: Any | None = None
+    bm25_index: Bm25Index | None = None
 
     def ingest_file(self, path: Path, embed_model: str | None = None) -> IngestionResult:
         return self.ingest_paths([path], embed_model=embed_model)
@@ -108,41 +109,29 @@ class IngestionService:
         return hashes
 
     def ingest_paths(self, paths: list[Path], embed_model: str | None = None) -> IngestionResult:
-        files_processed = 0
-        total_chunks = 0
-        processed_sources: list[str] = []
-        retry_queue: list[Path] = []
-
-        for resolved_path in self._allowed_paths(paths):
-            chunks_added, error = self._safe_ingest_one(resolved_path, embed_model)
-            if error is not None:
-                logger.warning(
-                    "ingest_file_failed_will_retry path=%s error=%s", resolved_path, error
-                )
-                retry_queue.append(resolved_path)
-                continue
-            if chunks_added is None:
-                continue
-            files_processed += 1
-            total_chunks += chunks_added
-            processed_sources.append(str(resolved_path))
+        files_processed, total_chunks, processed_sources, retry_queue = self._ingest_batch(
+            self._allowed_paths(paths),
+            embed_model,
+            log_fn=logger.warning,
+            log_event="ingest_file_failed_will_retry",
+        )
 
         failed_sources: list[FailedSource] = []
         if retry_queue:
             logger.info("ingest_retry_start count=%s", len(retry_queue))
-        for resolved_path in retry_queue:
-            chunks_added, error = self._safe_ingest_one(resolved_path, embed_model)
-            if error is not None:
-                logger.error(
-                    "ingest_file_failed_permanently path=%s error=%s", resolved_path, error
-                )
-                failed_sources.append(FailedSource(source=str(resolved_path), error=error))
-                continue
-            if chunks_added is None:
-                continue
-            files_processed += 1
-            total_chunks += chunks_added
-            processed_sources.append(str(resolved_path))
+            retry_paths = [path for path, _error in retry_queue]
+            retry_processed, retry_chunks, retry_sources, still_failed = self._ingest_batch(
+                retry_paths,
+                embed_model,
+                log_fn=logger.error,
+                log_event="ingest_file_failed_permanently",
+            )
+            files_processed += retry_processed
+            total_chunks += retry_chunks
+            processed_sources.extend(retry_sources)
+            failed_sources.extend(
+                FailedSource(source=str(path), error=error) for path, error in still_failed
+            )
 
         # Rebuilding the BM25 corpus is O(total chunks); do it once per batch, not per file.
         if self.bm25_index is not None and files_processed > 0:
@@ -154,6 +143,31 @@ class IngestionService:
             processed_sources=processed_sources,
             failed_sources=failed_sources,
         )
+
+    def _ingest_batch(
+        self,
+        paths: list[Path],
+        embed_model: str | None,
+        *,
+        log_fn: Callable[..., None],
+        log_event: str,
+    ) -> tuple[int, int, list[str], list[tuple[Path, str]]]:
+        files_processed = 0
+        total_chunks = 0
+        processed_sources: list[str] = []
+        failed: list[tuple[Path, str]] = []
+        for resolved_path in paths:
+            chunks_added, error = self._safe_ingest_one(resolved_path, embed_model)
+            if error is not None:
+                log_fn("%s path=%s error=%s", log_event, resolved_path, error)
+                failed.append((resolved_path, error))
+                continue
+            if chunks_added is None:
+                continue
+            files_processed += 1
+            total_chunks += chunks_added
+            processed_sources.append(str(resolved_path))
+        return files_processed, total_chunks, processed_sources, failed
 
     def _safe_ingest_one(
         self, resolved_path: Path, embed_model: str | None

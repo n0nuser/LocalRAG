@@ -76,7 +76,7 @@ class AgentResponse:
     answer: str
     tool_used: str
     reasoning: str
-    sources: list[dict[str, object]] = field(default_factory=list)
+    sources: list[dict[str, Any]] = field(default_factory=list)
     latency_ms: float = 0.0
     model: str = ""
 
@@ -102,7 +102,7 @@ def run_agent(
     tool_used = "unknown"
     reasoning = ""
     answer = ""
-    sources: list[dict[str, object]] = []
+    sources: list[dict[str, Any]] = []
 
     for block in resp.content:
         if block.type != "tool_use":

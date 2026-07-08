@@ -105,9 +105,9 @@ class RAGEngine:
         yield {"type": "final", "sources": self.extract_sources(contexts), "low_confidence": False}
 
     @staticmethod
-    def extract_sources(contexts: list[dict[str, Any]]) -> list[dict[str, object]]:
+    def extract_sources(contexts: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen: set[tuple[str, int]] = set()
-        sources: list[dict[str, object]] = []
+        sources: list[dict[str, Any]] = []
         for context in contexts:
             source = str(context.get("source", "unknown"))
             chunk_index = int(context.get("chunk_index", -1))

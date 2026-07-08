@@ -69,6 +69,10 @@ def test_health_success_and_collections_endpoints(tmp_path: Path) -> None:
     assert deleted.json() == {"status": "ok"}
     assert repo.deleted == ["col-1"]
 
+    missing = client.delete("/collections/does-not-exist")
+    assert missing.status_code == 404
+    assert repo.deleted == ["col-1"]
+
     app.dependency_overrides.clear()
 
 

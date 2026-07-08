@@ -27,6 +27,10 @@ class JobStatus(StrEnum):
     FAILED = "failed"
 
 
+class TooManyPendingJobsError(Exception):
+    """Raised when a submission would exceed the configured pending/running job cap."""
+
+
 @dataclass
 class Job:
     job_id: str
@@ -44,7 +48,7 @@ class JobRegistry:
         default_factory=lambda: ThreadPoolExecutor(max_workers=2, thread_name_prefix="ingest-job")
     )
 
-    def submit(self, work: Callable[[], dict[str, Any]]) -> str:
+    def submit(self, work: Callable[[], dict[str, Any]], *, max_pending: int = 10) -> str:
         job_id = uuid4().hex
         job = Job(
             job_id=job_id,
@@ -52,6 +56,12 @@ class JobRegistry:
             created_at=datetime.now(UTC).isoformat(),
         )
         with self._lock:
+            pending = sum(
+                1 for j in self._jobs.values() if j.status in (JobStatus.PENDING, JobStatus.RUNNING)
+            )
+            if pending >= max_pending:
+                message = f"{pending} ingest jobs already pending/running (max {max_pending})."
+                raise TooManyPendingJobsError(message)
             self._jobs[job_id] = job
         self._executor.submit(self._run, job_id, work)
         return job_id
