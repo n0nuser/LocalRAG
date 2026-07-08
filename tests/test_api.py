@@ -50,7 +50,7 @@ class StubEngine:
         yield {"type": "final", "sources": [{"source": "doc.md", "chunk_index": 1}]}
 
     @staticmethod
-    def _extract_sources(contexts: list[dict[str, Any]]) -> list[dict[str, object]]:
+    def extract_sources(contexts: list[dict[str, Any]]) -> list[dict[str, object]]:
         return [
             {"source": str(c.get("source", "")), "chunk_index": int(c.get("chunk_index", -1))}
             for c in contexts
