@@ -142,3 +142,37 @@ def test_rag_engine_stream_answer_propagates_provider_error() -> None:
 
     with pytest.raises(RuntimeError, match="provider down"):
         list(engine.stream_answer(question="Q", model="llm", n_results=1))
+
+
+def test_rag_engine_short_circuits_on_low_confidence_context() -> None:
+    settings = Settings(rag_min_context_score=0.5)
+    contexts = [{"text": "weak match", "source": "a.md", "chunk_index": 0, "score": 0.1}]
+    provider = FakeProvider(tokens=["should not be used"])
+    engine = RAGEngine(
+        settings=settings, retriever=StubRetriever(contexts=contexts), provider=provider
+    )
+
+    events = list(engine.stream_answer(question="Q", n_results=1))
+
+    token_events = [ev for ev in events if ev["type"] == "token"]
+    expected_refusal = "I don't have enough information in the ingested documents to answer that."
+    assert token_events[0]["token"] == expected_refusal
+    final = events[-1]
+    assert final["low_confidence"] is True
+    assert final["sources"] == []
+    assert provider.prompts_seen == []
+
+
+def test_rag_engine_empty_contexts_are_low_confidence_when_threshold_enabled() -> None:
+    settings = Settings(rag_min_context_score=0.1)
+    provider = FakeProvider(tokens=[])
+    engine = RAGEngine(settings=settings, retriever=StubRetriever(contexts=[]), provider=provider)
+
+    events = list(engine.stream_answer(question="Q", n_results=1))
+    final = events[-1]
+    assert final["low_confidence"] is True
+
+
+def test_rag_engine_low_confidence_disabled_by_default() -> None:
+    settings = Settings()
+    assert settings.rag_min_context_score == 0.0

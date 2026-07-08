@@ -286,6 +286,7 @@ def query_json(request: QueryRequest, engine: RAGEngine) -> QueryResponse:
         raise RagApiError(int(exc.status_code), exc.detail) from exc
 
     answer_chunks: list[str] = []
+    low_confidence = False
     for event in engine.stream_chat_from_contexts(
         contexts=contexts,
         question=request.question,
@@ -293,6 +294,8 @@ def query_json(request: QueryRequest, engine: RAGEngine) -> QueryResponse:
     ):
         if event["type"] == "token":
             answer_chunks.append(str(event["token"]))
+        if event["type"] == "final":
+            low_confidence = bool(event.get("low_confidence", False))
 
     latency_ms = (time.perf_counter() - t0) * 1000
     used_model = request.model or engine.settings.ollama_llm_model
@@ -317,6 +320,7 @@ def query_json(request: QueryRequest, engine: RAGEngine) -> QueryResponse:
         sources=sources,
         latency_ms=latency_ms,
         model=used_model,
+        low_confidence=low_confidence,
     )
 
 
@@ -352,5 +356,8 @@ def iter_query_sse_events(
         if event["type"] == "token":
             yield {"event": "token", "data": str(event["token"])}
         if event["type"] == "final":
-            payload = {"sources": event["sources"]}
+            payload = {
+                "sources": event["sources"],
+                "low_confidence": event.get("low_confidence", False),
+            }
             yield {"event": "final", "data": json.dumps(payload)}

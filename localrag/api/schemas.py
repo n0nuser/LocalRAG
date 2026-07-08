@@ -247,6 +247,14 @@ class QueryResponse(BaseModel):
         description="Total wall-clock latency in milliseconds.", examples=[312.5]
     )
     model: str = Field(description="Model tag used to generate the answer.", examples=["llama3.2"])
+    low_confidence: bool = Field(
+        default=False,
+        description=(
+            "True when the top retrieved context scored below `RAG_MIN_CONTEXT_SCORE` and "
+            "the answer is a canned refusal instead of a generated response."
+        ),
+        examples=[False],
+    )
 
 
 class AgentQueryRequest(BaseModel):
