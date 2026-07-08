@@ -333,6 +333,53 @@ def test_ingestion_service_ingest_one_writes_content_hash_and_git_metadata(tmp_p
     assert all(md["git_commit"] == "" for md in metadatas)  # type: ignore[union-attr]
 
 
+def test_ingestion_service_writes_tenant_id_from_settings(tmp_path: Path) -> None:
+    allowed_root = tmp_path / "allowed"
+    allowed_root.mkdir()
+    path = allowed_root / "a.md"
+    path.write_text("hello world", encoding="utf-8")
+
+    settings = Settings(
+        ingest_roots=[str(allowed_root)],
+        chunk_chars=100,
+        chunk_overlap_chars=0,
+        tenant_id="team-a",
+    )
+    embedder = StubEmbedder(seen_texts_batches=[])
+    vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
+    service = IngestionService(
+        settings=settings,
+        embedder=embedder,  # type: ignore[arg-type]
+        vector_store=vector_store,  # type: ignore[arg-type]
+    )
+
+    service.ingest_paths([path])
+
+    metadatas = vector_store.added[0]["metadatas"]
+    assert all(md["tenant_id"] == "team-a" for md in metadatas)  # type: ignore[union-attr]
+
+
+def test_ingestion_service_tenant_id_defaults_to_empty_string(tmp_path: Path) -> None:
+    allowed_root = tmp_path / "allowed"
+    allowed_root.mkdir()
+    path = allowed_root / "a.md"
+    path.write_text("hello world", encoding="utf-8")
+
+    settings = Settings(ingest_roots=[str(allowed_root)], chunk_chars=100, chunk_overlap_chars=0)
+    embedder = StubEmbedder(seen_texts_batches=[])
+    vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
+    service = IngestionService(
+        settings=settings,
+        embedder=embedder,  # type: ignore[arg-type]
+        vector_store=vector_store,  # type: ignore[arg-type]
+    )
+
+    service.ingest_paths([path])
+
+    metadatas = vector_store.added[0]["metadatas"]
+    assert all(md["tenant_id"] == "" for md in metadatas)  # type: ignore[union-attr]
+
+
 def test_ingestion_service_rebuild_skips_unchanged_sources(tmp_path: Path) -> None:
     allowed_root = tmp_path / "allowed"
     allowed_root.mkdir()
