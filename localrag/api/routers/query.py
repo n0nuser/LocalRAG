@@ -4,9 +4,10 @@ from fastapi import APIRouter, Depends
 from sse_starlette import EventSourceResponse
 
 from localrag.api import service as api_service
-from localrag.api.dependencies import get_engine, require_api_key
+from localrag.api.dependencies import get_engine, get_query_cache, require_api_key
 from localrag.api.schemas import QueryRequest, QueryResponse
 from localrag.rag.engine import RAGEngine
+from localrag.rag.query_cache import QueryCache
 
 router = APIRouter(prefix="", tags=["query"], dependencies=[Depends(require_api_key)])
 
@@ -15,9 +16,10 @@ router = APIRouter(prefix="", tags=["query"], dependencies=[Depends(require_api_
 def query(
     request: QueryRequest,
     engine: RAGEngine = Depends(get_engine),
+    query_cache: QueryCache = Depends(get_query_cache),
 ) -> QueryResponse:
     """Retrieve context and return a complete JSON response with answer, sources, and latency."""
-    return api_service.query_json(request, engine)
+    return api_service.query_json(request, engine, query_cache)
 
 
 @router.post("/query/stream", summary="Query (SSE stream)")

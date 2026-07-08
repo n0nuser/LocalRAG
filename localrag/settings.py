@@ -124,6 +124,10 @@ class Settings(BaseSettings):
     rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     rerank_fetch_k: int = 20
 
+    # In-process TTL cache for repeated/near-identical queries (0 disables; no external cache).
+    query_cache_ttl_seconds: float = 0.0
+    query_cache_maxsize: int = 256
+
     api_host: str = "0.0.0.0"  # nosec B104 — configurable bind address, default intentional
     api_port: int = 8000
 

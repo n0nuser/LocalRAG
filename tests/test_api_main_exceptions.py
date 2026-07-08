@@ -14,7 +14,7 @@ from localrag.api.dependencies import (
 )
 from localrag.api.main import app
 from localrag.rag.exceptions import RetrievalError
-from localrag.settings import Settings
+from localrag.settings import Settings, get_settings
 
 
 @respx.mock
@@ -72,6 +72,7 @@ class FailingRetriever:
 @dataclass
 class FailingQueryEngine:
     retriever: FailingRetriever = field(default_factory=FailingRetriever)
+    settings: Settings = field(default_factory=get_settings)
 
 
 def test_query_maps_retrieval_failure_to_502() -> None:
