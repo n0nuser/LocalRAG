@@ -67,6 +67,11 @@ class Settings(BaseSettings):
     **Logging** — ``log_level`` is the minimum level for the ``localrag`` logger
     (``DEBUG``, ``INFO``, ``WARNING``, ``ERROR``). Used when the API starts and
     when the CLI process starts.
+
+    **Tenant tagging** — ``tenant_id`` (empty by default) is written to every
+    chunk's metadata at ingest time and can be used as a
+    ``QueryRequest.metadata_filter`` key (``{"tenant_id": "..."}``) to scope
+    retrieval to one tenant. See `docs/rag-retrieval.md`.
     """
 
     model_config = SettingsConfigDict(
@@ -151,6 +156,11 @@ class Settings(BaseSettings):
     llm_circuit_reset_timeout_seconds: float = 30.0
 
     log_level: str = "INFO"
+
+    # Optional tenant tag written to every chunk's metadata and usable as a
+    # QueryRequest.metadata_filter key ({"tenant_id": "..."}). Empty = untagged
+    # (single-tenant deployments, the common case, pay zero extra cost).
+    tenant_id: str = ""
 
 
 @lru_cache(maxsize=1)

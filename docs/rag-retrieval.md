@@ -166,6 +166,27 @@ This adds one extra LLM round-trip per query, so it is off by default; enable
 it when lexical/embedding mismatch between conversational questions and
 indexed document phrasing is hurting retrieval recall.
 
+## Tenant tagging (optional)
+
+Per Chroma's own multi-tenancy guidance, this project uses a `tenant_id`
+metadata field filtered at query time (via the metadata pre-filtering above)
+rather than per-tenant Chroma collections, which the Chroma Cookbook
+explicitly warns fragments the HNSW index and breaks whole-collection
+operations like `Bm25Index.from_vector_store`.
+
+`TENANT_ID` (`localrag/settings.py`, empty by default) is written to every
+chunk's metadata at ingest time (`localrag/ingestion/service.py::_ingest_one`).
+A caller scopes retrieval to one tenant by passing
+`{"question": "...", "metadata_filter": {"tenant_id": "team-a"}}` to
+`POST /query` — no new retrieval code is needed since this reuses the
+`metadata_filter` mechanism described above.
+
+This is an equality-filter convenience for a small-team shared deployment, not
+a security boundary — anyone with API access can still query across all
+`tenant_id` values by omitting the filter; pair with `API_KEY` and, if genuine
+per-tenant isolation is ever required, revisit as a dedicated
+(out-of-scope-for-this-plan) access-control project.
+
 ## Ingestion metadata dependencies
 
 Freshness and debugging depend on chunk metadata written during ingestion:
@@ -178,6 +199,7 @@ Freshness and debugging depend on chunk metadata written during ingestion:
 - `content_hash`
 - `source_mtime`
 - `git_commit`
+- `tenant_id`
 
 The retriever returns `freshness_factor` and `ingested_at` in contexts so rank
 decisions are visible in API and test traces.

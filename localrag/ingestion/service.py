@@ -203,6 +203,7 @@ class IngestionService:
                 "content_hash": content_hash,
                 "source_mtime": source_mtime,
                 "git_commit": git_commit,
+                "tenant_id": self.settings.tenant_id,
             }
             for index, chunk in enumerate(structural_chunks)
         ]
