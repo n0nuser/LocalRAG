@@ -108,16 +108,17 @@ class IngestionService:
         return hashes
 
     def ingest_paths(self, paths: list[Path], embed_model: str | None = None) -> IngestionResult:
-        total_chunks = 0
         files_processed = 0
+        total_chunks = 0
         processed_sources: list[str] = []
         retry_queue: list[Path] = []
 
         for resolved_path in self._allowed_paths(paths):
-            try:
-                chunks_added = self._ingest_one(resolved_path, embed_model)
-            except Exception as exc:  # retried once below, not fatal yet
-                logger.warning("ingest_file_failed_will_retry path=%s error=%s", resolved_path, exc)
+            chunks_added, error = self._safe_ingest_one(resolved_path, embed_model)
+            if error is not None:
+                logger.warning(
+                    "ingest_file_failed_will_retry path=%s error=%s", resolved_path, error
+                )
                 retry_queue.append(resolved_path)
                 continue
             if chunks_added is None:
@@ -130,11 +131,12 @@ class IngestionService:
         if retry_queue:
             logger.info("ingest_retry_start count=%s", len(retry_queue))
         for resolved_path in retry_queue:
-            try:
-                chunks_added = self._ingest_one(resolved_path, embed_model)
-            except Exception as exc:  # collected for the caller, not raised
-                logger.error("ingest_file_failed_permanently path=%s error=%s", resolved_path, exc)
-                failed_sources.append(FailedSource(source=str(resolved_path), error=str(exc)))
+            chunks_added, error = self._safe_ingest_one(resolved_path, embed_model)
+            if error is not None:
+                logger.error(
+                    "ingest_file_failed_permanently path=%s error=%s", resolved_path, error
+                )
+                failed_sources.append(FailedSource(source=str(resolved_path), error=error))
                 continue
             if chunks_added is None:
                 continue
@@ -152,6 +154,20 @@ class IngestionService:
             processed_sources=processed_sources,
             failed_sources=failed_sources,
         )
+
+    def _safe_ingest_one(
+        self, resolved_path: Path, embed_model: str | None
+    ) -> tuple[int | None, str | None]:
+        """Ingest one file, catching exceptions instead of raising.
+
+        Returns `(chunks_added, None)` on success (`chunks_added` is None when the
+        file produced no chunks and was skipped), or `(None, error_message)` if
+        `_ingest_one` raised. Caller decides whether to log/retry/report the error.
+        """
+        try:
+            return self._ingest_one(resolved_path, embed_model), None
+        except Exception as exc:
+            return None, str(exc)
 
     def _allowed_paths(self, paths: list[Path]) -> list[Path]:
         allowed: list[Path] = []

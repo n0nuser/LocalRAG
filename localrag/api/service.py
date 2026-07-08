@@ -356,7 +356,7 @@ def query_json(
 
     latency_ms = (time.perf_counter() - t0) * 1000
     used_model = request.model or engine.settings.ollama_llm_model
-    raw_sources = engine._extract_sources(contexts)  # noqa: SLF001
+    raw_sources = engine.extract_sources(contexts)
     sources = [
         SourceRef(
             source=str(s.get("source", "")),
