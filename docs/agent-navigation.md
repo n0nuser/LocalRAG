@@ -31,6 +31,7 @@ Agents (and humans) move faster when they:
 | API app factory (lifespan, middleware, error handlers) | `localrag/api/main.py` |
 | HTTP ingest path validation (`INGEST_ROOTS`, URL decode) | `localrag/api/service.py`, `localrag/settings.py` (`is_path_allowed`), `localrag/api/exceptions.py` + `main.py` handler |
 | HTTP multipart file upload ingest (`POST /ingest/upload`) | `localrag/api/routers/ingest.py` (`ingest_upload`, Swagger limitations in `_UPLOAD_DESCRIPTION`), `localrag/api/service.py` (`ingest_upload`, `_stream_upload_to_disk`), `UPLOAD_DIR` / `UPLOAD_MAX_BYTES` in `localrag/settings.py` |
+| Background ingest jobs | `localrag/api/jobs.py`, `localrag/api/routers/ingest.py` (async routes), `localrag/api/service.py` (`ingest_directory_async`, `get_ingest_job`) |
 | DI / shared service instances | `localrag/api/dependencies.py` |
 | Log format, levels, request ID | `localrag/logging_config.py`, `localrag/api/middleware.py`, `LOG_LEVEL` in `localrag/settings.py` |
 | API key auth | `localrag/api/dependencies.py` (`require_api_key`), `API_KEY` in `localrag/settings.py` |
