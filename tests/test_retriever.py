@@ -151,6 +151,49 @@ def test_retriever_expands_top_hits_to_full_heading_section() -> None:
     assert contexts[0]["text"] == "Section intro sentence."
 
 
+def test_retriever_applies_reranker_over_widened_candidate_pool() -> None:
+    @dataclass
+    class TwoDocStore:
+        @staticmethod
+        def query(
+            embedding: list[float], top_k: int, where: dict[str, object] | None = None
+        ) -> dict[str, object]:
+            _ = (embedding, top_k, where)
+            return {
+                "documents": [["nearby vector text", "exact token text"]],
+                "metadatas": [
+                    [
+                        {"source": "nearby.md", "chunk_index": 0},
+                        {"source": "exact.md", "chunk_index": 1},
+                    ]
+                ],
+                "distances": [[0.01, 0.4]],
+            }
+
+    @dataclass
+    class FakeReranker:
+        calls: list[tuple[str, int]]
+
+        def rerank(
+            self, question: str, contexts: list[dict[str, object]], top_k: int
+        ) -> list[dict[str, object]]:
+            self.calls.append((question, top_k))
+            return list(reversed(contexts))[:top_k]
+
+    reranker = FakeReranker(calls=[])
+    retriever = Retriever(
+        settings=Settings(retrieval_mode="vector", rerank_fetch_k=2),
+        embedder=StubEmbedder(),  # type: ignore[arg-type]
+        vector_store=TwoDocStore(),  # type: ignore[arg-type]
+        reranker=reranker,  # type: ignore[arg-type]
+    )
+
+    contexts = retriever.retrieve("q", n_results=1)
+
+    assert reranker.calls == [("q", 1)]
+    assert contexts[0]["source"] == "exact.md"
+
+
 def test_retriever_skips_expansion_when_heading_path_empty() -> None:
     @dataclass
     class FlatStore:

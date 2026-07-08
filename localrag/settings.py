@@ -49,6 +49,11 @@ class Settings(BaseSettings):
     non-empty ``heading_path`` are expanded to their full sibling-chunk
     section before prompting; set false to disable.
 
+    **Reranking** — When ``rerank_enabled`` is true (default false, requires
+    ``uv sync --extra rerank``), retrieval over-fetches ``rerank_fetch_k``
+    candidates and a local cross-encoder (``rerank_model``) re-scores and
+    trims them to ``rag_top_k`` before freshness/expansion.
+
     **API** — ``api_host`` / ``api_port`` are the uvicorn bind address and port.
 
     **Logging** — ``log_level`` is the minimum level for the ``localrag`` logger
@@ -96,6 +101,11 @@ class Settings(BaseSettings):
     rag_system_prompt: str = (
         "You are a helpful assistant. Answer only based on the provided context."
     )
+
+    # Optional cross-encoder reranking (requires `uv sync --extra rerank`).
+    rerank_enabled: bool = False
+    rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    rerank_fetch_k: int = 20
 
     api_host: str = "0.0.0.0"  # nosec B104 — configurable bind address, default intentional
     api_port: int = 8000

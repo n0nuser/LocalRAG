@@ -104,6 +104,26 @@ skip expansion and prompt with only the originally matched chunk text. Hits
 with an empty `heading_path`, or whose section has only a single chunk, are
 left unexpanded.
 
+## Cross-encoder reranking (optional)
+
+Disabled by default (`RERANK_ENABLED=false`). When enabled, `Retriever.retrieve`
+(`localrag/rag/retriever.py`) over-fetches `RERANK_FETCH_K` candidates from the
+vector/hybrid path instead of the default `top_k * 2`, and a local
+`cross-encoder/ms-marco-MiniLM-L-6-v2` model (`RERANK_MODEL`, served via
+`sentence-transformers` — install with `uv sync --extra rerank`) re-scores each
+`(question, chunk_text)` pair through `CrossEncoderReranker.rerank`
+(`localrag/rag/reranker.py`) and trims the candidate list down to `top_k`,
+best-first, adding a `rerank_score` key to each context.
+
+Reranking runs on the raw fused/vector candidate list — **before**
+`apply_freshness` and `_expand_to_parent_section` — so it acts as the final
+relevance step, and freshness decay / parent-section expansion still apply to
+the reranked, already-trimmed top-`k` results (matching how those two behave
+when reranking is disabled). `localrag/api/dependencies.py::get_reranker`
+builds the `CrossEncoderReranker` only when `RERANK_ENABLED=true`, mirroring
+the pluggable-provider shape in `localrag/llm/factory.py` (nothing imports
+`sentence-transformers` unless the feature is turned on).
+
 ## Ingestion metadata dependencies
 
 Freshness and debugging depend on chunk metadata written during ingestion:
