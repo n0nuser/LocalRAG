@@ -189,6 +189,20 @@ class IngestDirectoryResponse(BaseModel):
     )
 
 
+class IngestJobResponse(BaseModel):
+    job_id: str = Field(description="Opaque identifier to poll via GET /ingest/jobs/{job_id}.")
+    status: str = Field(description="Initial job status.", examples=["pending"])
+
+
+class IngestJobStatusResponse(BaseModel):
+    job_id: str
+    status: str = Field(examples=["pending", "running", "done", "failed"])
+    result: dict[str, object] | None = Field(
+        default=None, description="Ingest result payload once status is 'done'."
+    )
+    error: str | None = Field(default=None, description="Error message when status is 'failed'.")
+
+
 class HealthResponse(BaseModel):
     status: str = Field(
         description="Overall API process status.",

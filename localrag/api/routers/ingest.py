@@ -3,12 +3,20 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from localrag.api import service as api_service
-from localrag.api.dependencies import get_api_settings, get_ingestion_service, require_api_key
+from localrag.api.dependencies import (
+    get_api_settings,
+    get_ingestion_service,
+    get_job_registry,
+    require_api_key,
+)
+from localrag.api.jobs import JobRegistry
 from localrag.api.schemas import (
     IngestDirectoryRequest,
     IngestDirectoryResponse,
     IngestFileRequest,
     IngestFileResponse,
+    IngestJobResponse,
+    IngestJobStatusResponse,
 )
 from localrag.ingestion.service import IngestionService
 from localrag.settings import Settings
@@ -86,3 +94,30 @@ def ingest_directory(
     ingestion_service: IngestionService = Depends(get_ingestion_service),
 ) -> IngestDirectoryResponse:
     return api_service.ingest_directory(request, settings, ingestion_service)
+
+
+@router.post(
+    "/ingest/directory/async",
+    response_model=IngestJobResponse,
+    status_code=202,
+    summary="Ingest a directory in the background",
+    description=(
+        "Submits a directory ingest to an in-process background job (no external broker; "
+        "job state is lost on process restart). Poll GET /ingest/jobs/{job_id} for status."
+    ),
+)
+def ingest_directory_async(
+    request: IngestDirectoryRequest,
+    settings: Settings = Depends(get_api_settings),
+    ingestion_service: IngestionService = Depends(get_ingestion_service),
+    job_registry: JobRegistry = Depends(get_job_registry),
+) -> IngestJobResponse:
+    return api_service.ingest_directory_async(request, settings, ingestion_service, job_registry)
+
+
+@router.get("/ingest/jobs/{job_id}", response_model=IngestJobStatusResponse)
+def get_ingest_job(
+    job_id: str,
+    job_registry: JobRegistry = Depends(get_job_registry),
+) -> IngestJobStatusResponse:
+    return api_service.get_ingest_job(job_id, job_registry)

@@ -6,6 +6,7 @@ from http import HTTPStatus
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
 
+from localrag.api.jobs import JobRegistry
 from localrag.api.repository import ChromaCollectionRepository
 from localrag.ingestion.embedder import OllamaEmbedder
 from localrag.ingestion.service import IngestionService
@@ -80,6 +81,11 @@ def get_ingestion_service() -> IngestionService:
 @lru_cache(maxsize=1)
 def get_bm25_index() -> Bm25Index:
     return Bm25Index.from_vector_store(get_vector_store())
+
+
+@lru_cache(maxsize=1)
+def get_job_registry() -> JobRegistry:
+    return JobRegistry()
 
 
 def require_api_key(

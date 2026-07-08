@@ -14,6 +14,7 @@ import httpx
 
 from localrag import metrics as app_metrics
 from localrag.api.exceptions import IngestApiError, RagApiError
+from localrag.api.jobs import JobRegistry
 from localrag.api.repository import ChromaCollectionRepository
 from localrag.api.schemas import (
     CollectionDeleteResponse,
@@ -24,6 +25,8 @@ from localrag.api.schemas import (
     IngestDirectoryResponse,
     IngestFileRequest,
     IngestFileResponse,
+    IngestJobResponse,
+    IngestJobStatusResponse,
     QueryRequest,
     QueryResponse,
     RebuildCollectionRequest,
@@ -202,6 +205,45 @@ def ingest_directory(
         failed_sources=[
             FailedSourceRef(source=f.source, error=f.error) for f in result.failed_sources
         ],
+    )
+
+
+def ingest_directory_async(
+    request: IngestDirectoryRequest,
+    settings: Settings,
+    ingestion_service: IngestionService,
+    job_registry: JobRegistry,
+) -> IngestJobResponse:
+    path = path_from_ingest_request(request.path).resolve()
+    if not path.is_dir():
+        raise IngestApiError(HTTPStatus.BAD_REQUEST, "Path must be an existing directory.")
+    if not is_path_allowed(path, settings.ingest_roots):
+        raise IngestApiError(HTTPStatus.FORBIDDEN, "Path is not under configured ingest roots.")
+
+    def work() -> dict[str, Any]:
+        result = ingestion_service.ingest_directory(
+            path, recursive=request.recursive, embed_model=request.embed_model
+        )
+        return {
+            "status": "ok",
+            "files_processed": result.files_processed,
+            "total_chunks": result.total_chunks,
+            "failed_sources": [
+                {"source": f.source, "error": f.error} for f in result.failed_sources
+            ],
+        }
+
+    job_id = job_registry.submit(work)
+    logger.info("ingest_directory_async_submitted job_id=%s path=%s", job_id, path)
+    return IngestJobResponse(job_id=job_id, status="pending")
+
+
+def get_ingest_job(job_id: str, job_registry: JobRegistry) -> IngestJobStatusResponse:
+    job = job_registry.get(job_id)
+    if job is None:
+        raise IngestApiError(HTTPStatus.NOT_FOUND, f"Unknown job id '{job_id}'.")
+    return IngestJobStatusResponse(
+        job_id=job.job_id, status=job.status.value, result=job.result, error=job.error
     )
 
 
