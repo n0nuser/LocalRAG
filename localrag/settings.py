@@ -47,7 +47,10 @@ class Settings(BaseSettings):
     ``rag_system_prompt`` is the system message for the answering model.
     When ``parent_expansion_enabled`` is true (default), top hits with a
     non-empty ``heading_path`` are expanded to their full sibling-chunk
-    section before prompting; set false to disable.
+    section before prompting; set false to disable. ``rag_min_context_score``
+    gates generation on retrieval confidence: below this score (or with no
+    contexts at all) the engine returns a canned refusal instead of calling
+    the LLM; ``0`` (default) disables the gate.
 
     **Reranking** — When ``rerank_enabled`` is true (default false, requires
     ``uv sync --extra rerank``), retrieval over-fetches ``rerank_fetch_k``
@@ -93,6 +96,7 @@ class Settings(BaseSettings):
     ocr_min_chars_per_page: int = 20
 
     rag_top_k: int = 5
+    rag_min_context_score: float = 0.0
     retrieval_mode: str = "hybrid"
     bm25_weight: float = 0.5
     rrf_k: int = 60

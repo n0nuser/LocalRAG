@@ -124,6 +124,25 @@ builds the `CrossEncoderReranker` only when `RERANK_ENABLED=true`, mirroring
 the pluggable-provider shape in `localrag/llm/factory.py` (nothing imports
 `sentence-transformers` unless the feature is turned on).
 
+## Low-confidence refusal gate
+
+`RAGEngine.stream_chat_from_contexts` (`localrag/rag/engine.py`) can short-circuit
+before calling the LLM at all: if the top retrieved context's `score` is below
+`RAG_MIN_CONTEXT_SCORE`, or no contexts were retrieved while the gate is enabled,
+`_is_low_confidence` returns `True` and `_low_confidence_response` yields a single
+canned refusal token plus a `final` event with `sources: []` and
+`low_confidence: True`. Otherwise generation proceeds as usual and the `final`
+event carries `low_confidence: False`. The flag is surfaced end-to-end:
+`QueryResponse.low_confidence` in `POST /query`, and in the `final` SSE payload
+for `POST /query/stream`.
+
+Disabled by default (`RAG_MIN_CONTEXT_SCORE=0.0`). Because the score scale
+depends on the embedding model and `RETRIEVAL_MODE` (raw cosine/L2 similarity
+vs. fused hybrid/RRF scores), there is no universal threshold — tune it
+per-corpus after inspecting typical top scores for known-good and known-bad
+queries. This is a lightweight heuristic gate, not a replacement for a real
+guardrails layer (e.g. NeMo Guardrails) in a regulated setting.
+
 ## Ingestion metadata dependencies
 
 Freshness and debugging depend on chunk metadata written during ingestion:
