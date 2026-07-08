@@ -187,6 +187,39 @@ a security boundary — anyone with API access can still query across all
 per-tenant isolation is ever required, revisit as a dedicated
 (out-of-scope-for-this-plan) access-control project.
 
+## Query caching (optional)
+
+Disabled by default (`QUERY_CACHE_TTL_SECONDS=0`). When enabled (set a positive
+TTL in seconds), `POST /query` (`localrag/api/routers/query.py`) is served
+through an in-process `QueryCache` (`localrag/rag/query_cache.py`), wired via
+`localrag/api/dependencies.py::get_query_cache` (an `lru_cache`-memoized
+singleton, so all requests within one process share the same cache) and
+passed into `localrag.api.service.query_json`.
+
+Cache keys are an exact-match SHA-256 hash over the normalized question
+(stripped, lowercased), `model`, `n_results`, and `retrieval_mode`
+(`make_cache_key`) — this is not semantic/fuzzy matching, so any change to
+wording, model, result count, or retrieval mode is a cache miss. Cached values
+are the full serialized `QueryResponse` (`response.model_dump()`), so a cache
+hit replays `answer`, `sources` (including `heading_path`/`chunk_type`),
+`latency_ms`, `model`, and `low_confidence` exactly as they were on the
+original request — a cached low-confidence refusal is served back as
+low-confidence, not silently upgraded.
+
+`QUERY_CACHE_MAXSIZE` bounds the number of entries (least-recently-used
+eviction via `cachetools.TTLCache`) independent of the TTL.
+
+This cache is in-process only — it is **not** shared across multiple
+`uvicorn` worker processes (each worker gets its own `QueryCache` instance),
+so cache hit rate degrades as worker count increases. If LocalRAG ever runs
+multi-process/multi-replica in production, a shared external cache (e.g.
+Redis) would be the upgrade path; that is out of scope for the current
+single-process deployment model.
+
+Cache hits are not separately audit-logged — a served-from-cache response
+still only produces the `query_cache_hit` log line, since it bypasses the
+retriever and LLM call entirely.
+
 ## Ingestion metadata dependencies
 
 Freshness and debugging depend on chunk metadata written during ingestion:

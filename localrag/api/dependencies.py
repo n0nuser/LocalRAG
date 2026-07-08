@@ -13,6 +13,7 @@ from localrag.ingestion.service import IngestionService
 from localrag.llm.factory import build_provider
 from localrag.rag.bm25_index import Bm25Index
 from localrag.rag.engine import RAGEngine
+from localrag.rag.query_cache import QueryCache
 from localrag.rag.reranker import CrossEncoderReranker
 from localrag.rag.retriever import Retriever
 from localrag.settings import Settings, get_settings
@@ -64,6 +65,14 @@ def get_engine() -> RAGEngine:
     settings = get_settings()
     return RAGEngine(
         settings=settings, retriever=get_retriever(), provider=build_provider(settings)
+    )
+
+
+@lru_cache(maxsize=1)
+def get_query_cache() -> QueryCache:
+    settings = get_settings()
+    return QueryCache(
+        maxsize=settings.query_cache_maxsize, ttl_seconds=settings.query_cache_ttl_seconds
     )
 
 

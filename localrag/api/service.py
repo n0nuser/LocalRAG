@@ -40,6 +40,7 @@ from localrag.logging_config import request_id_ctx
 from localrag.ollama.schemas import OllamaTagsResponse, parse_ollama_json
 from localrag.rag.engine import RAGEngine
 from localrag.rag.exceptions import RetrievalError
+from localrag.rag.query_cache import QueryCache, make_cache_key
 from localrag.settings import Settings, is_path_allowed
 
 logger = logging.getLogger(__name__)
@@ -317,9 +318,21 @@ def _unique_upload_destination(directory: Path, file_name: str) -> Path:
     return directory / f"{stem}-{uuid4().hex[:8]}{suffix}"
 
 
-def query_json(request: QueryRequest, engine: RAGEngine) -> QueryResponse:
+def query_json(
+    request: QueryRequest, engine: RAGEngine, query_cache: QueryCache | None = None
+) -> QueryResponse:
     """Blocking JSON query — retrieves context then generates a full answer."""
     t0 = time.perf_counter()
+    cache_key: str | None = None
+    if query_cache is not None:
+        cache_key = make_cache_key(
+            request.question, request.model, request.n_results, engine.settings.retrieval_mode
+        )
+        cached = query_cache.get(cache_key)
+        if cached is not None:
+            logger.info("query_cache_hit")
+            return QueryResponse(**cached)
+
     try:
         contexts = engine.retriever.retrieve(
             question=request.question,
@@ -380,6 +393,8 @@ def query_json(request: QueryRequest, engine: RAGEngine) -> QueryResponse:
         model=used_model,
         latency_ms=latency_ms,
     )
+    if query_cache is not None and cache_key is not None:
+        query_cache.set(cache_key, response.model_dump())
     return response
 
 
