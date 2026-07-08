@@ -181,6 +181,10 @@ def main() -> None:
     rows = _build_rows(records, args.api_url, args.api_key, offline=args.offline)
 
     print(f"Running RAGAS evaluation (judge={args.judge_model} via {args.ollama_url})...")
+    # AsyncOpenAI/OpenAIEmbeddings here are just clients for the OpenAI-shaped
+    # wire protocol that Ollama's /v1 endpoint speaks. base_url points at the
+    # local Ollama instance, api_key is a required-but-ignored dummy value —
+    # no OpenAI account, key, or network call is ever involved.
     ollama_client = AsyncOpenAI(base_url=f"{args.ollama_url.rstrip('/')}/v1", api_key="ollama")
     judge_llm = llm_factory(args.judge_model, client=ollama_client, adapter="instructor")
     judge_embeddings = OpenAIEmbeddings(client=ollama_client, model="nomic-embed-text")
