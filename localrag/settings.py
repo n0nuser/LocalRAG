@@ -98,6 +98,9 @@ class Settings(BaseSettings):
     ingest_recursive: bool = True
     ingest_roots: list[str] = []
 
+    # Caps concurrently pending/running async ingest jobs; further submissions get 429.
+    max_pending_ingest_jobs: int = 10
+
     upload_dir: str = "./data/uploads"
     upload_max_bytes: int = 100_000_000
 
