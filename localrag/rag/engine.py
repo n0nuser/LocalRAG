@@ -115,5 +115,13 @@ class RAGEngine:
             if key in seen:
                 continue
             seen.add(key)
-            sources.append({"source": source, "chunk_index": chunk_index})
+            metadata = context.get("metadata") or {}
+            sources.append(
+                {
+                    "source": source,
+                    "chunk_index": chunk_index,
+                    "heading_path": metadata.get("heading_path") or None,
+                    "chunk_type": metadata.get("chunk_type") or None,
+                }
+            )
         return sources

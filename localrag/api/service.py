@@ -301,7 +301,12 @@ def query_json(request: QueryRequest, engine: RAGEngine) -> QueryResponse:
     used_model = request.model or engine.settings.ollama_llm_model
     raw_sources = engine._extract_sources(contexts)  # noqa: SLF001
     sources = [
-        SourceRef(source=str(s.get("source", "")), chunk_index=int(s.get("chunk_index", -1)))  # type: ignore[call-overload]
+        SourceRef(
+            source=str(s.get("source", "")),
+            chunk_index=int(s.get("chunk_index", -1)),  # type: ignore[call-overload]
+            heading_path=s.get("heading_path"),  # type: ignore[arg-type]
+            chunk_type=s.get("chunk_type"),  # type: ignore[arg-type]
+        )
         for s in raw_sources
     ]
 

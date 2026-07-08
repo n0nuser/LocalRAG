@@ -73,9 +73,39 @@ def test_rag_engine_stream_answer_yields_tokens_and_dedupes_sources() -> None:
 
     final = events[-1]
     assert final["type"] == "final"
-    assert final["sources"] == [{"source": "a.md", "chunk_index": 1}]
+    assert final["sources"] == [
+        {"source": "a.md", "chunk_index": 1, "heading_path": None, "chunk_type": None}
+    ]
     assert "SYS" in provider.prompts_seen[0]
     assert "chunk-one" in provider.prompts_seen[0]
+
+
+def test_rag_engine_extract_sources_includes_heading_path_and_chunk_type() -> None:
+    settings = Settings(rag_system_prompt="SYS")
+    contexts = [
+        {
+            "text": "chunk",
+            "source": "guide.md",
+            "chunk_index": 2,
+            "metadata": {"heading_path": "Setup > Install", "chunk_type": "markdown_section"},
+        }
+    ]
+    engine = RAGEngine(
+        settings=settings,
+        retriever=StubRetriever(contexts=contexts),
+        provider=FakeProvider(tokens=[]),
+    )
+
+    sources = engine._extract_sources(contexts)  # noqa: SLF001
+
+    assert sources == [
+        {
+            "source": "guide.md",
+            "chunk_index": 2,
+            "heading_path": "Setup > Install",
+            "chunk_type": "markdown_section",
+        }
+    ]
 
 
 def test_rag_engine_answer_concatenates_tokens_and_returns_sources(

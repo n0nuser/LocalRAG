@@ -220,6 +220,19 @@ class SourceRef(BaseModel):
     chunk_index: int = Field(
         description="Zero-based index of the chunk within the source.", examples=[0]
     )
+    heading_path: str | None = Field(
+        default=None,
+        description="Markdown heading breadcrumb for this chunk, e.g. 'Setup > Install'.",
+        examples=["Setup > Install"],
+    )
+    chunk_type: str | None = Field(
+        default=None,
+        description=(
+            "Chunk classification from ingestion, e.g. markdown_section, markdown_table, "
+            "code_block."
+        ),
+        examples=["markdown_section"],
+    )
 
 
 class QueryResponse(BaseModel):
