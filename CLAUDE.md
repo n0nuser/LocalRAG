@@ -22,6 +22,26 @@ The FastAPI layer follows a **light domain-driven** split:
 
 Domain packages (`localrag/ingestion/`, `localrag/rag/`, `localrag/storage/`) keep their own services and types; the API service calls into them (e.g. `IngestionService`, `RAGEngine`).
 
+## Claude Code skills for this repo
+
+If you're running as Claude Code, these installed skills/subagents map directly onto LocalRAG's stack—reach for them instead of re-deriving generic advice:
+
+| Area | Skill / agent | When it applies here |
+| --- | --- | --- |
+| Git workflow | `superpowers:using-git-worktrees`, `git-pr-workflows:git-workflow` | Isolating longer-lived `feat/…`/`fix/…` work, or orchestrating review → PR beyond the basic steps in `.cursor/skills/trunk-feature-workflow/SKILL.md` |
+| API/DDD layering | `backend-development:architecture-patterns`, `backend-development:api-design-principles` | Reshaping the schemas/service/repository/router split above, or designing new routes |
+| Python style & types | `python-development:python-code-style`, `python-development:python-type-safety` | Anything ruff/mypy already gate in `.pre-commit-config.yaml`—use before relying on defaults |
+| Config & settings | `python-development:python-configuration` | Changes to `localrag/settings.py` / `.env.example` (pydantic-settings) |
+| Error handling & resilience | `python-development:python-error-handling`, `python-development:python-resilience` | `HttpMappedError` subclasses, ingestion retry/batch logic |
+| Observability | `python-development:python-observability` | structlog / Prometheus metrics work (`localrag/logging_config.py`, `api/routers/metrics.py`) |
+| Testing | `python-development:python-testing-patterns`, `superpowers:test-driven-development` | Adding/extending `tests/` (pytest, pytest-asyncio, respx) |
+| Debugging | `superpowers:systematic-debugging`, `diagnosing-bugs` | Any bug/regression—before proposing a fix |
+| LLM/provider code | `claude-api` | Anthropic/OpenAI/Ollama provider work in `localrag/llm/` |
+| Security | `security-review`, `backend-api-security:backend-security-coder` | Auth (`API_KEY`), path validation (`is_path_allowed`), upload handling, anything bandit flags |
+| Verification | `verify` | Before claiming a change works—exercise the flow, don't just trust lint/tests |
+
+This is a pointer, not a guarantee of installation—confirm availability in your environment before relying on one.
+
 ## Documentation maintenance for agents
 
 When you change anything that affects **how agents find or reason about the codebase**, update the relevant docs **in the same change** (same PR). At minimum:
