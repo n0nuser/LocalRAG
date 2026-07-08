@@ -63,7 +63,27 @@ class RAGEngine:
         model: str | None,
     ) -> Generator[dict[str, Any]]:
         """Stream LLM tokens when contexts were retrieved earlier (HTTP runs retrieve first)."""
+        if self._is_low_confidence(contexts):
+            logger.info("rag_low_confidence_refusal question_chars=%s", len(question))
+            return self._low_confidence_response()
         return self._stream_chat_tokens(contexts=contexts, question=question, model=model)
+
+    def _is_low_confidence(self, contexts: list[dict[str, Any]]) -> bool:
+        min_score = self.settings.rag_min_context_score
+        if min_score <= 0:
+            return False
+        if not contexts:
+            return True
+        top_score = float(contexts[0].get("score", 0.0))
+        return top_score < min_score
+
+    @staticmethod
+    def _low_confidence_response() -> Generator[dict[str, Any]]:
+        yield {
+            "type": "token",
+            "token": "I don't have enough information in the ingested documents to answer that.",
+        }
+        yield {"type": "final", "sources": [], "low_confidence": True}
 
     def _stream_chat_tokens(
         self,
@@ -82,7 +102,7 @@ class RAGEngine:
             if event["type"] == "token":
                 yield event
         logger.info("rag_stream_done")
-        yield {"type": "final", "sources": self._extract_sources(contexts)}
+        yield {"type": "final", "sources": self._extract_sources(contexts), "low_confidence": False}
 
     @staticmethod
     def _extract_sources(contexts: list[dict[str, Any]]) -> list[dict[str, object]]:
