@@ -40,6 +40,9 @@ dependencies = [
 [project.scripts]
 localrag = "localrag.cli.app:app"
 
+[project.optional-dependencies]
+rerank = ["sentence-transformers>=3"]
+
 [dependency-groups]
 dev = [
     "ruff",

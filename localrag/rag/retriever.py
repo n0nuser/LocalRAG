@@ -11,6 +11,7 @@ import httpx
 from localrag.ingestion.embedder import OllamaEmbedder
 from localrag.rag.bm25_index import Bm25Index
 from localrag.rag.exceptions import RetrievalError
+from localrag.rag.reranker import CrossEncoderReranker
 from localrag.settings import Settings
 from localrag.storage.vector_store import VectorStore
 
@@ -29,6 +30,7 @@ class Retriever:
     embedder: OllamaEmbedder
     vector_store: VectorStore
     bm25_index: Bm25Index | None = None
+    reranker: CrossEncoderReranker | None = None
 
     def retrieve(
         self,
@@ -37,6 +39,11 @@ class Retriever:
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         top_k = n_results if n_results is not None else self.settings.rag_top_k
+        fetch_k = (
+            max(self.settings.rerank_fetch_k, top_k)
+            if self.reranker is not None
+            else max(top_k * 2, top_k)
+        )
         logger.debug("retrieve_embed_question top_k=%s question_chars=%s", top_k, len(question))
         try:
             embedding = self.embedder.embed_text(question)
@@ -55,25 +62,33 @@ class Retriever:
             raise RetrievalError(HTTPStatus.BAD_GATEWAY, str(exc)) from exc
 
         vector_hits = self._retrieve_vector_hits(
-            embedding=embedding, top_k=max(top_k * 2, top_k), where=metadata_filter
+            embedding=embedding, top_k=fetch_k, where=metadata_filter
         )
         if self.settings.retrieval_mode != "hybrid" or self.bm25_index is None:
-            return self._expand_to_parent_section(self.apply_freshness(vector_hits[:top_k]))
+            candidates = vector_hits
+        else:
+            bm25_hits = [
+                {
+                    "text": hit.text,
+                    "source": hit.metadata.get("source", "unknown"),
+                    "chunk_index": hit.metadata.get("chunk_index", -1),
+                    "score": hit.score,
+                    "ingested_at": hit.metadata.get("ingested_at"),
+                    "metadata": hit.metadata,
+                }
+                for hit in self.bm25_index.query(question, top_k=fetch_k)
+                if _matches_filter(hit.metadata, metadata_filter)
+            ]
+            candidates = self._fuse_results(
+                vector_hits=vector_hits, bm25_hits=bm25_hits, top_k=fetch_k
+            )
 
-        bm25_hits = [
-            {
-                "text": hit.text,
-                "source": hit.metadata.get("source", "unknown"),
-                "chunk_index": hit.metadata.get("chunk_index", -1),
-                "score": hit.score,
-                "ingested_at": hit.metadata.get("ingested_at"),
-                "metadata": hit.metadata,
-            }
-            for hit in self.bm25_index.query(question, top_k=max(top_k * 2, top_k))
-            if _matches_filter(hit.metadata, metadata_filter)
-        ]
-        fused = self._fuse_results(vector_hits=vector_hits, bm25_hits=bm25_hits, top_k=top_k)
-        return self._expand_to_parent_section(self.apply_freshness(fused))
+        if self.reranker is not None:
+            candidates = self.reranker.rerank(question, candidates, top_k=top_k)
+        else:
+            candidates = candidates[:top_k]
+
+        return self._expand_to_parent_section(self.apply_freshness(candidates))
 
     def _retrieve_vector_hits(
         self, embedding: list[float], top_k: int, where: dict[str, Any] | None = None
@@ -126,17 +141,11 @@ class Retriever:
         for rank, hit in enumerate(vector_sorted, start=1):
             key = self._hit_key(hit)
             candidate_map[key] = hit
-            if self.settings.bm25_weight == 0.5:
-                score_map[key] = score_map.get(key, 0.0) + 1.0 / (rrf_k + rank)
-            else:
-                score_map[key] = score_map.get(key, 0.0) + vector_weight / (rrf_k + rank)
+            score_map[key] = score_map.get(key, 0.0) + vector_weight / (rrf_k + rank)
         for rank, hit in enumerate(bm25_sorted, start=1):
             key = self._hit_key(hit)
             candidate_map[key] = hit
-            if self.settings.bm25_weight == 0.5:
-                score_map[key] = score_map.get(key, 0.0) + 1.0 / (rrf_k + rank)
-            else:
-                score_map[key] = score_map.get(key, 0.0) + bm25_weight / (rrf_k + rank)
+            score_map[key] = score_map.get(key, 0.0) + bm25_weight / (rrf_k + rank)
 
         ranked_keys = sorted(score_map.keys(), key=lambda key: score_map[key], reverse=True)[:top_k]
         fused: list[dict[str, Any]] = []

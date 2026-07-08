@@ -12,6 +12,7 @@ from localrag.ingestion.service import IngestionService
 from localrag.llm.factory import build_provider
 from localrag.rag.bm25_index import Bm25Index
 from localrag.rag.engine import RAGEngine
+from localrag.rag.reranker import CrossEncoderReranker
 from localrag.rag.retriever import Retriever
 from localrag.settings import Settings, get_settings
 from localrag.storage.vector_store import VectorStore
@@ -38,6 +39,14 @@ def get_embedder() -> OllamaEmbedder:
 
 
 @lru_cache(maxsize=1)
+def get_reranker() -> CrossEncoderReranker | None:
+    settings = get_settings()
+    if not settings.rerank_enabled:
+        return None
+    return CrossEncoderReranker(model_name=settings.rerank_model)
+
+
+@lru_cache(maxsize=1)
 def get_retriever() -> Retriever:
     settings = get_settings()
     return Retriever(
@@ -45,6 +54,7 @@ def get_retriever() -> Retriever:
         embedder=get_embedder(),
         vector_store=get_vector_store(),
         bm25_index=get_bm25_index(),
+        reranker=get_reranker(),
     )
 
 
