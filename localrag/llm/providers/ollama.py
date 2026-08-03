@@ -13,6 +13,7 @@ from localrag.llm.providers.base import BaseLLMProvider
 from localrag.llm.types import LLMResponse
 from localrag.ollama.schemas import (
     OllamaChatMessage,
+    OllamaChatOptions,
     OllamaChatRequest,
     OllamaChatStreamChunk,
     parse_ollama_json_line,
@@ -27,11 +28,21 @@ class OllamaProvider(BaseLLMProvider):
         default_model: str,
         system_prompt: str,
         timeout_seconds: float = 180.0,
+        temperature: float | None = None,
+        seed: int | None = None,
     ) -> None:
         self._base_url = base_url
         self._default_model = default_model
         self._system_prompt = system_prompt
         self._timeout = timeout_seconds
+        self._temperature = temperature
+        self._seed = seed
+
+    def _options(self) -> OllamaChatOptions | None:
+        """Sampling options for a chat request, or ``None`` to use Ollama's defaults."""
+        if self._temperature is None and self._seed is None:
+            return None
+        return OllamaChatOptions(temperature=self._temperature, seed=self._seed)
 
     def generate(
         self,
@@ -74,6 +85,7 @@ class OllamaProvider(BaseLLMProvider):
             model=used_model,
             messages=[OllamaChatMessage(role="user", content=full_prompt)],
             stream=True,
+            options=self._options(),
         )
         with (
             httpx.Client(timeout=self._timeout) as client,
@@ -125,6 +137,7 @@ class OllamaProvider(BaseLLMProvider):
             model=used_model,
             messages=[OllamaChatMessage(role="user", content=prompt)],
             stream=True,
+            options=self._options(),
         )
         with (
             httpx.Client(timeout=self._timeout) as client,
