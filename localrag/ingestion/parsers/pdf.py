@@ -4,9 +4,9 @@ import gc
 import logging
 from pathlib import Path
 
+import pdf_inspector
 import pypdfium2 as pdfium
 import pytesseract
-from pypdf import PageObject, PdfReader
 
 from localrag.settings import Settings, get_settings
 
@@ -23,31 +23,46 @@ _OCR_MAX_DIMENSION_PX = 2200.0
 
 
 def parse_pdf(path: Path) -> str:
+    """Extract Markdown text from a PDF, OCR-ing pages whose text layer is unreliable.
+
+    Uses ``pdf_inspector`` for per-page Markdown extraction (preserving headings,
+    tables, and multi-column reading order), and falls back
+    to rasterizing + Tesseract OCR for pages ``pdf_inspector`` flags as needing it,
+    or whose extracted Markdown is shorter than ``settings.ocr_min_chars_per_page``.
+
+    Args:
+        path: Path to the PDF file.
+
+    Returns:
+        The document's Markdown text, pages joined by newlines and stripped.
+        Empty string if the whole document fails to parse (logged as a warning).
+    """
     settings = get_settings()
-    reader = PdfReader(str(path))
+    try:
+        result = pdf_inspector.extract_pages_markdown(str(path))
+    except Exception:
+        logger.warning("pdf_extraction_failed path=%s", path, exc_info=True)
+        return ""
+
     ocr_doc = pdfium.PdfDocument(str(path)) if settings.ocr_enabled else None
     try:
-        parts = [
-            _extract_page_text(page, index, ocr_doc, settings)
-            for index, page in enumerate(reader.pages)
-        ]
+        parts = [_extract_page_markdown(page, ocr_doc, settings) for page in result.pages]
     finally:
         if ocr_doc is not None:
             ocr_doc.close()
     return "\n".join(parts).strip()
 
 
-def _extract_page_text(
-    page: PageObject,
-    index: int,
+def _extract_page_markdown(
+    page: pdf_inspector.PageMarkdown,
     ocr_doc: pdfium.PdfDocument | None,
     settings: Settings,
 ) -> str:
-    text = (page.extract_text() or "").strip()
-    if ocr_doc is None or len(text) >= settings.ocr_min_chars_per_page:
-        return text
-    ocr_text = _ocr_page(ocr_doc, index, settings.ocr_language)
-    return ocr_text or text
+    needs_ocr = page.needs_ocr or len(page.markdown) < settings.ocr_min_chars_per_page
+    if ocr_doc is None or not needs_ocr:
+        return page.markdown
+    ocr_text = _ocr_page(ocr_doc, page.page, settings.ocr_language)
+    return ocr_text or page.markdown
 
 
 def _ocr_page(ocr_doc: pdfium.PdfDocument, index: int, language: str) -> str:
