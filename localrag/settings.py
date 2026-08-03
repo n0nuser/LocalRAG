@@ -53,6 +53,15 @@ class Settings(BaseSettings):
     contexts at all) the engine returns a canned refusal instead of calling
     the LLM; ``0`` (default) disables the gate.
 
+    **Recency** — In hybrid mode, recency joins RRF as its own ranked list
+    weighted by ``freshness_weight`` (taken out of the relevance budget), so it
+    breaks near-ties without overturning a clearly better match; ties on
+    relevance are resolved newest-first, and chunks with no usable
+    ``ingested_at`` take the middle recency rank. In vector-only mode the
+    multiplicative ``0.5 ** (age_days / freshness_half_life_days)`` decay still
+    applies. Either ``freshness_half_life_days=0`` or ``freshness_weight=0``
+    disables recency. See `docs/adr/006-freshness-decay.md`.
+
     **Reranking** — When ``rerank_enabled`` is true (default false, requires
     ``uv sync --extra rerank``), retrieval over-fetches ``rerank_fetch_k``
     candidates and a local cross-encoder (``rerank_model``) re-scores and
@@ -117,6 +126,7 @@ class Settings(BaseSettings):
     bm25_weight: float = 0.5
     rrf_k: int = 60
     freshness_half_life_days: float = 30.0
+    freshness_weight: float = 0.15
     parent_expansion_enabled: bool = True
     query_rewrite_enabled: bool = False
     rag_system_prompt: str = (
