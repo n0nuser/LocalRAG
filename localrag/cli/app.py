@@ -5,6 +5,7 @@ import typer
 from localrag.cli.commands.collections import app as collections_app
 from localrag.cli.commands.config import show_config
 from localrag.cli.commands.eval import eval_suite
+from localrag.cli.commands.eval_compare import eval_compare
 from localrag.cli.commands.ingest import ingest
 from localrag.cli.commands.query import query
 from localrag.cli.commands.setup import setup
@@ -18,6 +19,7 @@ app.command()(query)
 app.command("setup")(setup)
 app.command("config-show")(show_config)
 app.command("eval")(eval_suite)
+app.command("eval-compare")(eval_compare)
 app.add_typer(collections_app, name="collections")
 
 
