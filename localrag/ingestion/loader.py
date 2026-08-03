@@ -10,6 +10,11 @@ from localrag.ingestion.parsers.pdf import parse_pdf
 from localrag.ingestion.parsers.text import parse_text
 
 MARKDOWN_EXTENSIONS = {".md", ".markdown"}
+# Formats whose parser emits Markdown even though the source file is not Markdown,
+# so chunking should follow heading structure. Kept separate from
+# MARKDOWN_EXTENSIONS because that set also selects the *parser* in
+# parse_document(); a .pdf must still go to parse_pdf.
+MARKDOWN_PRODUCING_EXTENSIONS = {".pdf"}
 TEXT_EXTENSIONS = {".txt", ".rst"}
 CODE_EXTENSIONS = {
     ".py",

@@ -107,6 +107,59 @@ def test_parse_pdf_uses_text_layer_when_long_enough(
     assert pdf_module.parse_pdf(path) == "x" * 50
 
 
+def test_parse_pdf_does_not_open_pdfium_document_when_no_page_needs_ocr(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Opening the pypdfium2 document costs time and native memory.
+
+    Text-layer PDFs are the common case and must not pay for it.
+    """
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4\n")
+
+    _patch_inspector(monkeypatch, [_FakePageMarkdown(0, "x" * 50), _FakePageMarkdown(1, "y" * 50)])
+    monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings(ocr_min_chars_per_page=20))
+
+    def _fail_open(*_args: Any, **_kwargs: Any) -> object:
+        raise AssertionError("pdfium document must not be opened when no page needs OCR")
+
+    monkeypatch.setattr(pdf_module.pdfium, "PdfDocument", _fail_open)
+
+    assert pdf_module.parse_pdf(path) == "x" * 50 + "\n" + "y" * 50
+
+
+def test_parse_pdf_opens_pdfium_document_once_across_multiple_ocr_pages(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The lazily-opened document is reused, not reopened per OCR page."""
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4\n")
+
+    fake_doc = _FakePdfDocument(3)
+    opens: list[str] = []
+
+    def _open(arg: str) -> _FakePdfDocument:
+        opens.append(arg)
+        return fake_doc
+
+    _patch_inspector(
+        monkeypatch,
+        [
+            _FakePageMarkdown(0, "", needs_ocr=True),
+            _FakePageMarkdown(1, "x" * 50),
+            _FakePageMarkdown(2, "", needs_ocr=True),
+        ],
+    )
+    monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings(ocr_min_chars_per_page=20))
+    monkeypatch.setattr(pdf_module.pdfium, "PdfDocument", _open)
+    monkeypatch.setattr(pdf_module.pytesseract, "image_to_string", lambda _image, **_kw: "OCR")
+
+    pdf_module.parse_pdf(path)
+
+    assert len(opens) == 1
+    assert fake_doc.closed is True
+
+
 def test_parse_pdf_falls_back_to_ocr_when_text_layer_too_short(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -315,6 +368,48 @@ def test_parse_pdf_routes_ocr_using_zero_indexed_page_not_one_indexed_list(
     assert fake_doc[2].last_bitmap is not None
     assert fake_doc[3].last_bitmap is None
     assert len(ocr_calls) == 1
+
+
+def test_parse_pdf_demotes_running_headers_repeated_across_pages(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Font-size heading inference promotes mastheads and footers to headings.
+
+    They repeat on every page; real section titles do not. Demoting them keeps
+    them out of downstream chunk heading paths.
+    """
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4\n")
+
+    pages = [
+        _FakePageMarkdown(index, f"# Boletin Oficial\n\n## Seccion {index}\n\nCuerpo {index}.")
+        for index in range(4)
+    ]
+    _patch_inspector(monkeypatch, pages)
+    monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings(ocr_enabled=False))
+
+    out = pdf_module.parse_pdf(path)
+
+    # The masthead survives as text but no longer as a heading.
+    assert "# Boletin Oficial" not in out
+    assert "Boletin Oficial" in out
+    # Genuine per-page section headings are untouched.
+    assert "## Seccion 0" in out
+    assert "## Seccion 3" in out
+
+
+def test_parse_pdf_keeps_repeated_headings_in_short_documents(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """In a 2-page document a twice-seen heading is not evidence of furniture."""
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4\n")
+
+    pages = [_FakePageMarkdown(index, "# Repeated Title\n\nBody text here.") for index in range(2)]
+    _patch_inspector(monkeypatch, pages)
+    monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings(ocr_enabled=False))
+
+    assert pdf_module.parse_pdf(path).count("# Repeated Title") == 2
 
 
 def test_parse_pdf_whole_document_extraction_failure_degrades_gracefully(

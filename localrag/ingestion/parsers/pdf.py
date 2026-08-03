@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import gc
 import logging
+import re
+from collections import Counter
 from pathlib import Path
 
 import pdf_inspector
@@ -11,6 +13,18 @@ import pytesseract
 from localrag.settings import Settings, get_settings
 
 logger = logging.getLogger(__name__)
+
+_HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.*)$")
+# pdf_inspector infers heading levels from font-size ratios, so a page's running
+# header or footer (masthead, "Núm. 31 ... Pág. 6539", an ISSN line) is often set
+# in a larger face than body text and comes back as a heading. Those repeat on
+# every page; real section titles do not. A line that appears as a heading on
+# more than this fraction of a multi-page document's pages is treated as furniture
+# and demoted to plain text, so it stops polluting chunk heading paths.
+_REPEATED_HEADING_PAGE_RATIO = 0.5
+# Below this page count "repeats on most pages" is not evidence of anything —
+# a 2-page document would demote a heading that legitimately appears twice.
+_REPEATED_HEADING_MIN_PAGES = 3
 
 _OCR_DEFAULT_SCALE = 2.0
 # Absolute cap on the rendered bitmap's longest side, in pixels. Urban-planning /
@@ -44,25 +58,74 @@ def parse_pdf(path: Path) -> str:
         logger.warning("pdf_extraction_failed path=%s", path, exc_info=True)
         return ""
 
-    ocr_doc = pdfium.PdfDocument(str(path)) if settings.ocr_enabled else None
+    # Opening the pypdfium2 document costs real time and native memory, so it is
+    # deferred until a page actually needs OCR. Text-layer PDFs — the common case —
+    # never pay for it.
+    ocr_doc: pdfium.PdfDocument | None = None
     try:
-        parts = [_extract_page_markdown(page, ocr_doc, settings) for page in result.pages]
+        parts = []
+        for page in result.pages:
+            if not _page_needs_ocr(page, settings):
+                parts.append(page.markdown)
+                continue
+            if ocr_doc is None:
+                ocr_doc = pdfium.PdfDocument(str(path))
+            ocr_text = _ocr_page(ocr_doc, page.page, settings.ocr_language)
+            parts.append(ocr_text or page.markdown)
     finally:
         if ocr_doc is not None:
             ocr_doc.close()
-    return "\n".join(parts).strip()
+    return "\n".join(_demote_repeated_headings(parts)).strip()
 
 
-def _extract_page_markdown(
-    page: pdf_inspector.PageMarkdown,
-    ocr_doc: pdfium.PdfDocument | None,
-    settings: Settings,
-) -> str:
-    needs_ocr = page.needs_ocr or len(page.markdown) < settings.ocr_min_chars_per_page
-    if ocr_doc is None or not needs_ocr:
-        return page.markdown
-    ocr_text = _ocr_page(ocr_doc, page.page, settings.ocr_language)
-    return ocr_text or page.markdown
+def _demote_repeated_headings(pages: list[str]) -> list[str]:
+    """Turn headings that repeat across most pages back into plain text.
+
+    Args:
+        pages: Per-page Markdown, in document order.
+
+    Returns:
+        The pages with running headers/footers demoted, leaving real section
+        headings untouched. Returned unchanged for short documents, where
+        repetition carries no signal.
+    """
+    if len(pages) < _REPEATED_HEADING_MIN_PAGES:
+        return pages
+
+    pages_per_heading: Counter[str] = Counter()
+    for page in pages:
+        headings = {
+            match.group(2).strip()
+            for line in page.splitlines()
+            if (match := _HEADING_PATTERN.match(line.strip()))
+        }
+        pages_per_heading.update(headings)
+
+    threshold = len(pages) * _REPEATED_HEADING_PAGE_RATIO
+    repeated = {text for text, count in pages_per_heading.items() if count > threshold}
+    if not repeated:
+        return pages
+
+    logger.debug("demoted_repeated_pdf_headings count=%d", len(repeated))
+    return [_demote_headings_in_page(page, repeated) for page in pages]
+
+
+def _demote_headings_in_page(page: str, repeated: set[str]) -> str:
+    lines = []
+    for line in page.splitlines():
+        match = _HEADING_PATTERN.match(line.strip())
+        if match and match.group(2).strip() in repeated:
+            lines.append(match.group(2).strip())
+            continue
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _page_needs_ocr(page: pdf_inspector.PageMarkdown, settings: Settings) -> bool:
+    """Report whether a page's extracted Markdown is too weak to trust as-is."""
+    if not settings.ocr_enabled:
+        return False
+    return page.needs_ocr or len(page.markdown) < settings.ocr_min_chars_per_page
 
 
 def _ocr_page(ocr_doc: pdfium.PdfDocument, index: int, language: str) -> str:
