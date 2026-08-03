@@ -50,7 +50,7 @@ Agents (and humans) move faster when they:
 | Retrieval mode / hybrid ranking / freshness decay | `localrag/rag/retriever.py`, `localrag/rag/bm25_index.py`, `localrag/settings.py` |
 | Ollama HTTP request/response shapes | `localrag/ollama/schemas.py` (used by embedder, RAG engine, health, setup) |
 | Generation sampling (temperature/seed) | `localrag/ollama/schemas.py` (`OllamaChatOptions`), `localrag/llm/providers/ollama.py`, `LLM_TEMPERATURE` / `LLM_SEED` in `localrag/settings.py` |
-| Eval suite / metric contracts / RAGAS scoring | `evals/metrics.py`, `evals/run_evals.py`, `evals/results/schema.py`, `docs/evaluation-metrics.md`, `localrag/cli/commands/eval.py` |
+| Eval suite / metric contracts / bounded RAGAS scoring | `evals/metrics.py`, `evals/concurrency.py`, `evals/run_evals.py`, `evals/results/schema.py`, `docs/evaluation-metrics.md`, `localrag/cli/commands/eval.py` |
 | Eval reproducibility (seed, run metadata) | `evals/environment.py`, `evals/run_evals.py`, [reproducibility.md](reproducibility.md) |
 | Eval result versioning/comparison/baselines | `evals/results/`, `evals/compare.py`, `evals/baselines/`, `localrag/cli/commands/eval_compare.py` |
 | Eval dataset schema / registry / fixtures | `evals/dataset/schema.py`, `evals/dataset/registry.py`, `evals/dataset/fixtures/`, [eval-datasets.md](eval-datasets.md) |

@@ -18,6 +18,7 @@ CURRENT_SCHEMA_VERSION = 1
 MetricDirection = Literal["higher_is_better", "lower_is_better"]
 MissingPolicy = Literal["missing", "not_applicable"]
 ResultStatus = Literal["complete", "partial", "failed"]
+CaseStatus = Literal["completed", "failed", "cancelled", "timed_out"]
 
 
 class ResultError(ValueError):
@@ -77,6 +78,19 @@ class MetricResult(BaseModel):
         return number if math.isfinite(number) else None
 
 
+class EvaluationCaseResult(BaseModel):
+    """Execution status for one stable dataset record."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    record_id: str
+    stage: Literal["retrieval", "metrics"]
+    status: CaseStatus
+    error: str | None = None
+    elapsed_seconds: float = 0.0
+    attempts: int = 1
+
+
 class ResultFile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -88,6 +102,9 @@ class ResultFile(BaseModel):
     metrics: list[MetricResult]
     provenance: dict[str, Any] = Field(default_factory=dict)
     status: ResultStatus = "complete"
+    cases: list[EvaluationCaseResult] = Field(default_factory=list)
+    failure_counts: dict[str, int] = Field(default_factory=dict)
+    exit_code: int = 0
 
     @field_validator("schema_version")
     @classmethod

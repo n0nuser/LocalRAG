@@ -44,6 +44,7 @@ import statistics
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import httpx
 from openai import AsyncOpenAI
@@ -56,13 +57,20 @@ from ragas.metrics.collections import (
     Faithfulness,
 )
 
+from evals.concurrency import CaseOutcome, ConcurrencyLimits, run_cases
 from evals.dataset.checksum import manifest_checksum
 from evals.dataset.errors import DatasetError, OfflineArtifactsMissingError
 from evals.dataset.registry import load_dataset
 from evals.dataset.schema import DatasetRecord
 from evals.environment import capture_run_metadata, resolve_seed
 from evals.metrics import exact_match, f1, score_citation_accuracy
-from evals.results.schema import MetricCaseResult, MetricDescriptor, MetricResult, ResultFile
+from evals.results.schema import (
+    EvaluationCaseResult,
+    MetricCaseResult,
+    MetricDescriptor,
+    MetricResult,
+    ResultFile,
+)
 
 RESULTS_DIR = Path(__file__).parent / "results"
 
@@ -136,6 +144,89 @@ def _build_rows(
     return rows
 
 
+async def _build_rows_async(
+    records: list[DatasetRecord],
+    api_url: str,
+    api_key: str,
+    *,
+    offline: bool,
+    limits: ConcurrencyLimits,
+    timeout: float,
+) -> tuple[list[dict], list[dict[str, Any]]]:
+    """Build rows concurrently while retaining dataset order and row failures."""
+    headers = {"X-API-Key": api_key} if api_key else {}
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        async def build(record: DatasetRecord) -> dict:
+            if offline:
+                if record.offline_answer is None and not record.reference_answer:
+                    raise OfflineArtifactsMissingError(record.record_id, "answer")
+                answer = record.offline_answer or record.reference_answer
+                contexts = record.offline_context_texts()
+                if not contexts:
+                    raise OfflineArtifactsMissingError(record.record_id, "contexts")
+            else:
+                response = await client.post(
+                    f"{api_url.rstrip('/')}/query",
+                    json={"question": record.question},
+                    headers=headers,
+                )
+                response.raise_for_status()
+                body = response.json()
+                answer = body.get("answer", "")
+                contexts = [source.get("source", "") for source in body.get("sources", [])]
+                contexts = contexts or record.offline_context_texts()
+            return {
+                "record_id": record.record_id,
+                "question": record.question,
+                "answer": answer,
+                "contexts": contexts,
+                "ground_truth": record.reference_answer,
+                "ground_truths": record.reference_answers_or_default(),
+                "answer_citation_ids": record.answer_citation_ids,
+                "relevant_citation_ids": record.relevant_citation_ids(),
+            }
+
+        outcomes = await run_cases(
+            records,
+            build,
+            limit=min(limits.total, limits.retrieval, limits.generation),
+            timeout=timeout,
+        )
+    rows: list[dict] = []
+    execution: list[dict[str, Any]] = []
+    for record, outcome in zip(records, outcomes, strict=True):
+        execution.append(_execution_record(record.record_id, "retrieval", outcome))
+        if outcome.value is not None:
+            rows.append(outcome.value)
+        else:
+            rows.append(_empty_row(record))
+    return rows, execution
+
+
+def _empty_row(record: DatasetRecord) -> dict[str, Any]:
+    return {
+        "record_id": record.record_id,
+        "question": record.question,
+        "answer": "",
+        "contexts": [],
+        "ground_truth": record.reference_answer,
+        "ground_truths": record.reference_answers_or_default(),
+        "answer_citation_ids": record.answer_citation_ids,
+        "relevant_citation_ids": record.relevant_citation_ids(),
+    }
+
+
+def _execution_record(record_id: str, stage: str, outcome: CaseOutcome[Any]) -> dict[str, Any]:
+    return {
+        "record_id": record_id,
+        "stage": stage,
+        "status": outcome.status,
+        "error": outcome.error,
+        "elapsed_seconds": outcome.elapsed_seconds,
+        "attempts": 1,
+    }
+
+
 def _select_records(
     records: list[DatasetRecord], *, seed: int, sample: int | None
 ) -> list[DatasetRecord]:
@@ -165,6 +256,29 @@ async def _score_rows(
     context_precision: ContextPrecision,
     context_recall: ContextRecall,
 ) -> dict[str, list[float]]:
+    scores, _ = await _score_rows_parallel(
+        rows,
+        faithfulness=faithfulness,
+        answer_relevancy=answer_relevancy,
+        context_precision=context_precision,
+        context_recall=context_recall,
+        limits=ConcurrencyLimits(),
+        timeout=120,
+    )
+    return scores
+
+
+async def _score_rows_parallel(
+    rows: list[dict],
+    *,
+    faithfulness: Faithfulness,
+    answer_relevancy: AnswerRelevancy,
+    context_precision: ContextPrecision,
+    context_recall: ContextRecall,
+    limits: ConcurrencyLimits,
+    timeout: float,
+) -> tuple[dict[str, list[float]], list[dict[str, Any]]]:
+    """Score independent rows with bounded judge/metric work."""
     per_metric: dict[str, list[float]] = {
         "exact_match": [],
         "f1": [],
@@ -175,50 +289,86 @@ async def _score_rows(
         "context_precision": [],
         "context_recall": [],
     }
-    for i, row in enumerate(rows, start=1):
-        print(f"  scoring {i}/{len(rows)}: {row['question'][:60]}...")
+    judge_limit = asyncio.Semaphore(min(limits.judge, limits.total))
+    embedding_limit = asyncio.Semaphore(min(limits.embeddings, limits.total))
+
+    async def judge_call(call: Any, *, embedding: bool = False) -> Any:
+        semaphore = embedding_limit if embedding else judge_limit
+        async with semaphore:
+            return await call()
+
+    async def score(row: dict) -> dict[str, Any]:
         user_input = row["question"]
         response = row["answer"]
         retrieved_contexts = row["contexts"]
         reference = row["ground_truth"]
 
-        per_metric["exact_match"].append(exact_match(response, row["ground_truths"]))
-        per_metric["f1"].append(f1(response, row["ground_truths"]))
+        result: dict[str, Any] = {
+            "exact_match": exact_match(response, row["ground_truths"]),
+            "f1": f1(response, row["ground_truths"]),
+        }
         citation = score_citation_accuracy(
             response, row["answer_citation_ids"], row["relevant_citation_ids"]
         )
-        per_metric["citation_accuracy"].append(
-            citation.value if citation.value is not None else math.nan
-        )
+        result["citation_accuracy"] = citation.value if citation.value is not None else math.nan
 
-        try:
-            faithfulness_result = await faithfulness.ascore(
+        judge_results = await asyncio.gather(
+            judge_call(lambda: faithfulness.ascore(
                 user_input=user_input, response=response, retrieved_contexts=retrieved_contexts
-            )
-            relevancy_result = await answer_relevancy.ascore(
-                user_input=user_input, response=response
-            )
-            precision_result = await context_precision.ascore(
+            )),
+            judge_call(
+                lambda: answer_relevancy.ascore(user_input=user_input, response=response),
+                embedding=True,
+            ),
+            judge_call(lambda: context_precision.ascore(
                 user_input=user_input, reference=reference, retrieved_contexts=retrieved_contexts
-            )
-            recall_result = await context_recall.ascore(
+            )),
+            judge_call(lambda: context_recall.ascore(
                 user_input=user_input, retrieved_contexts=retrieved_contexts, reference=reference
-            )
-        except Exception as exc:  # noqa: BLE001 - preserve per-case judge failure
-            print(f"  judge error for {row['record_id']}: {exc}")
-            per_metric["faithfulness"].append(math.nan)
-            per_metric["answer_relevancy"].append(math.nan)
-            per_metric["context_precision"].append(math.nan)
-            per_metric["context_recall"].append(math.nan)
-            per_metric["hallucination_rate"].append(math.nan)
-            continue
+            )),
+            return_exceptions=True,
+        )
+        judge_names = (
+            "faithfulness",
+            "answer_relevancy",
+            "context_precision",
+            "context_recall",
+        )
+        errors: list[str] = []
+        for name, judge_result in zip(judge_names, judge_results, strict=True):
+            if isinstance(judge_result, BaseException):
+                result[name] = math.nan
+                errors.append(f"{name}: {type(judge_result).__name__}: {judge_result}")
+            else:
+                try:
+                    result[name] = float(judge_result.value)
+                except (AttributeError, TypeError, ValueError) as exc:
+                    result[name] = math.nan
+                    errors.append(f"{name}: {type(exc).__name__}: {exc}")
+        result["hallucination_rate"] = (
+            1.0 - result["faithfulness"]
+            if math.isfinite(result["faithfulness"])
+            else math.nan
+        )
+        if errors:
+            result["_error"] = "; ".join(errors)
+        return result
 
-        per_metric["faithfulness"].append(float(faithfulness_result.value))
-        per_metric["answer_relevancy"].append(float(relevancy_result.value))
-        per_metric["context_precision"].append(float(precision_result.value))
-        per_metric["context_recall"].append(float(recall_result.value))
-        per_metric["hallucination_rate"].append(1.0 - float(faithfulness_result.value))
-    return per_metric
+    outcomes = await run_cases(
+        rows, score, limit=min(limits.metrics, limits.total), timeout=timeout
+    )
+    execution: list[dict[str, Any]] = []
+    for row, outcome in zip(rows, outcomes, strict=True):
+        execution_record = _execution_record(row["record_id"], "metrics", outcome)
+        values = outcome.value or dict.fromkeys(per_metric, math.nan)
+        if outcome.value and values.get("_error"):
+            execution_record["status"] = "failed"
+            execution_record["error"] = values["_error"]
+        execution.append(execution_record)
+        for name, metric_values in per_metric.items():
+            value = values.get(name, math.nan)
+            metric_values.append(value if math.isfinite(value) else math.nan)
+    return per_metric, execution
 
 
 def _print_summary(scores: dict[str, float]) -> bool:
@@ -266,6 +416,13 @@ def main() -> None:
     parser.add_argument("--dataset", default=DEFAULT_DATASET_ID, help="Registered dataset_id.")
     parser.add_argument("--version", default=None, help="Dataset version (default: highest).")
     parser.add_argument("--split", default=DEFAULT_SPLIT, help="Named split to evaluate.")
+    parser.add_argument("--retrieval-concurrency", type=int, default=2)
+    parser.add_argument("--generation-concurrency", type=int, default=1)
+    parser.add_argument("--judge-concurrency", type=int, default=1)
+    parser.add_argument("--embedding-concurrency", type=int, default=1)
+    parser.add_argument("--metric-concurrency", type=int, default=4)
+    parser.add_argument("--total-concurrency", type=int, default=4)
+    parser.add_argument("--case-timeout", type=float, default=120.0)
     args = parser.parse_args()
 
     try:
@@ -290,11 +447,29 @@ def main() -> None:
         f"(evaluating {len(records)}, seed={seed})"
     )
 
-    print("Building dataset" + (" (offline mode)" if args.offline else " (live API)") + "...")
     try:
-        rows = _build_rows(records, args.api_url, args.api_key, offline=args.offline)
-    except OfflineArtifactsMissingError as exc:
+        limits = ConcurrencyLimits(
+            retrieval=args.retrieval_concurrency,
+            generation=args.generation_concurrency,
+            judge=args.judge_concurrency,
+            embeddings=args.embedding_concurrency,
+            metrics=args.metric_concurrency,
+            total=args.total_concurrency,
+        )
+    except ValueError as exc:
         parser.error(str(exc))
+
+    print("Building dataset" + (" (offline mode)" if args.offline else " (live API)") + "...")
+    rows, execution = asyncio.run(
+        _build_rows_async(
+            records,
+            args.api_url,
+            args.api_key,
+            offline=args.offline,
+            limits=limits,
+            timeout=args.case_timeout,
+        )
+    )
 
     print(f"Running RAGAS evaluation (judge={args.judge_model} via {args.ollama_url})...")
     # AsyncOpenAI/OpenAIEmbeddings here are just clients for the OpenAI-shaped
@@ -312,15 +487,18 @@ def main() -> None:
         seed=seed,
     )
     judge_embeddings = OpenAIEmbeddings(client=ollama_client, model=JUDGE_EMBED_MODEL)
-    per_metric = asyncio.run(
-        _score_rows(
+    per_metric, metric_execution = asyncio.run(
+        _score_rows_parallel(
             rows,
             faithfulness=Faithfulness(llm=judge_llm),
             answer_relevancy=AnswerRelevancy(llm=judge_llm, embeddings=judge_embeddings),
             context_precision=ContextPrecision(llm=judge_llm),
             context_recall=ContextRecall(llm=judge_llm),
+            limits=limits,
+            timeout=args.case_timeout,
         )
     )
+    execution.extend(metric_execution)
 
     scores: dict[str, float] = {name: _mean_score(values) for name, values in per_metric.items()}
 
@@ -412,7 +590,23 @@ def main() -> None:
                 "judge_prompt_version": "ragas-default-prompts@0.4.3",
                 "judge_seed": seed,
                 "judge_endpoint": args.ollama_url,
+                "concurrency": {
+                    "retrieval": limits.retrieval,
+                    "generation": limits.generation,
+                    "judge": limits.judge,
+                    "embeddings": limits.embeddings,
+                    "metrics": limits.metrics,
+                    "total": limits.total,
+                    "case_timeout_seconds": args.case_timeout,
+                },
             },
+            "cases": [EvaluationCaseResult.model_validate(item) for item in execution],
+            "failure_counts": {
+                status: sum(item["status"] == status for item in execution)
+                for status in {item["status"] for item in execution if item["status"] != "completed"}
+            },
+            "status": "failed" if any(item["status"] != "completed" for item in execution) else "complete",
+            "exit_code": 1 if any(item["status"] != "completed" for item in execution) else 0,
         }
     )
     out_path.write_text(result.model_dump_json_safe(), encoding="utf-8")
@@ -421,7 +615,7 @@ def main() -> None:
     print(f"\nResults written to {out_path}")
 
     all_pass = _print_summary(scores)
-    sys.exit(0 if all_pass else 1)
+    sys.exit(0 if all_pass and not any(item["status"] != "completed" for item in execution) else 1)
 
 
 if __name__ == "__main__":
