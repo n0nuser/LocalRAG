@@ -1,6 +1,6 @@
 """RAGAS evaluation runner.
 
-Loads the dataset from evals/dataset.json, evaluates the RAG pipeline
+Loads a registered dataset (see evals/dataset/), evaluates the RAG pipeline
 (or uses pre-built answer/context if run in offline mode), and writes
 results to evals/results/<timestamp>.json.
 
@@ -10,16 +10,24 @@ Usage:
 Options:
     --api-url       LocalRAG API base URL (default: http://localhost:8000)
     --api-key       X-API-Key header value (empty = no auth)
-    --offline       Skip live API calls; use stored contexts from dataset only
-                    (requires ground-truth answers to already be in the dataset)
+    --offline       Skip live API calls; use stored contexts/answers from the dataset only
     --judge-model   Ollama model used as the RAGAS LLM judge (default: gemma3:4b)
     --ollama-url    Ollama base URL for the judge/embeddings (default: http://localhost:11434)
+    --seed          Seed for down-sampling and judge sampling (default: 42)
+    --sample        Evaluate only N examples, chosen deterministically from the seed
+    --dataset       Registered dataset_id (default: localrag-core)
+    --version       Dataset version (default: highest registered)
+    --split         Named split within the dataset (default: default)
 
 The RAGAS judge LLM and embeddings run on the same local Ollama instance
 LocalRAG itself uses, via Ollama's OpenAI-compatible `/v1` endpoint and the
 `openai` client already a core dependency of this project — no LangChain, no
 new dependency, no external API key required. This matches LocalRAG's
 offline-first positioning.
+
+Runs are reproducible as far as the stack allows: the seed fixes dataset
+sampling and judge sampling, and each result file embeds the environment it was
+produced in. See `docs/reproducibility.md` for the limits.
 """
 
 from __future__ import annotations
@@ -28,6 +36,7 @@ import argparse
 import asyncio
 import json
 import math
+import random
 import statistics
 import sys
 from datetime import UTC, datetime
@@ -44,8 +53,18 @@ from ragas.metrics.collections import (
     Faithfulness,
 )
 
-DATASET_PATH = Path(__file__).parent / "dataset.json"
+from evals.dataset.checksum import manifest_checksum
+from evals.dataset.errors import DatasetError, OfflineArtifactsMissingError
+from evals.dataset.registry import load_dataset
+from evals.dataset.schema import DatasetRecord
+from evals.environment import capture_run_metadata
+
 RESULTS_DIR = Path(__file__).parent / "results"
+
+DEFAULT_SEED = 42
+DEFAULT_DATASET_ID = "localrag-core"
+DEFAULT_SPLIT = "default"
+JUDGE_EMBED_MODEL = "nomic-embed-text"
 
 PASS_THRESHOLDS = {
     "faithfulness": 0.6,
@@ -75,34 +94,50 @@ def _query_api(question: str, api_url: str, api_key: str) -> tuple[str, list[str
 
 
 def _build_rows(
-    records: list[dict],
+    records: list[DatasetRecord],
     api_url: str,
     api_key: str,
     offline: bool,
 ) -> list[dict]:
     rows: list[dict] = []
     for rec in records:
-        question = rec["question"]
-        ground_truth = rec.get("ground_truth", "")
-        stored_contexts = rec.get("contexts", [])
-
         if offline:
-            answer = rec.get("answer", ground_truth)
-            contexts = stored_contexts
+            if rec.offline_answer is None and not rec.reference_answer:
+                raise OfflineArtifactsMissingError(rec.record_id, "answer")
+            answer = rec.offline_answer if rec.offline_answer is not None else rec.reference_answer
+            contexts = rec.offline_context_texts()
+            if not contexts:
+                raise OfflineArtifactsMissingError(rec.record_id, "contexts")
         else:
-            print(f"  querying: {question[:60]}...")
-            answer, live_contexts = _query_api(question, api_url, api_key)
-            contexts = live_contexts or stored_contexts
+            print(f"  querying: {rec.question[:60]}...")
+            answer, live_contexts = _query_api(rec.question, api_url, api_key)
+            contexts = live_contexts or rec.offline_context_texts()
 
         rows.append(
             {
-                "question": question,
+                "record_id": rec.record_id,
+                "question": rec.question,
                 "answer": answer,
                 "contexts": contexts,
-                "ground_truth": ground_truth,
+                "ground_truth": rec.reference_answer,
             }
         )
     return rows
+
+
+def _select_records(
+    records: list[DatasetRecord], *, seed: int, sample: int | None
+) -> list[DatasetRecord]:
+    """Order records by stable record_id, optionally down-sampling to ``sample`` rows.
+
+    Ordering by record_id (not list position) makes selection independent of
+    how records happen to be laid out in the manifest file, so two runs with
+    the same seed evaluate the same records even after the file is reordered.
+    """
+    ordered = sorted(records, key=lambda rec: rec.record_id)
+    if sample is None or sample >= len(ordered):
+        return ordered
+    return random.Random(seed).sample(ordered, sample)  # noqa: S311 — benchmark sampling, not crypto
 
 
 def _mean_score(values: list[float]) -> float:
@@ -172,13 +207,46 @@ def main() -> None:
     parser.add_argument("--offline", action="store_true")
     parser.add_argument("--judge-model", default="gemma3:4b")
     parser.add_argument("--ollama-url", default="http://localhost:11434")
+    parser.add_argument(
+        "--seed",
+        type=int,
+        default=DEFAULT_SEED,
+        help="Seed for dataset ordering and judge sampling.",
+    )
+    parser.add_argument(
+        "--sample",
+        type=int,
+        default=None,
+        help="Evaluate only N examples, chosen deterministically from the seed.",
+    )
+    parser.add_argument("--dataset", default=DEFAULT_DATASET_ID, help="Registered dataset_id.")
+    parser.add_argument("--version", default=None, help="Dataset version (default: highest).")
+    parser.add_argument("--split", default=DEFAULT_SPLIT, help="Named split to evaluate.")
     args = parser.parse_args()
 
-    records: list[dict] = json.loads(DATASET_PATH.read_text(encoding="utf-8"))
-    print(f"Loaded {len(records)} evaluation examples from {DATASET_PATH}")
+    if args.seed < 0:
+        parser.error(f"--seed must be a non-negative integer, got {args.seed}")
+
+    random.seed(args.seed)
+
+    try:
+        manifest = load_dataset(args.dataset, args.version)
+        all_records = manifest.split(args.split)
+    except DatasetError as exc:
+        parser.error(str(exc))
+
+    records = _select_records(all_records, seed=args.seed, sample=args.sample)
+    print(
+        f"Loaded {len(all_records)} examples from {manifest.dataset_id} "
+        f"v{manifest.dataset_version} split={args.split!r} "
+        f"(evaluating {len(records)}, seed={args.seed})"
+    )
 
     print("Building dataset" + (" (offline mode)" if args.offline else " (live API)") + "...")
-    rows = _build_rows(records, args.api_url, args.api_key, offline=args.offline)
+    try:
+        rows = _build_rows(records, args.api_url, args.api_key, offline=args.offline)
+    except OfflineArtifactsMissingError as exc:
+        parser.error(str(exc))
 
     print(f"Running RAGAS evaluation (judge={args.judge_model} via {args.ollama_url})...")
     # AsyncOpenAI/OpenAIEmbeddings here are just clients for the OpenAI-shaped
@@ -186,8 +254,16 @@ def main() -> None:
     # local Ollama instance, api_key is a required-but-ignored dummy value —
     # no OpenAI account, key, or network call is ever involved.
     ollama_client = AsyncOpenAI(base_url=f"{args.ollama_url.rstrip('/')}/v1", api_key="ollama")
-    judge_llm = llm_factory(args.judge_model, client=ollama_client, adapter="instructor")
-    judge_embeddings = OpenAIEmbeddings(client=ollama_client, model="nomic-embed-text")
+    # temperature=0 + a fixed seed make the judge's own verdicts repeatable;
+    # without them the same answer can score differently run to run.
+    judge_llm = llm_factory(
+        args.judge_model,
+        client=ollama_client,
+        adapter="instructor",
+        temperature=0.0,
+        seed=args.seed,
+    )
+    judge_embeddings = OpenAIEmbeddings(client=ollama_client, model=JUDGE_EMBED_MODEL)
     per_metric = asyncio.run(
         _score_rows(
             rows,
@@ -200,13 +276,37 @@ def main() -> None:
 
     scores: dict[str, float] = {name: _mean_score(values) for name, values in per_metric.items()}
 
+    metadata = capture_run_metadata(
+        seed=args.seed,
+        judge_model=args.judge_model,
+        embedding_model=JUDGE_EMBED_MODEL,
+        ollama_url=args.ollama_url,
+    )
+
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out_path = RESULTS_DIR / f"{ts}.json"
     out_path.write_text(
-        json.dumps({"timestamp": ts, "scores": scores}, indent=2),
+        json.dumps(
+            {
+                "timestamp": ts,
+                "scores": scores,
+                "num_examples": len(rows),
+                "dataset": {
+                    "dataset_id": manifest.dataset_id,
+                    "dataset_version": manifest.dataset_version,
+                    "split": args.split,
+                    "checksum": manifest_checksum(manifest),
+                    "selected_record_ids": [row["record_id"] for row in rows],
+                },
+                "environment": metadata.to_dict(),
+            },
+            indent=2,
+        ),
         encoding="utf-8",
     )
+    if metadata.git_dirty:
+        print("WARNING: working tree is dirty — these results are not tied to a clean commit.")
     print(f"\nResults written to {out_path}")
 
     all_pass = _print_summary(scores)

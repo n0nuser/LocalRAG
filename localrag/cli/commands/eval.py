@@ -18,12 +18,30 @@ def eval_suite(
         default=False,
         help="Skip live API calls; use stored contexts from the dataset.",
     ),
+    seed: int = typer.Option(42, help="Seed for down-sampling and judge sampling."),
+    sample: int = typer.Option(
+        0, help="Evaluate only N examples (0 = all), chosen deterministically from the seed."
+    ),
+    dataset: str = typer.Option("localrag-core", help="Registered dataset_id."),
+    version: str = typer.Option("", help="Dataset version (empty = highest registered)."),
+    split: str = typer.Option("default", help="Named split to evaluate."),
 ) -> None:
     """Run the RAGAS evaluation suite and print a pass/fail summary."""
-    cmd = [sys.executable, str(_RUNNER), f"--api-url={api_url}"]
+    cmd = [
+        sys.executable,
+        str(_RUNNER),
+        f"--api-url={api_url}",
+        f"--seed={seed}",
+        f"--dataset={dataset}",
+        f"--split={split}",
+    ]
     if api_key:
         cmd.append(f"--api-key={api_key}")
     if offline:
         cmd.append("--offline")
+    if sample > 0:
+        cmd.append(f"--sample={sample}")
+    if version:
+        cmd.append(f"--version={version}")
     result = subprocess.run(cmd, check=False)  # noqa: S603
     raise typer.Exit(result.returncode)

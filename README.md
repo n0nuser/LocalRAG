@@ -192,9 +192,11 @@ uv run localrag eval --offline
 
 Results are written to `evals/results/`. The nightly GitHub Actions workflow (`.github/workflows/evals.yml`) also runs evals automatically.
 
+Runs are seeded (`--seed`, default 42) and `--sample N` evaluates a deterministic subset. Datasets are selected from a registry (`--dataset`, `--version`, `--split`; default `localrag-core` `default`) — see [docs/eval-datasets.md](docs/eval-datasets.md). Each result file embeds dataset identity (ID, version, split, content checksum, selected record IDs) and the environment it was produced in — git SHA, model digests, dependency lock hash, hardware, and a settings snapshot — so numbers stay comparable across machines and over time. See [docs/reproducibility.md](docs/reproducibility.md) for the guarantees and their limits.
+
 ### Benchmark (offline baseline)
 
-The eval dataset (`evals/dataset.json`) contains 20 balanced Q/A/context triplets covering in-scope and out-of-scope cases. Baseline metrics on the bundled dataset:
+The bundled `localrag-core` dataset contains 23 balanced Q/A/context records covering in-scope and out-of-scope cases (`default` split; `smoke` is a 3-record subset). Baseline metrics on the bundled dataset:
 
 | Metric | Target |
 | --- | --- |

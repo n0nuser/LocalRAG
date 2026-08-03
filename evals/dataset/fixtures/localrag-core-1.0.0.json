@@ -1,0 +1,716 @@
+{
+  "schema_version": 1,
+  "dataset_id": "localrag-core",
+  "dataset_version": "1.0.0",
+  "description": "Core LocalRAG Q/A fixture covering in-scope and out-of-scope questions about the project itself.",
+  "source": "authored",
+  "license": "CC0-1.0",
+  "judgment_type": "binary",
+  "records": [
+    {
+      "record_id": "what-is-localrag",
+      "question": "What is LocalRAG?",
+      "reference_answer": "LocalRAG is an offline-first Retrieval-Augmented Generation system that keeps documents, models, and computation entirely on the local machine.",
+      "citations": [
+        {
+          "citation_id": "what-is-localrag-c1",
+          "source": "localrag-docs",
+          "text": "LocalRAG is an offline-first RAG system. Your documents, your models, your machine."
+        },
+        {
+          "citation_id": "what-is-localrag-c2",
+          "source": "localrag-docs",
+          "text": "It uses Chroma as the vector store and Ollama for embeddings and LLM inference."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "what-is-localrag-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "what-is-localrag-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "which-vector-store-does-localrag-use",
+      "question": "Which vector store does LocalRAG use?",
+      "reference_answer": "LocalRAG uses ChromaDB as its vector store for persisting and retrieving document embeddings.",
+      "citations": [
+        {
+          "citation_id": "which-vector-store-does-localrag-use-c1",
+          "source": "localrag-docs",
+          "text": "LocalRAG stores all document embeddings in ChromaDB, a persistent on-disk vector database."
+        },
+        {
+          "citation_id": "which-vector-store-does-localrag-use-c2",
+          "source": "localrag-docs",
+          "text": "The Chroma collection name and persist path are configurable via environment variables."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "which-vector-store-does-localrag-use-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "which-vector-store-does-localrag-use-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "what-embedding-model-is-used-by-default",
+      "question": "What embedding model is used by default?",
+      "reference_answer": "The default embedding model is nomic-embed-text, which is run locally via Ollama.",
+      "citations": [
+        {
+          "citation_id": "what-embedding-model-is-used-by-default-c1",
+          "source": "localrag-docs",
+          "text": "The default embedding model is nomic-embed-text. It is pulled and served by Ollama."
+        },
+        {
+          "citation_id": "what-embedding-model-is-used-by-default-c2",
+          "source": "localrag-docs",
+          "text": "You can override the embedding model with the OLLAMA_EMBED_MODEL environment variable."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "what-embedding-model-is-used-by-default-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "what-embedding-model-is-used-by-default-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "how-do-i-ingest-a-pdf-file",
+      "question": "How do I ingest a PDF file?",
+      "reference_answer": "You can ingest a PDF file using the POST /ingest endpoint with the file path, or with the localrag ingest CLI command.",
+      "citations": [
+        {
+          "citation_id": "how-do-i-ingest-a-pdf-file-c1",
+          "source": "localrag-docs",
+          "text": "Use POST /ingest with a JSON body containing the path field pointing to the PDF file."
+        },
+        {
+          "citation_id": "how-do-i-ingest-a-pdf-file-c2",
+          "source": "localrag-docs",
+          "text": "The CLI command `localrag ingest /path/to/file.pdf` also ingests a single file."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "how-do-i-ingest-a-pdf-file-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "how-do-i-ingest-a-pdf-file-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "what-llm-is-used-by-default-for-answering-questions",
+      "question": "What LLM is used by default for answering questions?",
+      "reference_answer": "The default LLM is llama3.2, served locally via Ollama.",
+      "citations": [
+        {
+          "citation_id": "what-llm-is-used-by-default-for-answering-questions-c1",
+          "source": "localrag-docs",
+          "text": "By default LocalRAG uses llama3.2 for the chat/completion step."
+        },
+        {
+          "citation_id": "what-llm-is-used-by-default-for-answering-questions-c2",
+          "source": "localrag-docs",
+          "text": "The LLM model tag is configurable via OLLAMA_LLM_MODEL."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "what-llm-is-used-by-default-for-answering-questions-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "what-llm-is-used-by-default-for-answering-questions-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "how-do-i-run-the-localrag-api-server",
+      "question": "How do I run the LocalRAG API server?",
+      "reference_answer": "Run the API server with `uv run uvicorn localrag.api.main:app` or via Docker Compose.",
+      "citations": [
+        {
+          "citation_id": "how-do-i-run-the-localrag-api-server-c1",
+          "source": "localrag-docs",
+          "text": "Start the API with: uv run uvicorn localrag.api.main:app --host 0.0.0.0 --port 8000"
+        },
+        {
+          "citation_id": "how-do-i-run-the-localrag-api-server-c2",
+          "source": "localrag-docs",
+          "text": "Alternatively use docker compose up to start all services including the API."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "how-do-i-run-the-localrag-api-server-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "how-do-i-run-the-localrag-api-server-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "what-is-the-chunk-size-used-during-ingestion",
+      "question": "What is the chunk size used during ingestion?",
+      "reference_answer": "The default chunk size is 512 characters with a 50-character overlap between adjacent chunks.",
+      "citations": [
+        {
+          "citation_id": "what-is-the-chunk-size-used-during-ingestion-c1",
+          "source": "localrag-docs",
+          "text": "Text is split into chunks of up to CHUNK_CHARS characters (default 512)."
+        },
+        {
+          "citation_id": "what-is-the-chunk-size-used-during-ingestion-c2",
+          "source": "localrag-docs",
+          "text": "Adjacent chunks share CHUNK_OVERLAP_CHARS characters (default 50) to preserve context at boundaries."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "what-is-the-chunk-size-used-during-ingestion-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "what-is-the-chunk-size-used-during-ingestion-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "can-i-restrict-which-directories-are-allowed-for-ingestion",
+      "question": "Can I restrict which directories are allowed for ingestion?",
+      "reference_answer": "Yes, setting INGEST_ROOTS to a list of allowed paths restricts ingestion to those directories only.",
+      "citations": [
+        {
+          "citation_id": "can-i-restrict-which-directories-are-allowed-for-ingestion-c1",
+          "source": "localrag-docs",
+          "text": "INGEST_ROOTS limits the HTTP ingest API to files under the specified root directories."
+        },
+        {
+          "citation_id": "can-i-restrict-which-directories-are-allowed-for-ingestion-c2",
+          "source": "localrag-docs",
+          "text": "An empty INGEST_ROOTS list (default) disables path restriction and allows any accessible file."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "can-i-restrict-which-directories-are-allowed-for-ingestion-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "can-i-restrict-which-directories-are-allowed-for-ingestion-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "what-authentication-mechanism-does-the-api-use",
+      "question": "What authentication mechanism does the API use?",
+      "reference_answer": "The API uses an X-API-Key header for authentication, configured via the API_KEY environment variable. It is disabled when API_KEY is empty.",
+      "citations": [
+        {
+          "citation_id": "what-authentication-mechanism-does-the-api-use-c1",
+          "source": "localrag-docs",
+          "text": "Set API_KEY in .env to enable API key authentication via the X-API-Key request header."
+        },
+        {
+          "citation_id": "what-authentication-mechanism-does-the-api-use-c2",
+          "source": "localrag-docs",
+          "text": "When API_KEY is empty (the default), authentication is disabled and all requests are accepted."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "what-authentication-mechanism-does-the-api-use-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "what-authentication-mechanism-does-the-api-use-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "how-do-i-switch-from-ollama-to-openai",
+      "question": "How do I switch from Ollama to OpenAI?",
+      "reference_answer": "Set LLM_BACKEND=openai and provide your OpenAI API key in OPENAI_API_KEY.",
+      "citations": [
+        {
+          "citation_id": "how-do-i-switch-from-ollama-to-openai-c1",
+          "source": "localrag-docs",
+          "text": "Change LLM_BACKEND to openai and set OPENAI_API_KEY to your OpenAI secret key."
+        },
+        {
+          "citation_id": "how-do-i-switch-from-ollama-to-openai-c2",
+          "source": "localrag-docs",
+          "text": "OPENAI_MODEL controls which OpenAI model is used (default: gpt-4o-mini)."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "how-do-i-switch-from-ollama-to-openai-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "how-do-i-switch-from-ollama-to-openai-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "what-prometheus-metrics-does-localrag-expose",
+      "question": "What Prometheus metrics does LocalRAG expose?",
+      "reference_answer": "LocalRAG exposes localrag_query_duration_seconds, localrag_tokens_used_total, localrag_chunks_retrieved_total, and localrag_ingested_documents_total at the /metrics endpoint.",
+      "citations": [
+        {
+          "citation_id": "what-prometheus-metrics-does-localrag-expose-c1",
+          "source": "localrag-docs",
+          "text": "The /metrics endpoint exposes localrag_query_duration_seconds (histogram) and localrag_tokens_used_total (counter)."
+        },
+        {
+          "citation_id": "what-prometheus-metrics-does-localrag-expose-c2",
+          "source": "localrag-docs",
+          "text": "localrag_chunks_retrieved_total and localrag_ingested_documents_total track retrieval and ingestion activity."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "what-prometheus-metrics-does-localrag-expose-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "what-prometheus-metrics-does-localrag-expose-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "what-file-formats-can-localrag-ingest",
+      "question": "What file formats can LocalRAG ingest?",
+      "reference_answer": "LocalRAG supports PDF, DOCX, Markdown, plain text, and source code files.",
+      "citations": [
+        {
+          "citation_id": "what-file-formats-can-localrag-ingest-c1",
+          "source": "localrag-docs",
+          "text": "Supported parsers: PDF (pypdf), DOCX (python-docx), Markdown, plain text, and source code files."
+        },
+        {
+          "citation_id": "what-file-formats-can-localrag-ingest-c2",
+          "source": "localrag-docs",
+          "text": "The loader dispatches each file to the appropriate parser based on file extension."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "what-file-formats-can-localrag-ingest-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "what-file-formats-can-localrag-ingest-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "where-is-configuration-stored",
+      "question": "Where is configuration stored?",
+      "reference_answer": "Configuration is loaded from environment variables and an optional .env file via pydantic-settings.",
+      "citations": [
+        {
+          "citation_id": "where-is-configuration-stored-c1",
+          "source": "localrag-docs",
+          "text": "All configuration is managed by the Settings class using pydantic-settings."
+        },
+        {
+          "citation_id": "where-is-configuration-stored-c2",
+          "source": "localrag-docs",
+          "text": "Settings are read from the process environment and optionally from a .env file in the working directory."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "where-is-configuration-stored-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "where-is-configuration-stored-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "how-can-i-see-available-cli-commands",
+      "question": "How can I see available CLI commands?",
+      "reference_answer": "Run `localrag --help` to see all available commands, or `localrag <command> --help` for command-specific help.",
+      "citations": [
+        {
+          "citation_id": "how-can-i-see-available-cli-commands-c1",
+          "source": "localrag-docs",
+          "text": "Use `localrag --help` for a list of commands."
+        },
+        {
+          "citation_id": "how-can-i-see-available-cli-commands-c2",
+          "source": "localrag-docs",
+          "text": "Each sub-command also supports `--help` for detailed usage."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "how-can-i-see-available-cli-commands-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "how-can-i-see-available-cli-commands-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "what-is-the-health-check-endpoint",
+      "question": "What is the health check endpoint?",
+      "reference_answer": "GET /health returns the API status, whether Ollama is reachable, the Chroma persist path, and the list of collections.",
+      "citations": [
+        {
+          "citation_id": "what-is-the-health-check-endpoint-c1",
+          "source": "localrag-docs",
+          "text": "GET /health checks Ollama connectivity and returns status, ollama_ok, chroma_path, and collections."
+        },
+        {
+          "citation_id": "what-is-the-health-check-endpoint-c2",
+          "source": "localrag-docs",
+          "text": "The health endpoint does not require API key authentication."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "what-is-the-health-check-endpoint-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "what-is-the-health-check-endpoint-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "how-is-context-built-for-the-llm-prompt",
+      "question": "How is context built for the LLM prompt?",
+      "reference_answer": "The retriever fetches the top-k most similar document chunks, which are assembled into a prompt using a system message and the retrieved context.",
+      "citations": [
+        {
+          "citation_id": "how-is-context-built-for-the-llm-prompt-c1",
+          "source": "localrag-docs",
+          "text": "The retriever embeds the question and retrieves the top RAG_TOP_K chunks from ChromaDB."
+        },
+        {
+          "citation_id": "how-is-context-built-for-the-llm-prompt-c2",
+          "source": "localrag-docs",
+          "text": "build_prompt assembles the system message, retrieved chunks, and question into the final prompt."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "how-is-context-built-for-the-llm-prompt-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "how-is-context-built-for-the-llm-prompt-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "does-localrag-support-streaming-responses",
+      "question": "Does LocalRAG support streaming responses?",
+      "reference_answer": "Yes, POST /query/stream streams answer tokens via Server-Sent Events (SSE).",
+      "citations": [
+        {
+          "citation_id": "does-localrag-support-streaming-responses-c1",
+          "source": "localrag-docs",
+          "text": "POST /query/stream returns tokens incrementally as Server-Sent Events."
+        },
+        {
+          "citation_id": "does-localrag-support-streaming-responses-c2",
+          "source": "localrag-docs",
+          "text": "Each token event carries the token text; a final event includes source references."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "does-localrag-support-streaming-responses-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "does-localrag-support-streaming-responses-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "what-is-the-capital-of-mars",
+      "question": "What is the capital of Mars?",
+      "reference_answer": "I don't know. Mars has no capital city; it is not inhabited.",
+      "citations": [
+        {
+          "citation_id": "what-is-the-capital-of-mars-c1",
+          "source": "localrag-docs",
+          "text": "LocalRAG is an offline-first RAG system for local document retrieval."
+        },
+        {
+          "citation_id": "what-is-the-capital-of-mars-c2",
+          "source": "localrag-docs",
+          "text": "It uses Chroma and Ollama for vector storage and language model inference."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "what-is-the-capital-of-mars-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "what-is-the-capital-of-mars-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "what-is-the-cost-of-using-ollama-models",
+      "question": "What is the cost of using Ollama models?",
+      "reference_answer": "Ollama models run locally and are free; there is no per-token cost.",
+      "citations": [
+        {
+          "citation_id": "what-is-the-cost-of-using-ollama-models-c1",
+          "source": "localrag-docs",
+          "text": "Ollama models are served locally and have zero API cost."
+        },
+        {
+          "citation_id": "what-is-the-cost-of-using-ollama-models-c2",
+          "source": "localrag-docs",
+          "text": "Cloud providers such as OpenAI and Anthropic have per-token pricing; Ollama does not."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "what-is-the-cost-of-using-ollama-models-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "what-is-the-cost-of-using-ollama-models-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "can-i-rebuild-the-vector-store-collection",
+      "question": "Can I rebuild the vector store collection?",
+      "reference_answer": "Yes, POST /collections/rebuild or `localrag collections rebuild` drops and re-ingests all stored sources.",
+      "citations": [
+        {
+          "citation_id": "can-i-rebuild-the-vector-store-collection-c1",
+          "source": "localrag-docs",
+          "text": "POST /collections/rebuild re-embeds all previously ingested sources from scratch."
+        },
+        {
+          "citation_id": "can-i-rebuild-the-vector-store-collection-c2",
+          "source": "localrag-docs",
+          "text": "Sources that no longer exist on disk are removed from the collection automatically."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "can-i-rebuild-the-vector-store-collection-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "can-i-rebuild-the-vector-store-collection-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "in-this-pricing-table-what-is-the-team-plan-monthly-price",
+      "question": "In this pricing table, what is the Team plan monthly price?",
+      "reference_answer": "The Team plan monthly price is $50.",
+      "citations": [
+        {
+          "citation_id": "in-this-pricing-table-what-is-the-team-plan-monthly-price-c1",
+          "source": "localrag-docs",
+          "text": "# Pricing\n| Plan | Monthly |\n| --- | --- |\n| Starter | $10 |\n| Pro | $20 |\n| Team | $50 |"
+        },
+        {
+          "citation_id": "in-this-pricing-table-what-is-the-team-plan-monthly-price-c2",
+          "source": "localrag-docs",
+          "text": "The Team tier includes SSO and priority support."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "in-this-pricing-table-what-is-the-team-plan-monthly-price-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "in-this-pricing-table-what-is-the-team-plan-monthly-price-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "how-do-i-fix-err-localrag-42",
+      "question": "How do I fix ERR_LOCALRAG_42?",
+      "reference_answer": "Fix ERR_LOCALRAG_42 by deleting the stale cache directory and restarting the service.",
+      "citations": [
+        {
+          "citation_id": "how-do-i-fix-err-localrag-42-c1",
+          "source": "localrag-docs",
+          "text": "Troubleshooting: ERR_LOCALRAG_42 indicates stale cache metadata. Delete ./data/cache and restart."
+        },
+        {
+          "citation_id": "how-do-i-fix-err-localrag-42-c2",
+          "source": "localrag-docs",
+          "text": "General startup issues can also come from missing model pulls."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "how-do-i-fix-err-localrag-42-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "how-do-i-fix-err-localrag-42-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    },
+    {
+      "record_id": "what-is-the-current-refund-policy",
+      "question": "What is the current refund policy?",
+      "reference_answer": "The current refund policy allows refunds within 30 days of purchase.",
+      "citations": [
+        {
+          "citation_id": "what-is-the-current-refund-policy-c1",
+          "source": "localrag-docs",
+          "text": "Refund policy (archived, 2023): refunds are allowed within 7 days."
+        },
+        {
+          "citation_id": "what-is-the-current-refund-policy-c2",
+          "source": "localrag-docs",
+          "text": "Refund policy (current, 2026): refunds are allowed within 30 days of purchase."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "what-is-the-current-refund-policy-c1",
+          "relevant": true
+        },
+        {
+          "citation_id": "what-is-the-current-refund-policy-c2",
+          "relevant": true
+        }
+      ],
+      "offline_answer": null,
+      "offline_contexts": null
+    }
+  ],
+  "splits": [
+    {
+      "name": "default",
+      "record_ids": [
+        "what-is-localrag",
+        "which-vector-store-does-localrag-use",
+        "what-embedding-model-is-used-by-default",
+        "how-do-i-ingest-a-pdf-file",
+        "what-llm-is-used-by-default-for-answering-questions",
+        "how-do-i-run-the-localrag-api-server",
+        "what-is-the-chunk-size-used-during-ingestion",
+        "can-i-restrict-which-directories-are-allowed-for-ingestion",
+        "what-authentication-mechanism-does-the-api-use",
+        "how-do-i-switch-from-ollama-to-openai",
+        "what-prometheus-metrics-does-localrag-expose",
+        "what-file-formats-can-localrag-ingest",
+        "where-is-configuration-stored",
+        "how-can-i-see-available-cli-commands",
+        "what-is-the-health-check-endpoint",
+        "how-is-context-built-for-the-llm-prompt",
+        "does-localrag-support-streaming-responses",
+        "what-is-the-capital-of-mars",
+        "what-is-the-cost-of-using-ollama-models",
+        "can-i-rebuild-the-vector-store-collection",
+        "in-this-pricing-table-what-is-the-team-plan-monthly-price",
+        "how-do-i-fix-err-localrag-42",
+        "what-is-the-current-refund-policy"
+      ]
+    },
+    {
+      "name": "smoke",
+      "record_ids": [
+        "what-is-localrag",
+        "which-vector-store-does-localrag-use",
+        "what-embedding-model-is-used-by-default"
+      ]
+    }
+  ]
+}
