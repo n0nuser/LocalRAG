@@ -32,18 +32,35 @@ Candidates are merged by reciprocal rank fusion:
 Where `rank_i(d)` is rank position in vector or BM25 list. This avoids brittle
 score normalization across different ranker scales.
 
-## Freshness decay
+## Freshness / recency
 
-After retrieval/fusion, LocalRAG applies an optional recency factor using each
-chunk's `ingested_at` metadata:
+How recency is applied depends on the retrieval mode, because the two modes
+produce scores on very different scales.
+
+**Hybrid mode** — recency joins the fusion as a third ranked list, alongside
+vector and BM25:
+
+`fused_score(d) = w_vec/(rrf_k + rank_vec) + w_bm25/(rrf_k + rank_bm25) + FRESHNESS_WEIGHT/(rrf_k + rank_recency)`
+
+`FRESHNESS_WEIGHT` (default `0.15`) comes out of the relevance budget, so
+`w_vec + w_bm25 = 1 - FRESHNESS_WEIGHT`. Relevance ties are broken by recency
+before ranking, and chunks with no usable `ingested_at` take the middle recency
+rank so missing metadata neither helps nor hurts.
+
+This replaced a multiplicative decay that overwhelmed RRF's compressed score
+range — see the amendment in [ADR 006](adr/006-freshness-decay.md) for the
+measurements.
+
+**Vector mode** — scores spread widely enough for the original multiplicative
+decay to act as an intended tiebreaker, so it still applies:
 
 `freshness_factor = 0.5 ** (age_days / freshness_half_life_days)`
-
-Final score becomes:
-
 `final_score = base_score * freshness_factor`
 
-Set `FRESHNESS_HALF_LIFE_DAYS=0` to disable this behavior.
+`freshness_factor` is reported in retrieval contexts in both modes, even where it
+no longer moves the score.
+
+Set `FRESHNESS_HALF_LIFE_DAYS=0` or `FRESHNESS_WEIGHT=0` to disable recency.
 
 ## Chunk overlap
 
