@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import typer
 
+from localrag.cli.commands.benchmark import benchmark
 from localrag.cli.commands.collections import app as collections_app
 from localrag.cli.commands.config import show_config
 from localrag.cli.commands.eval import eval_suite
@@ -19,6 +20,7 @@ app.command()(query)
 app.command("setup")(setup)
 app.command("config-show")(show_config)
 app.command("eval")(eval_suite)
+app.command("benchmark")(benchmark)
 app.command("eval-compare")(eval_compare)
 app.add_typer(collections_app, name="collections")
 

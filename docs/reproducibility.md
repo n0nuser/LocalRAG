@@ -37,6 +37,33 @@ uv run python evals/run_evals.py --offline --seed 7 --sample 10
 
 See [docs/eval-datasets.md](eval-datasets.md) for `--dataset`/`--version`/`--split`.
 
+## Canonical benchmark matrices
+
+Use the manually invoked matrix command when comparing configurations:
+
+```bash
+uv run localrag benchmark --profile fixture --dry-run
+uv run localrag benchmark --profile embedding-comparison
+uv run localrag benchmark --matrix path/to/matrix.json
+```
+
+`evals/matrix.py` is the versioned JSON contract. Dimension values are validated
+against the capabilities currently exposed by LocalRAG (`ollama`,
+`nomic-embed-text`, `gemma3:4b`, `hybrid`/`vector`, and the installed chunking
+options). Expansion sorts dimension names and values before computing Cartesian
+products, so reordered input produces the same case IDs and order. Each case
+gets its own work directory and a structured result with latency and resource
+units, metrics or an error, and artifact paths. The matrix manifest records run
+and matrix IDs, dataset and corpus checksums, revision/dirty state, model and
+provider identity, effective configuration, supported dimensions, seed, and
+timestamps.
+
+Dry runs exit `0`. A configuration or validation error exits `2` before any case
+starts. Execution continues across independent cases; if one or more cases fail,
+the manifest is still written and the command exits `1`. The existing
+`localrag eval` single-run path remains unchanged. No evaluation workflow is
+triggered automatically.
+
 ## Seed precedence
 
 | Priority | Source | Example |
