@@ -95,6 +95,11 @@ class Settings(BaseSettings):
     ollama_embed_model: str = DEFAULT_OLLAMA_EMBED_MODEL
     ollama_llm_model: str = DEFAULT_OLLAMA_LLM_MODEL
 
+    # Generation sampling. Both default to unset so Ollama keeps its per-model
+    # defaults; set them (e.g. 0.0 / any int) to make answers reproducible.
+    llm_temperature: float | None = None
+    llm_seed: int | None = None
+
     chroma_persist_path: str = "./data/chroma"
     chroma_collection_name: str = "localrag"
 

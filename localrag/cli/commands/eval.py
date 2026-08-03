@@ -18,7 +18,13 @@ def eval_suite(
         default=False,
         help="Skip live API calls; use stored contexts from the dataset.",
     ),
-    seed: int = typer.Option(42, help="Seed for down-sampling and judge sampling."),
+    seed: int | None = typer.Option(
+        None,
+        help=(
+            "Seed for down-sampling and judge sampling. "
+            "Unset uses EVAL_SEED env var, then a built-in default (42)."
+        ),
+    ),
     sample: int = typer.Option(
         0, help="Evaluate only N examples (0 = all), chosen deterministically from the seed."
     ),
@@ -31,7 +37,6 @@ def eval_suite(
         sys.executable,
         str(_RUNNER),
         f"--api-url={api_url}",
-        f"--seed={seed}",
         f"--dataset={dataset}",
         f"--split={split}",
     ]
@@ -39,6 +44,8 @@ def eval_suite(
         cmd.append(f"--api-key={api_key}")
     if offline:
         cmd.append("--offline")
+    if seed is not None:
+        cmd.append(f"--seed={seed}")
     if sample > 0:
         cmd.append(f"--sample={sample}")
     if version:

@@ -13,7 +13,8 @@ Options:
     --offline       Skip live API calls; use stored contexts/answers from the dataset only
     --judge-model   Ollama model used as the RAGAS LLM judge (default: gemma3:4b)
     --ollama-url    Ollama base URL for the judge/embeddings (default: http://localhost:11434)
-    --seed          Seed for down-sampling and judge sampling (default: 42)
+    --seed          Seed for down-sampling and judge sampling. Precedence:
+                    this flag > EVAL_SEED env var > built-in default (42).
     --sample        Evaluate only N examples, chosen deterministically from the seed
     --dataset       Registered dataset_id (default: localrag-core)
     --version       Dataset version (default: highest registered)
@@ -25,9 +26,12 @@ LocalRAG itself uses, via Ollama's OpenAI-compatible `/v1` endpoint and the
 new dependency, no external API key required. This matches LocalRAG's
 offline-first positioning.
 
-Runs are reproducible as far as the stack allows: the seed fixes dataset
-sampling and judge sampling, and each result file embeds the environment it was
-produced in. See `docs/reproducibility.md` for the limits.
+Runs are reproducible as far as the stack allows: the seed fixes down-sampling
+and judge sampling, and each result file embeds dataset identity plus the
+environment it was produced in — including capability flags for values that
+may legitimately be unavailable (no GPU, Ollama unreachable) rather than
+fabricated. This is an input/config reproducibility guarantee, not a
+bit-for-bit model-output guarantee. See `docs/reproducibility.md`.
 """
 
 from __future__ import annotations
@@ -57,11 +61,10 @@ from evals.dataset.checksum import manifest_checksum
 from evals.dataset.errors import DatasetError, OfflineArtifactsMissingError
 from evals.dataset.registry import load_dataset
 from evals.dataset.schema import DatasetRecord
-from evals.environment import capture_run_metadata
+from evals.environment import capture_run_metadata, resolve_seed
 
 RESULTS_DIR = Path(__file__).parent / "results"
 
-DEFAULT_SEED = 42
 DEFAULT_DATASET_ID = "localrag-core"
 DEFAULT_SPLIT = "default"
 JUDGE_EMBED_MODEL = "nomic-embed-text"
@@ -210,8 +213,11 @@ def main() -> None:
     parser.add_argument(
         "--seed",
         type=int,
-        default=DEFAULT_SEED,
-        help="Seed for dataset ordering and judge sampling.",
+        default=None,
+        help=(
+            "Seed for down-sampling and judge sampling. "
+            "Precedence: this flag > EVAL_SEED env var > built-in default (42)."
+        ),
     )
     parser.add_argument(
         "--sample",
@@ -224,10 +230,14 @@ def main() -> None:
     parser.add_argument("--split", default=DEFAULT_SPLIT, help="Named split to evaluate.")
     args = parser.parse_args()
 
-    if args.seed < 0:
-        parser.error(f"--seed must be a non-negative integer, got {args.seed}")
+    try:
+        seed, seed_source = resolve_seed(args.seed)
+    except ValueError as exc:
+        parser.error(str(exc))
+    if seed < 0:
+        parser.error(f"seed must be a non-negative integer, got {seed} (source: {seed_source})")
 
-    random.seed(args.seed)
+    random.seed(seed)
 
     try:
         manifest = load_dataset(args.dataset, args.version)
@@ -235,11 +245,11 @@ def main() -> None:
     except DatasetError as exc:
         parser.error(str(exc))
 
-    records = _select_records(all_records, seed=args.seed, sample=args.sample)
+    records = _select_records(all_records, seed=seed, sample=args.sample)
     print(
         f"Loaded {len(all_records)} examples from {manifest.dataset_id} "
         f"v{manifest.dataset_version} split={args.split!r} "
-        f"(evaluating {len(records)}, seed={args.seed})"
+        f"(evaluating {len(records)}, seed={seed})"
     )
 
     print("Building dataset" + (" (offline mode)" if args.offline else " (live API)") + "...")
@@ -261,7 +271,7 @@ def main() -> None:
         client=ollama_client,
         adapter="instructor",
         temperature=0.0,
-        seed=args.seed,
+        seed=seed,
     )
     judge_embeddings = OpenAIEmbeddings(client=ollama_client, model=JUDGE_EMBED_MODEL)
     per_metric = asyncio.run(
@@ -277,7 +287,8 @@ def main() -> None:
     scores: dict[str, float] = {name: _mean_score(values) for name, values in per_metric.items()}
 
     metadata = capture_run_metadata(
-        seed=args.seed,
+        seed=seed,
+        seed_source=seed_source,
         judge_model=args.judge_model,
         embedding_model=JUDGE_EMBED_MODEL,
         ollama_url=args.ollama_url,
@@ -305,7 +316,7 @@ def main() -> None:
         ),
         encoding="utf-8",
     )
-    if metadata.git_dirty:
+    if metadata.git_dirty.value:
         print("WARNING: working tree is dirty — these results are not tied to a clean commit.")
     print(f"\nResults written to {out_path}")
 

@@ -91,6 +91,86 @@ def test_ollama_provider_stream_mocked() -> None:
     assert events[-1] == {"type": "final", "sources": []}
 
 
+def _mocked_ollama_client() -> MagicMock:
+    """A patched httpx.Client whose stream yields one done chunk."""
+    mock_resp = MagicMock()
+    mock_resp.iter_lines.return_value = [
+        '{"message": {"role": "assistant", "content": "hi"}, "done": true}'
+    ]
+    mock_resp.__enter__ = lambda s: s
+    mock_resp.__exit__ = MagicMock(return_value=False)
+    mock_resp.raise_for_status = MagicMock()
+
+    mock_client = MagicMock()
+    mock_client.stream.return_value = mock_resp
+    mock_client.__enter__ = lambda s: s
+    mock_client.__exit__ = MagicMock(return_value=False)
+    return mock_client
+
+
+def _sent_payload(mock_client: MagicMock) -> dict:
+    return mock_client.stream.call_args.kwargs["json"]
+
+
+def test_ollama_provider_omits_options_by_default() -> None:
+    """Unset sampling params must not appear on the wire, so Ollama keeps its defaults."""
+    mock_client = _mocked_ollama_client()
+    with patch("localrag.llm.providers.ollama.httpx.Client", return_value=mock_client):
+        provider = OllamaProvider(
+            base_url="http://localhost:11434",
+            default_model="llama3.2",
+            system_prompt="Be helpful.",
+        )
+        list(provider.stream("hi", []))
+
+    assert "options" not in _sent_payload(mock_client)
+
+
+def test_ollama_provider_sends_deterministic_options() -> None:
+    mock_client = _mocked_ollama_client()
+    with patch("localrag.llm.providers.ollama.httpx.Client", return_value=mock_client):
+        provider = OllamaProvider(
+            base_url="http://localhost:11434",
+            default_model="llama3.2",
+            system_prompt="Be helpful.",
+            temperature=0.0,
+            seed=42,
+        )
+        list(provider.stream("hi", []))
+
+    assert _sent_payload(mock_client)["options"] == {"temperature": 0.0, "seed": 42}
+
+
+def test_ollama_provider_sends_options_on_raw_prompt_path() -> None:
+    """stream_from_prompt is a separate request builder — it must honor options too."""
+    mock_client = _mocked_ollama_client()
+    with patch("localrag.llm.providers.ollama.httpx.Client", return_value=mock_client):
+        provider = OllamaProvider(
+            base_url="http://localhost:11434",
+            default_model="llama3.2",
+            system_prompt="Be helpful.",
+            temperature=0.0,
+            seed=7,
+        )
+        list(provider.stream_from_prompt("hi"))
+
+    assert _sent_payload(mock_client)["options"] == {"temperature": 0.0, "seed": 7}
+
+
+def test_ollama_provider_partial_options_only_sends_set_fields() -> None:
+    mock_client = _mocked_ollama_client()
+    with patch("localrag.llm.providers.ollama.httpx.Client", return_value=mock_client):
+        provider = OllamaProvider(
+            base_url="http://localhost:11434",
+            default_model="llama3.2",
+            system_prompt="Be helpful.",
+            temperature=0.2,
+        )
+        list(provider.stream("hi", []))
+
+    assert _sent_payload(mock_client)["options"] == {"temperature": 0.2}
+
+
 def test_ollama_provider_cost_is_zero() -> None:
     assert estimate_cost_usd("_default_ollama", 1000) == 0.0
 

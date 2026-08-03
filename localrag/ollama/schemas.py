@@ -55,12 +55,27 @@ class OllamaChatMessage(BaseModel):
     content: str
 
 
+class OllamaChatOptions(BaseModel):
+    """Sampling knobs for ``/api/chat``.
+
+    Ollama nests these under ``options``. Fields left as ``None`` are dropped
+    from the payload (callers serialize with ``exclude_none=True``) so Ollama
+    keeps its own per-model defaults.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    temperature: float | None = None
+    seed: int | None = None
+
+
 class OllamaChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: str
     messages: list[OllamaChatMessage]
     stream: bool = True
+    options: OllamaChatOptions | None = None
 
 
 class OllamaChatStreamMessage(BaseModel):

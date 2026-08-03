@@ -46,4 +46,6 @@ def _build_raw_provider(settings: Settings, backend: str) -> BaseLLMProvider:
         base_url=settings.ollama_base_url,
         default_model=settings.ollama_llm_model,
         system_prompt=settings.rag_system_prompt,
+        temperature=settings.llm_temperature,
+        seed=settings.llm_seed,
     )
