@@ -1,35 +1,66 @@
 # Reproducible evaluation runs
 
-Benchmark numbers are only useful if you can tell a real regression from noise.
-This page describes what LocalRAG pins, what it records, and what it cannot
-control.
+Benchmark numbers are only useful if you can tell a real regression from
+noise. This page defines what LocalRAG guarantees about a run, the full field
+reference for what gets recorded, and what it explicitly does not promise.
+
+## Reproducibility levels
+
+Two different things get called "reproducible" and conflating them leads to
+false confidence:
+
+1. **Input/config reproducibility** (guaranteed). Given the same dataset
+   identity, split, seed, and settings, two runs select the **same records in
+   the same order** and construct the **same judge call parameters**
+   (temperature, seed). This is fully deterministic and tested.
+2. **Model output determinism** (best-effort, not guaranteed). Whether the
+   *model's actual output text* is identical across runs depends on hardware,
+   drivers, kernel versions, quantization, and the provider's own seeding
+   implementation. LocalRAG pins what it can (see below) and records enough
+   metadata to *detect* when something in that chain moved — it does not
+   promise bit-for-bit identical answers.
+
+Every guarantee below is level 1 unless stated otherwise.
 
 ## Running a reproducible eval
 
 ```bash
-# Full dataset, default seed (42)
+# Full split, default seed (42)
 uv run localrag eval --offline
 
-# A deterministic 10-example subset, explicit seed
-uv run localrag eval --offline --seed 7 --sample 10
+# A deterministic 10-example subset, explicit seed, specific dataset/split
+uv run localrag eval --offline --seed 7 --sample 10 --dataset localrag-core --split smoke
 
 # Same thing via the runner directly
 uv run python evals/run_evals.py --offline --seed 7 --sample 10
 ```
 
-Two runs with the same seed, the same dataset, and the same environment
-evaluate **the same examples in the same order** and send the judge the same
-sampling parameters.
+See [docs/eval-datasets.md](eval-datasets.md) for `--dataset`/`--version`/`--split`.
 
-## What the seed controls
+## Seed precedence
 
-- **Down-sampling** — `--sample N` draws a deterministic subset (via a seeded
-  RNG) from the selected split's records, ordered by stable `record_id`. See
-  [docs/eval-datasets.md](eval-datasets.md) for the dataset/split contract.
-- **Judge sampling** — the RAGAS judge runs at `temperature=0.0` with the run's
-  seed, so its verdicts are repeatable rather than re-rolled per run.
-- `--seed` must be a non-negative integer; an invalid value fails the CLI
-  argument parse rather than silently coercing.
+| Priority | Source | Example |
+| --- | --- | --- |
+| 1 (highest) | `--seed` CLI flag | `--seed 7` |
+| 2 | `EVAL_SEED` environment variable | `EVAL_SEED=7` |
+| 3 (default) | Built-in default | `42` |
+
+A non-integer `EVAL_SEED` is a configuration error and raises rather than
+being silently ignored. A negative resolved seed (from any source) fails the
+CLI argument parse before any work starts.
+
+### What the seed controls — per-operation coverage
+
+Not every random-ish operation in the eval path is actually seed-controlled.
+Each result file's `environment.seed_coverage` states this explicitly per
+operation, rather than leaving it implicit:
+
+| Operation | Seed-controlled | Notes |
+| --- | --- | --- |
+| `record_downsampling` | Yes | `--sample N` draws from the split via `random.Random(seed)` |
+| `judge_llm_sampling` | Yes | RAGAS judge runs at `temperature=0.0` with the run's seed |
+| `answering_model_sampling` | No | Controlled separately by `LLM_TEMPERATURE`/`LLM_SEED` (see below), not `--seed` |
+| `embedding_computation` | No | No seed concept applies — embeddings are a deterministic function of fixed input text |
 
 ## Making generation deterministic
 
@@ -41,56 +72,98 @@ LLM_TEMPERATURE=0.0
 LLM_SEED=42
 ```
 
-Both settings are optional. Leave them unset for normal use, where a little
+Both settings are optional and independent of `--seed`/`EVAL_SEED` above —
+they affect the model *answering* a query, not the eval runner's own
+selection/judge behavior. Leave them unset for normal use, where a little
 sampling variety is usually desirable; set them when you need run-to-run
 comparability. When either is set, LocalRAG sends an `options` block on every
 `/api/chat` call; when both are unset, the block is omitted entirely.
 
-## What each result file records
+## Field reference
 
-Every file in `evals/results/` carries a `dataset` block (identity) and an
-`environment` block (provenance).
+Every file in `evals/results/` has three top-level blocks: `scores`,
+`dataset`, and `environment`.
 
-`dataset`:
+### `dataset` (identity — see [docs/eval-datasets.md](eval-datasets.md))
 
-| Field | Why it matters |
-| --- | --- |
-| `dataset_id`, `dataset_version`, `split` | Which dataset produced these scores |
-| `checksum` | Content hash of the manifest — detects a silent edit even if the version tag wasn't bumped |
-| `selected_record_ids` | The exact records evaluated, in order — the ground truth for "did these two runs evaluate the same inputs" |
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `dataset_id`, `dataset_version`, `split` | string | Which dataset produced these scores |
+| `checksum` | string | sha256 over the manifest content (excludes the `schema_version` bookkeeping field) — detects a silent edit even if the version tag wasn't bumped |
+| `selected_record_ids` | list[string] | The exact records evaluated, in order |
 
-`environment`:
+### `environment` (provenance)
 
-| Field | Why it matters |
-| --- | --- |
-| `seed` | Reproduces down-sampling and judge sampling |
-| `git_sha`, `git_dirty` | Ties results to code; `git_dirty: true` means they are **not** tied to a clean commit |
-| `uv_lock_sha256` | Detects dependency drift between runs |
-| `judge_model_digest`, `embedding_model_digest` | Model **tags are mutable** — `gemma3:4b` can be re-pulled and point at different weights. The digest is the real pin. |
-| `python_version`, `platform_summary`, `cpu_count`, `total_ram_gb` | Hardware/OS differences that affect throughput and, on GPU, numerics |
-| `settings_snapshot` | Retrieval and chunking knobs that change scores |
+Most fields are wrapped in a **capability envelope**:
 
-`settings_snapshot` is an explicit allowlist (see `SNAPSHOT_SETTINGS_FIELDS` in
-`evals/environment.py`), not a full `Settings` dump — that keeps host paths and
-credentials out of committed result files. **Add new retrieval-affecting
-settings to that list** or runs will silently differ with no record of why.
+```json
+{"value": ..., "status": "available" | "unsupported" | "unavailable", "reason": "..." | null}
+```
+
+- **`available`** — `value` is populated; `reason` is `null`.
+- **`unsupported`** — the field doesn't apply to this run at all (e.g. no GPU
+  present). Not a failure.
+- **`unavailable`** — the field *should* exist but couldn't be read (e.g.
+  Ollama unreachable, git not installed, model not pulled). A real gap —
+  `value` is always `null` here, never a fabricated guess.
+
+This distinguishes three states a bare `null` conflates: "not applicable
+here," "should be there but isn't right now," and "we didn't even check."
+
+| Field | Wrapped? | Meaning |
+| --- | --- | --- |
+| `metadata_schema_version` | no | Version of this metadata shape. Bumped only on incompatible (non-additive) changes; a reader keyed on a version can trust every field that existed at that version. |
+| `seed`, `seed_source` | no | Resolved seed and where it came from (`cli`/`config`/`default`) |
+| `seed_coverage` | no | Per-operation seed coverage, see above |
+| `git_sha` | yes | Commit the run was produced from |
+| `git_dirty` | yes | `true` means uncommitted changes were present — **results are not tied to a clean commit** |
+| `uv_lock_sha256` | yes | Hash of `uv.lock` — detects full dependency-graph drift |
+| `package_versions` | no (dict) | Installed versions of packages that can change judge/embedding/generation behavior (see `TRACKED_PACKAGES` in `evals/environment.py`) |
+| `python_version`, `platform_summary` | no | Interpreter and OS/arch string |
+| `cpu_count`, `total_ram_gb` | yes | Host sizing |
+| `gpu` | yes | `nvidia-smi` name/driver/memory per GPU, when present. `unsupported` (not `unavailable`) on hosts with no NVIDIA GPU — that's the common case, not a gap. |
+| `judge_model`, `embedding_model` | no | Model tags requested |
+| `judge_model_digest`, `embedding_model_digest` | yes | **Tags are mutable** — `gemma3:4b` can be re-pulled and point at different weights. The digest is the real pin. Required-when-available: Ollama can always expose a digest for a pulled model, so a miss here means Ollama was unreachable or the model isn't pulled — always `unavailable`, never `unsupported`. |
+| `settings_snapshot` | no (dict) | Allowlisted retrieval/chunking/generation settings, see below |
+
+### Redaction policy
+
+`settings_snapshot` is an **explicit allowlist**
+(`SNAPSHOT_SETTINGS_FIELDS` in `evals/environment.py`), not a full `Settings`
+dump. Secret-bearing fields (`api_key`, `anthropic_api_key`,
+`openai_api_key`) and host-specific paths (`chroma_persist_path`,
+`upload_dir`, `audit_log_path`) are never in the allowlist and are tested to
+stay out. **Add new retrieval-affecting settings to the allowlist** or runs
+will silently differ with no record of why — but never add a
+credential or absolute-path field to it.
+
+Nothing in the metadata payload includes record question/answer content
+beyond what's already in `dataset.selected_record_ids` (IDs only, not text).
 
 ## Known limits — what is *not* reproducible
 
-Identical seeds do not guarantee identical scores:
+Identical seeds and identical `environment` blocks do not guarantee
+identical scores:
 
 - **GPU nondeterminism.** Floating-point reduction order on GPU is not stable
-  across runs, and can differ across driver or hardware. CPU-only runs are more
-  stable but slower.
+  across runs, and can differ across driver or hardware. CPU-only runs are
+  more stable but slower. The `gpu` field records what was present; it does
+  not neutralize this.
 - **Ollama seeding is best-effort.** `seed` reduces variance but is not a
-  contractual guarantee of identical output across versions, quantizations, or
-  context-window changes.
-- **Model re-pulls.** Same tag, different weights. Compare digests, not names.
+  contractual guarantee of identical output across Ollama versions,
+  quantizations, or context-window changes.
+- **Model re-pulls.** Same tag, different weights. Compare digests, not
+  names — that's exactly why digests are recorded.
 - **Live API mode.** Without `--offline`, results depend on the current index
   contents. Re-ingested or re-chunked corpora shift retrieval.
-- **Concurrency.** Parallel scoring can interleave differently; ordering effects
-  in batched embedding calls are not fully pinned.
+- **Concurrency.** Parallel scoring can interleave differently; ordering
+  effects in batched embedding calls are not fully pinned.
 
 Treat small score deltas (roughly <0.02) as noise unless they persist across
 several seeds. When a regression looks real, check `git_sha`, the model
-digests, and `settings_snapshot` before assuming the retrieval change caused it.
+digests, `package_versions`, and `settings_snapshot` before assuming a
+retrieval change caused it — comparing two results with a mismatched
+`dataset.checksum` is comparing different inputs, not a regression.
+
+Result comparison and CI regression gating across runs are **out of scope**
+here — see #84 for that.
