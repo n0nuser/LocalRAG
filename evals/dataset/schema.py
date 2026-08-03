@@ -66,8 +66,18 @@ class DatasetRecord(BaseModel):
     record_id: str
     question: str
     reference_answer: str = Field(description="Ground-truth answer used as the RAGAS reference.")
+    reference_answers: list[str] | None = Field(
+        default=None,
+        description="Optional multi-reference answers; metrics use the best reference score.",
+    )
     citations: list[Citation] = Field(default_factory=list)
     judgments: list[RelevanceJudgment] = Field(default_factory=list)
+    answer_citation_ids: list[str] | None = Field(
+        default=None,
+        description=(
+            "Stable citation IDs expected in the evaluated answer; absent means unavailable."
+        ),
+    )
 
     # Optional pre-built artifacts for offline mode. If absent, offline mode
     # falls back to reference_answer as the answer and cited texts as context.
@@ -99,6 +109,14 @@ class DatasetRecord(BaseModel):
         if self.offline_contexts is not None:
             return self.offline_contexts
         return [c.text for c in self.citations]
+
+    def reference_answers_or_default(self) -> list[str]:
+        """Return declared references without changing the legacy field contract."""
+        return self.reference_answers or [self.reference_answer]
+
+    def relevant_citation_ids(self) -> list[str]:
+        """Return citation IDs marked relevant by the #82 annotation contract."""
+        return [judgment.citation_id for judgment in self.judgments if judgment.relevant]
 
 
 class DatasetSplit(BaseModel):

@@ -38,7 +38,6 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import json
 import math
 import random
 import statistics
@@ -62,7 +61,8 @@ from evals.dataset.errors import DatasetError, OfflineArtifactsMissingError
 from evals.dataset.registry import load_dataset
 from evals.dataset.schema import DatasetRecord
 from evals.environment import capture_run_metadata, resolve_seed
-from evals.results.schema import MetricResult, ResultFile
+from evals.metrics import exact_match, f1, score_citation_accuracy
+from evals.results.schema import MetricCaseResult, MetricDescriptor, MetricResult, ResultFile
 
 RESULTS_DIR = Path(__file__).parent / "results"
 
@@ -71,6 +71,10 @@ DEFAULT_SPLIT = "default"
 JUDGE_EMBED_MODEL = "nomic-embed-text"
 
 PASS_THRESHOLDS = {
+    "exact_match": 1.0,
+    "f1": 0.5,
+    "hallucination_rate": 0.4,
+    "citation_accuracy": 0.8,
     "faithfulness": 0.6,
     "answer_relevancy": 0.6,
     "context_precision": 0.5,
@@ -124,6 +128,9 @@ def _build_rows(
                 "answer": answer,
                 "contexts": contexts,
                 "ground_truth": rec.reference_answer,
+                "ground_truths": rec.reference_answers_or_default(),
+                "answer_citation_ids": rec.answer_citation_ids,
+                "relevant_citation_ids": rec.relevant_citation_ids(),
             }
         )
     return rows
@@ -159,6 +166,10 @@ async def _score_rows(
     context_recall: ContextRecall,
 ) -> dict[str, list[float]]:
     per_metric: dict[str, list[float]] = {
+        "exact_match": [],
+        "f1": [],
+        "hallucination_rate": [],
+        "citation_accuracy": [],
         "faithfulness": [],
         "answer_relevancy": [],
         "context_precision": [],
@@ -171,21 +182,42 @@ async def _score_rows(
         retrieved_contexts = row["contexts"]
         reference = row["ground_truth"]
 
-        faithfulness_result = await faithfulness.ascore(
-            user_input=user_input, response=response, retrieved_contexts=retrieved_contexts
+        per_metric["exact_match"].append(exact_match(response, row["ground_truths"]))
+        per_metric["f1"].append(f1(response, row["ground_truths"]))
+        citation = score_citation_accuracy(
+            response, row["answer_citation_ids"], row["relevant_citation_ids"]
         )
-        relevancy_result = await answer_relevancy.ascore(user_input=user_input, response=response)
-        precision_result = await context_precision.ascore(
-            user_input=user_input, reference=reference, retrieved_contexts=retrieved_contexts
+        per_metric["citation_accuracy"].append(
+            citation.value if citation.value is not None else math.nan
         )
-        recall_result = await context_recall.ascore(
-            user_input=user_input, retrieved_contexts=retrieved_contexts, reference=reference
-        )
+
+        try:
+            faithfulness_result = await faithfulness.ascore(
+                user_input=user_input, response=response, retrieved_contexts=retrieved_contexts
+            )
+            relevancy_result = await answer_relevancy.ascore(
+                user_input=user_input, response=response
+            )
+            precision_result = await context_precision.ascore(
+                user_input=user_input, reference=reference, retrieved_contexts=retrieved_contexts
+            )
+            recall_result = await context_recall.ascore(
+                user_input=user_input, retrieved_contexts=retrieved_contexts, reference=reference
+            )
+        except Exception as exc:  # noqa: BLE001 - preserve per-case judge failure
+            print(f"  judge error for {row['record_id']}: {exc}")
+            per_metric["faithfulness"].append(math.nan)
+            per_metric["answer_relevancy"].append(math.nan)
+            per_metric["context_precision"].append(math.nan)
+            per_metric["context_recall"].append(math.nan)
+            per_metric["hallucination_rate"].append(math.nan)
+            continue
 
         per_metric["faithfulness"].append(float(faithfulness_result.value))
         per_metric["answer_relevancy"].append(float(relevancy_result.value))
         per_metric["context_precision"].append(float(precision_result.value))
         per_metric["context_recall"].append(float(recall_result.value))
+        per_metric["hallucination_rate"].append(1.0 - float(faithfulness_result.value))
     return per_metric
 
 
@@ -196,8 +228,13 @@ def _print_summary(scores: dict[str, float]) -> bool:
     print("╠══════════════════════════════════╣")
     for metric, score in scores.items():
         threshold = PASS_THRESHOLDS.get(metric, 0.5)
-        status = "PASS" if score >= threshold else "FAIL"
-        if status == "FAIL":
+        if not math.isfinite(score):
+            status = "UNAVAILABLE"
+        elif metric == "hallucination_rate":
+            status = "PASS" if score <= threshold else "FAIL"
+        else:
+            status = "PASS" if score >= threshold else "FAIL"
+        if status != "PASS":
             all_pass = False
         print(f"║  {metric:<22} {score:.3f}  {status} ║")
     print("╚══════════════════════════════════╝")
@@ -298,26 +335,85 @@ def main() -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out_path = RESULTS_DIR / f"{ts}.json"
-    result = ResultFile(
-        run_id=ts,
-        timestamp=datetime.now(UTC),
-        dataset={
-            "dataset_id": manifest.dataset_id,
-            "dataset_version": manifest.dataset_version,
-            "split": args.split,
-            "checksum": manifest_checksum(manifest),
-        },
-        selected_ids=[row["record_id"] for row in rows],
-        metrics=[
-            MetricResult(
-                descriptor={"name": name, "direction": "higher_is_better", "threshold": PASS_THRESHOLDS[name]},
-                value=score,
-                cases={row["record_id"]: value for row, value in zip(rows, per_metric[name], strict=True)},
-                non_finite_cases=[row["record_id"] for row, value in zip(rows, per_metric[name], strict=True) if not math.isfinite(value)],
-            )
-            for name, score in scores.items()
-        ],
-        provenance=metadata.to_dict(),
+    result = ResultFile.model_validate(
+        {
+            "run_id": ts,
+            "timestamp": datetime.now(UTC),
+            "dataset": {
+                "dataset_id": manifest.dataset_id,
+                "dataset_version": manifest.dataset_version,
+                "split": args.split,
+                "checksum": manifest_checksum(manifest),
+            },
+            "selected_ids": [row["record_id"] for row in rows],
+            "metrics": [
+                MetricResult(
+                    descriptor=MetricDescriptor.model_validate(
+                        {
+                            "name": name,
+                            "direction": "lower_is_better"
+                            if name == "hallucination_rate"
+                            else "higher_is_better",
+                            "threshold": PASS_THRESHOLDS[name],
+                            "missing_value": "not_applicable"
+                            if name == "citation_accuracy"
+                            else "missing",
+                        }
+                    ),
+                    value=score,
+                    cases={
+                        row["record_id"]: value
+                        for row, value in zip(rows, per_metric[name], strict=True)
+                    },
+                    non_finite_cases=[
+                        row["record_id"]
+                        for row, value in zip(rows, per_metric[name], strict=True)
+                        if not math.isfinite(value)
+                    ],
+                    case_results={
+                        row["record_id"]: MetricCaseResult.model_validate(
+                            {
+                                "value": value if math.isfinite(value) else None,
+                                "threshold": PASS_THRESHOLDS[name],
+                                "status": (
+                                    "complete"
+                                    if math.isfinite(value)
+                                    else ("unavailable" if name == "citation_accuracy" else "error")
+                                ),
+                                "input_ids": row.get("relevant_citation_ids", []),
+                                "warning": (
+                                    "citation annotation is missing"
+                                    if name == "citation_accuracy" and not math.isfinite(value)
+                                    else None
+                                ),
+                                "error": (
+                                    "judge returned a non-finite value"
+                                    if name not in {"citation_accuracy", "exact_match", "f1"}
+                                    and not math.isfinite(value)
+                                    else None
+                                ),
+                            }
+                        )
+                        for row, value in zip(rows, per_metric[name], strict=True)
+                    },
+                    valid_count=sum(math.isfinite(value) for value in per_metric[name]),
+                    missing_count=sum(not math.isfinite(value) for value in per_metric[name])
+                    if name == "citation_accuracy"
+                    else 0,
+                    error_count=sum(not math.isfinite(value) for value in per_metric[name])
+                    if name != "citation_accuracy"
+                    else 0,
+                )
+                for name, score in scores.items()
+            ],
+            "provenance": {
+                **metadata.to_dict(),
+                "metric_contract_version": "1.0",
+                "judge_prompt_version": "ragas-default-prompts@0.4.3",
+                "judge_seed": seed,
+                "judge_endpoint": args.ollama_url,
+            },
+        }
     )
     out_path.write_text(result.model_dump_json_safe(), encoding="utf-8")
     if metadata.git_dirty.value:

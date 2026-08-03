@@ -43,6 +43,19 @@ class MetricDescriptor(BaseModel):
     missing_value: MissingPolicy = "missing"
 
 
+class MetricCaseResult(BaseModel):
+    """Schema-compatible per-record value and evaluation outcome."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    value: float | None = None
+    threshold: float | None = None
+    status: Literal["complete", "unavailable", "error"] = "complete"
+    input_ids: list[str] = Field(default_factory=list)
+    error: str | None = None
+    warning: str | None = None
+
+
 class MetricResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -50,6 +63,10 @@ class MetricResult(BaseModel):
     value: float | None = None
     cases: dict[str, float | None] = Field(default_factory=dict)
     non_finite_cases: list[str] = Field(default_factory=list)
+    case_results: dict[str, MetricCaseResult] = Field(default_factory=dict)
+    valid_count: int = 0
+    missing_count: int = 0
+    error_count: int = 0
 
     @field_validator("value", mode="before")
     @classmethod

@@ -7,7 +7,7 @@ import pytest
 
 from evals.compare import main
 from evals.results.compare import ThresholdError, compare, parse_threshold
-from evals.results.schema import ResultError, load_result
+from evals.results.schema import MetricResult, ResultError, load_result
 
 
 def _result(
@@ -71,6 +71,35 @@ def test_non_finite_values_do_not_pass(tmp_path: Path) -> None:
     report = compare(baseline, candidate)
     assert not report.passed
     assert report.non_finite == ["quality"]
+
+
+def test_metric_result_preserves_case_status_counts_and_threshold() -> None:
+    result = {
+        "descriptor": {
+            "name": "citation_accuracy",
+            "direction": "higher_is_better",
+            "threshold": 0.8,
+            "missing_value": "not_applicable",
+        },
+        "value": None,
+        "cases": {"r1": None},
+        "case_results": {
+            "r1": {
+                "value": None,
+                "threshold": 0.8,
+                "status": "unavailable",
+                "input_ids": ["r1-c1"],
+                "warning": "citation annotation is missing",
+            }
+        },
+        "valid_count": 0,
+        "missing_count": 1,
+        "error_count": 0,
+    }
+    parsed = MetricResult.model_validate(result)
+    assert parsed.case_results["r1"].status == "unavailable"
+    assert parsed.descriptor.threshold == 0.8
+    assert parsed.missing_count == 1
 
 
 def test_threshold_grammar_and_unknown_metric() -> None:
