@@ -3,7 +3,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from localrag.ingestion.loader import CODE_EXTENSIONS, MARKDOWN_EXTENSIONS
+from localrag.ingestion.loader import (
+    CODE_EXTENSIONS,
+    MARKDOWN_EXTENSIONS,
+    MARKDOWN_PRODUCING_EXTENSIONS,
+)
 from localrag.settings import Settings
 
 _HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.*)$")
@@ -22,7 +26,7 @@ def chunk_document(text: str, file_type: str, settings: Settings) -> list[Chunk]
     if not cleaned_text:
         return []
 
-    if file_type in MARKDOWN_EXTENSIONS:
+    if file_type in MARKDOWN_EXTENSIONS or file_type in MARKDOWN_PRODUCING_EXTENSIONS:
         return _chunk_markdown(
             text=cleaned_text,
             min_chars=settings.chunk_min_chars,
@@ -87,13 +91,22 @@ def _chunk_markdown(text: str, min_chars: int, max_chars: int, overlap_chars: in
         for item in _pack_blocks(
             section_text, min_chars=min_chars, max_chars=max_chars, overlap_chars=overlap_chars
         ):
-            chunk_type = "markdown_section"
-            if _looks_like_table(item):
-                chunk_type = "markdown_table"
-            elif _looks_like_fenced_code(item):
-                chunk_type = "markdown_code"
+            chunk_type = _classify_markdown_chunk(item, heading_path)
             chunks.append(Chunk(text=item, heading_path=heading_path, chunk_type=chunk_type))
     return chunks
+
+
+def _classify_markdown_chunk(text: str, heading_path: str) -> str:
+    if _looks_like_table(text):
+        return "markdown_table"
+    if _looks_like_fenced_code(text):
+        return "markdown_code"
+    if heading_path:
+        return "markdown_section"
+    # Content before the first heading — or a document that turned out to have
+    # none, such as an OCR'd scan routed here as a PDF — is prose, not a
+    # markdown section.
+    return "text_block"
 
 
 def _chunk_non_markdown(

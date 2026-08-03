@@ -108,3 +108,52 @@ def test_chunk_document_non_markdown_packs_paragraphs() -> None:
     assert len(chunks) == 2
     assert chunks[0].chunk_type == "text_block"
     assert chunks[0].heading_path == ""
+
+
+def test_chunk_document_pdf_follows_markdown_headings() -> None:
+    """The PDF parser emits Markdown, so PDFs must chunk by heading structure.
+
+    Without this routing the extracted headings are discarded and every PDF
+    chunk carries an empty heading_path.
+    """
+    pdf_markdown = """
+# III. ADMINISTRACION LOCAL
+
+## C. ANUNCIOS
+
+### AYUNTAMIENTO DE CABRERIZOS
+
+Se somete a informacion publica el expediente.
+""".strip()
+    settings = Settings(chunk_max_chars=1200, chunk_min_chars=20)
+
+    chunks = chunk_document(pdf_markdown, ".pdf", settings)
+
+    assert any(
+        chunk.heading_path == "III. ADMINISTRACION LOCAL > C. ANUNCIOS > AYUNTAMIENTO DE CABRERIZOS"
+        for chunk in chunks
+    )
+
+
+def test_chunk_document_pdf_without_headings_falls_back_to_text_blocks() -> None:
+    """An OCR'd scan yields no Markdown headings and must not be mislabelled."""
+    text = "\n\n".join(["Parrafo escaneado sin encabezado alguno." for _ in range(4)])
+    settings = Settings(chunk_max_chars=60, chunk_min_chars=20)
+
+    chunks = chunk_document(text, ".pdf", settings)
+
+    assert chunks
+    assert all(chunk.chunk_type == "text_block" for chunk in chunks)
+    assert all(chunk.heading_path == "" for chunk in chunks)
+
+
+def test_chunk_document_markdown_preamble_before_first_heading_is_text_block() -> None:
+    """Content ahead of the first heading is prose, not a markdown section."""
+    markdown_text = "Preamble prose.\n\n# Real Heading\n\nBody under the heading."
+    settings = Settings(chunk_max_chars=1200, chunk_min_chars=1)
+
+    chunks = chunk_document(markdown_text, ".md", settings)
+
+    preamble = next(chunk for chunk in chunks if "Preamble" in chunk.text)
+    assert preamble.chunk_type == "text_block"
+    assert preamble.heading_path == ""

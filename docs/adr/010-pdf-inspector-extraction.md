@@ -75,8 +75,30 @@ genuine Markdown structure (H1–H4 headings, bold/italic emphasis, links) where
   would build from source.
 - Heading detection is heuristic (font-size ratios), so unusual typography can
   produce spurious heading levels.
-- `chunk_document()` dispatches on file extension, and `.pdf` is not in
-  `MARKDOWN_EXTENSIONS`, so PDF chunks still take the non-Markdown path and carry
-  an empty `heading_path`. Routing PDFs to the Markdown chunker to realize the
-  retrieval benefit of ADR 004 is deliberately left as follow-up work, since it
-  warrants its own before/after validation on real documents.
+- `chunk_document()` dispatches on file extension, and `.pdf` was not in
+  `MARKDOWN_EXTENSIONS`, so PDF chunks initially took the non-Markdown path and
+  carried an empty `heading_path`. **Resolved in a follow-up** — see the
+  "Chunking follow-up" section below.
+
+## Chunking follow-up
+
+Routing PDFs to the Markdown chunker was deliberately split out of the original
+change so it could be validated on its own. It has since landed:
+
+- `loader.MARKDOWN_PRODUCING_EXTENSIONS` (`{".pdf"}`) marks formats whose *parser*
+  emits Markdown even though the source file is not Markdown. It is kept separate
+  from `MARKDOWN_EXTENSIONS` because that set also selects the parser in
+  `parse_document()` — a `.pdf` must still reach `parse_pdf`.
+- Measured on a real 2-page BOCyL notice: **3 flat chunks → 9 chunks** carrying
+  hierarchical paths such as
+  `III. ADMINISTRACIÓN LOCAL > C. ANUNCIOS > AYUNTAMIENTO DE CABRERIZOS > INFORMACIÓN PÚBLICA`.
+- The font-size heading heuristic promotes running headers and footers (mastheads,
+  `Núm. 31 … Pág. 6539`, ISSN lines) to headings. `parse_pdf` now demotes any
+  heading appearing on more than half the pages of a document of at least three
+  pages, on the reasoning that page furniture repeats and real section titles do
+  not. Documents shorter than three pages are left alone, where repetition is not
+  evidence.
+- Chunks with no heading path are typed `text_block` rather than
+  `markdown_section`, so an OCR'd scan routed through the Markdown chunker is not
+  mislabelled. This also corrects preamble content ahead of the first heading in
+  ordinary `.md` files.
