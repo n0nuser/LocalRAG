@@ -2,7 +2,9 @@
 
 LocalRAG falls back to **OCR** for scanned/image-only PDF pages during ingestion. **`pdf-inspector`** extracts each page's Markdown (headings, tables, lists) first and reports, per page, whether the text is unreliable (`needs_ocr`). A page is sent through OCR when `pdf-inspector` flags it as `needs_ocr`, **or** its extracted Markdown is shorter than `OCR_MIN_CHARS_PER_PAGE`; OCR renders the page with **pypdfium2** and reads it with **Tesseract** via `pytesseract`. This is implemented in `localrag/ingestion/parsers/pdf.py`.
 
-`pdf-inspector` returns Markdown rather than plain text, so headings, tables, and multi-column reading order survive extraction instead of being flattened. Note that `chunk_document()` dispatches on file extension and `.pdf` is not in `MARKDOWN_EXTENSIONS`, so PDF chunks currently still take the non-Markdown path in `localrag/ingestion/structural_chunker.py`; routing them to the Markdown chunker is follow-up work (see [ADR 010](adr/010-pdf-inspector-extraction.md)).
+`pdf-inspector` returns Markdown rather than plain text, so headings, tables, and multi-column reading order survive extraction instead of being flattened. PDFs are chunked by heading structure via `loader.MARKDOWN_PRODUCING_EXTENSIONS`, so chunks carry hierarchical `heading_path` metadata (see [ADR 010](adr/010-pdf-inspector-extraction.md)).
+
+Because heading levels are inferred from font-size ratios, running headers and footers can be promoted to headings. `parse_pdf` demotes any heading that appears on more than half the pages of a document of at least three pages; shorter documents are left untouched.
 
 Tesseract is a separate binary—not a Python package—so it must be installed on whatever host or container runs ingestion.
 
