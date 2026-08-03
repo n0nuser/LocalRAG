@@ -9,17 +9,30 @@ from localrag.ingestion.parsers import pdf as pdf_module
 from localrag.settings import Settings
 
 
-class _FakePage:
-    def __init__(self, text: str) -> None:
-        self._text = text
+class _FakePageMarkdown:
+    def __init__(self, page: int, markdown: str, *, needs_ocr: bool = False) -> None:
+        self.page = page
+        self.markdown = markdown
+        self.needs_ocr = needs_ocr
 
-    def extract_text(self) -> str:
-        return self._text
 
-
-class _FakeReader:
-    def __init__(self, pages: list[_FakePage]) -> None:
+class _FakePagesExtractionResult:
+    def __init__(self, pages: list[_FakePageMarkdown]) -> None:
         self.pages = pages
+        self.pages_with_tables: list[int] = []
+        self.pages_with_columns: list[int] = []
+        self.pages_needing_ocr: list[int] = []
+        self.is_complex = False
+
+
+class _FakePdfInspector:
+    def __init__(self, result: _FakePagesExtractionResult | Exception) -> None:
+        self._result = result
+
+    def extract_pages_markdown(self, _path: str, pages: list[int] | None = None) -> Any:
+        if isinstance(self._result, Exception):
+            raise self._result
+        return self._result
 
 
 class _FakeBitmap:
@@ -68,13 +81,21 @@ def _settings(**overrides: Any) -> Settings:
     return Settings(**overrides)
 
 
+def _patch_inspector(monkeypatch: pytest.MonkeyPatch, pages: list[_FakePageMarkdown]) -> None:
+    monkeypatch.setattr(
+        pdf_module,
+        "pdf_inspector",
+        _FakePdfInspector(_FakePagesExtractionResult(pages)),
+    )
+
+
 def test_parse_pdf_uses_text_layer_when_long_enough(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     path = tmp_path / "a.pdf"
     path.write_bytes(b"%PDF-1.4\n")
 
-    monkeypatch.setattr(pdf_module, "PdfReader", lambda _: _FakeReader([_FakePage("x" * 50)]))
+    _patch_inspector(monkeypatch, [_FakePageMarkdown(0, "x" * 50)])
     monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings(ocr_min_chars_per_page=20))
     monkeypatch.setattr(pdf_module.pdfium, "PdfDocument", lambda _: _FakePdfDocument(1))
 
@@ -93,7 +114,7 @@ def test_parse_pdf_falls_back_to_ocr_when_text_layer_too_short(
     path.write_bytes(b"%PDF-1.4\n")
 
     fake_doc = _FakePdfDocument(1)
-    monkeypatch.setattr(pdf_module, "PdfReader", lambda _: _FakeReader([_FakePage("")]))
+    _patch_inspector(monkeypatch, [_FakePageMarkdown(0, "")])
     monkeypatch.setattr(
         pdf_module, "get_settings", lambda: _settings(ocr_min_chars_per_page=20, ocr_language="eng")
     )
@@ -110,7 +131,7 @@ def test_parse_pdf_skips_ocr_when_disabled(monkeypatch: pytest.MonkeyPatch, tmp_
     path = tmp_path / "a.pdf"
     path.write_bytes(b"%PDF-1.4\n")
 
-    monkeypatch.setattr(pdf_module, "PdfReader", lambda _: _FakeReader([_FakePage("")]))
+    _patch_inspector(monkeypatch, [_FakePageMarkdown(0, "")])
     monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings(ocr_enabled=False))
 
     def _fail_open(*_args: Any, **_kwargs: Any) -> _FakePdfDocument:
@@ -128,7 +149,7 @@ def test_parse_pdf_ocr_uses_default_scale_for_normal_page_size(
     path.write_bytes(b"%PDF-1.4\n")
 
     fake_doc = _FakePdfDocument(1, page_size=(595.0, 842.0))  # A4
-    monkeypatch.setattr(pdf_module, "PdfReader", lambda _: _FakeReader([_FakePage("")]))
+    _patch_inspector(monkeypatch, [_FakePageMarkdown(0, "")])
     monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings(ocr_min_chars_per_page=20))
     monkeypatch.setattr(pdf_module.pdfium, "PdfDocument", lambda _: fake_doc)
     monkeypatch.setattr(pdf_module.pytesseract, "image_to_string", lambda _image, **_kw: "text")
@@ -146,7 +167,7 @@ def test_parse_pdf_ocr_caps_scale_for_oversized_page(
 
     # ~33.1 x 23.4 inches (A0-scale architectural sheet), in PDF points.
     fake_doc = _FakePdfDocument(1, page_size=(2383.0, 1684.0))
-    monkeypatch.setattr(pdf_module, "PdfReader", lambda _: _FakeReader([_FakePage("")]))
+    _patch_inspector(monkeypatch, [_FakePageMarkdown(0, "")])
     monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings(ocr_min_chars_per_page=20))
     monkeypatch.setattr(pdf_module.pdfium, "PdfDocument", lambda _: fake_doc)
     monkeypatch.setattr(pdf_module.pytesseract, "image_to_string", lambda _image, **_kw: "text")
@@ -167,7 +188,7 @@ def test_parse_pdf_ocr_closes_page_and_bitmap_after_use(
     path.write_bytes(b"%PDF-1.4\n")
 
     fake_doc = _FakePdfDocument(1)
-    monkeypatch.setattr(pdf_module, "PdfReader", lambda _: _FakeReader([_FakePage("")]))
+    _patch_inspector(monkeypatch, [_FakePageMarkdown(0, "")])
     monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings(ocr_min_chars_per_page=20))
     monkeypatch.setattr(pdf_module.pdfium, "PdfDocument", lambda _: fake_doc)
     monkeypatch.setattr(pdf_module.pytesseract, "image_to_string", lambda _image, **_kw: "text")
@@ -187,7 +208,7 @@ def test_parse_pdf_ocr_closes_page_even_when_ocr_raises(
     path.write_bytes(b"%PDF-1.4\n")
 
     fake_doc = _FakePdfDocument(1)
-    monkeypatch.setattr(pdf_module, "PdfReader", lambda _: _FakeReader([_FakePage("")]))
+    _patch_inspector(monkeypatch, [_FakePageMarkdown(0, "")])
     monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings(ocr_min_chars_per_page=20))
     monkeypatch.setattr(pdf_module.pdfium, "PdfDocument", lambda _: fake_doc)
 
@@ -207,7 +228,7 @@ def test_parse_pdf_ocr_failure_falls_back_to_text_layer(
     path = tmp_path / "a.pdf"
     path.write_bytes(b"%PDF-1.4\n")
 
-    monkeypatch.setattr(pdf_module, "PdfReader", lambda _: _FakeReader([_FakePage("short")]))
+    _patch_inspector(monkeypatch, [_FakePageMarkdown(0, "short")])
     monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings(ocr_min_chars_per_page=20))
     monkeypatch.setattr(pdf_module.pdfium, "PdfDocument", lambda _: _FakePdfDocument(1))
 
@@ -217,3 +238,97 @@ def test_parse_pdf_ocr_failure_falls_back_to_text_layer(
     monkeypatch.setattr(pdf_module.pytesseract, "image_to_string", _raise)
 
     assert pdf_module.parse_pdf(path) == "short"
+
+
+def test_parse_pdf_returns_inspector_markdown_verbatim(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4\n")
+
+    markdown = "# Heading\n\n| a | b |\n| --- | --- |\n| 1 | 2 |\n\n- item one\n- item two"
+    _patch_inspector(monkeypatch, [_FakePageMarkdown(0, markdown)])
+    monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings(ocr_min_chars_per_page=5))
+    monkeypatch.setattr(pdf_module.pdfium, "PdfDocument", lambda _: _FakePdfDocument(1))
+
+    def _fail_ocr(*_args: Any, **_kwargs: Any) -> str:
+        raise AssertionError("OCR should not run for long, non-flagged markdown")
+
+    monkeypatch.setattr(pdf_module.pytesseract, "image_to_string", _fail_ocr)
+
+    assert pdf_module.parse_pdf(path) == markdown
+
+
+def test_parse_pdf_needs_ocr_flag_triggers_ocr_even_when_markdown_is_long(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4\n")
+
+    long_markdown = "x" * 500
+    _patch_inspector(monkeypatch, [_FakePageMarkdown(0, long_markdown, needs_ocr=True)])
+    monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings(ocr_min_chars_per_page=20))
+    monkeypatch.setattr(pdf_module.pdfium, "PdfDocument", lambda _: _FakePdfDocument(1))
+    monkeypatch.setattr(
+        pdf_module.pytesseract, "image_to_string", lambda _image, **_kw: "OCR result"
+    )
+
+    assert pdf_module.parse_pdf(path) == "OCR result"
+
+
+def test_parse_pdf_routes_ocr_using_zero_indexed_page_not_one_indexed_list(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """PageMarkdown.page is 0-indexed; pages_needing_ocr is 1-indexed.
+
+    Only page index 2 (0-indexed) needs OCR. Assert tesseract receives that
+    exact pdfium page object, catching an off-by-one between the two
+    conventions the library mixes.
+    """
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4\n")
+
+    fake_doc = _FakePdfDocument(4)
+    pages = [
+        _FakePageMarkdown(0, "x" * 50),
+        _FakePageMarkdown(1, "x" * 50),
+        _FakePageMarkdown(2, "", needs_ocr=True),
+        _FakePageMarkdown(3, "x" * 50),
+    ]
+    _patch_inspector(monkeypatch, pages)
+    monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings(ocr_min_chars_per_page=20))
+    monkeypatch.setattr(pdf_module.pdfium, "PdfDocument", lambda _: fake_doc)
+
+    ocr_calls: list[object] = []
+
+    def _record(image: object, **_kw: object) -> str:
+        ocr_calls.append(image)
+        return "OCR"
+
+    monkeypatch.setattr(pdf_module.pytesseract, "image_to_string", _record)
+
+    pdf_module.parse_pdf(path)
+
+    # Only page index 2 should have been rendered/OCR'd.
+    assert fake_doc[0].last_bitmap is None
+    assert fake_doc[1].last_bitmap is None
+    assert fake_doc[2].last_bitmap is not None
+    assert fake_doc[3].last_bitmap is None
+    assert len(ocr_calls) == 1
+
+
+def test_parse_pdf_whole_document_extraction_failure_degrades_gracefully(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    path = tmp_path / "a.pdf"
+    path.write_bytes(b"%PDF-1.4\n")
+
+    monkeypatch.setattr(pdf_module, "pdf_inspector", _FakePdfInspector(ValueError("corrupt PDF")))
+    monkeypatch.setattr(pdf_module, "get_settings", lambda: _settings())
+
+    def _fail_open(*_args: Any, **_kwargs: Any) -> _FakePdfDocument:
+        raise AssertionError("PdfDocument should not be opened when extraction fails")
+
+    monkeypatch.setattr(pdf_module.pdfium, "PdfDocument", _fail_open)
+
+    assert pdf_module.parse_pdf(path) == ""

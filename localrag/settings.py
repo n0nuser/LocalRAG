@@ -36,12 +36,13 @@ class Settings(BaseSettings):
     ``POST /ingest/upload`` bypasses ``ingest_roots`` (the server chooses the
     destination) but enforces ``upload_max_bytes`` and saves under ``upload_dir``.
 
-    **PDF OCR** — When ``ocr_enabled`` is true (default), PDF pages whose extracted
-    text layer is shorter than ``ocr_min_chars_per_page`` (scanned/image-only pages)
-    are rasterized and run through Tesseract OCR (``ocr_language`` is a Tesseract
-    language code, e.g. ``eng``). Requires the ``tesseract`` binary on the host; if
-    it is missing, OCR fails silently per-page and the original (possibly empty)
-    text-layer output is kept. See `docs/ocr.md`.
+    **PDF OCR** — When ``ocr_enabled`` is true (default), PDF pages that ``pdf-inspector``
+    flags as unreliable, or whose extracted Markdown is shorter than
+    ``ocr_min_chars_per_page`` (scanned/image-only pages), are rasterized and run
+    through Tesseract OCR (``ocr_language`` is a Tesseract language code, e.g.
+    ``eng``). Requires the ``tesseract`` binary on the host; if it is missing, OCR
+    fails silently per-page and the original (possibly empty) Markdown output is
+    kept. See `docs/ocr.md`.
 
     **RAG** — ``rag_top_k`` is how many chunks are retrieved for context.
     ``rag_system_prompt`` is the system message for the answering model.
