@@ -52,6 +52,7 @@ Agents (and humans) move faster when they:
 | Generation sampling (temperature/seed) | `localrag/ollama/schemas.py` (`OllamaChatOptions`), `localrag/llm/providers/ollama.py`, `LLM_TEMPERATURE` / `LLM_SEED` in `localrag/settings.py` |
 | Eval suite / RAGAS scoring | `evals/run_evals.py`, `localrag/cli/commands/eval.py` |
 | Eval reproducibility (seed, run metadata) | `evals/environment.py`, `evals/run_evals.py`, [reproducibility.md](reproducibility.md) |
+| Eval result versioning/comparison/baselines | `evals/results/`, `evals/compare.py`, `evals/baselines/`, `localrag/cli/commands/eval_compare.py` |
 | Eval dataset schema / registry / fixtures | `evals/dataset/schema.py`, `evals/dataset/registry.py`, `evals/dataset/fixtures/`, [eval-datasets.md](eval-datasets.md) |
 | Prompt / answer streaming | `localrag/rag/prompt.py`, `localrag/rag/engine.py` |
 | Human Ollama install (not Python) | [ollama.md](ollama.md) |

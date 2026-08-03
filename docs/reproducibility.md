@@ -81,8 +81,12 @@ comparability. When either is set, LocalRAG sends an `options` block on every
 
 ## Field reference
 
-Every file in `evals/results/` has three top-level blocks: `scores`,
-`dataset`, and `environment`.
+Every file in `evals/results/` is a versioned result document with
+`schema_version`, `run_id`, `timestamp`, `dataset`, `selected_ids`, `metrics`,
+`provenance`, and `status`. The canonical schema and migration code live in
+`evals/results/schema.py`; the pre-#84 shape (top-level `scores` and
+`environment`) is explicitly migrated as version 0. Unknown future versions
+fail rather than being guessed at.
 
 ### `dataset` (identity — see [docs/eval-datasets.md](eval-datasets.md))
 
@@ -90,7 +94,37 @@ Every file in `evals/results/` has three top-level blocks: `scores`,
 | --- | --- | --- |
 | `dataset_id`, `dataset_version`, `split` | string | Which dataset produced these scores |
 | `checksum` | string | sha256 over the manifest content (excludes the `schema_version` bookkeeping field) — detects a silent edit even if the version tag wasn't bumped |
-| `selected_record_ids` | list[string] | The exact records evaluated, in order |
+| `selected_ids` | list[string] | The exact records evaluated, in order |
+
+### Metrics and comparison
+
+Each metric has a descriptor with `direction` (`higher_is_better` or
+`lower_is_better`), an optional `threshold`, optional `unit`, and a
+`missing_value` policy. Non-finite values are represented as missing and are
+listed in `non_finite_cases`; they are never changed to zero. Per-case values
+are retained in `cases` when the evaluator provides them.
+
+Compare only explicitly selected baselines:
+
+```bash
+uv run python evals/compare.py evals/results/run.json --baseline evals/baselines/default.json
+uv run localrag eval-compare evals/results/run.json --baseline-name default --threshold faithfulness>=0.60
+```
+
+Thresholds are `metric>=number`, `metric<=number`, or
+`metric_delta>=number`/`metric_delta<=number`. The metric must exist; malformed
+expressions and unknown metrics are usage errors. Comparison reports added or
+removed metrics, missing or extra case IDs, non-finite values, absolute and
+relative deltas, and incompatible dataset/provenance inputs. Exit codes are
+0 for a passing comparable result, 1 for a comparable regression or failed
+threshold, and 2 for usage, missing/schema, or incompatible inputs.
+
+Baselines are reviewed JSON artifacts in `evals/baselines/`. Update one by
+running a deliberate evaluation, reviewing its dataset checksum, selected
+IDs, metric descriptors, and provenance, then replacing the named artifact in
+a separate change. The manual `Evaluation comparison` workflow invokes this
+command against the explicitly supplied baseline; RAGAS remains a manually
+dispatched evaluation step, not an automatic CI dependency.
 
 ### `environment` (provenance)
 
@@ -165,5 +199,5 @@ digests, `package_versions`, and `settings_snapshot` before assuming a
 retrieval change caused it — comparing two results with a mismatched
 `dataset.checksum` is comparing different inputs, not a regression.
 
-Result comparison and CI regression gating across runs are **out of scope**
-here — see #84 for that.
+Result comparison and CI regression gating are implemented by
+`evals/compare.py` and documented above.

@@ -1,0 +1,26 @@
+name: Evaluation comparison
+
+on:
+  workflow_dispatch:
+    inputs:
+      result:
+        description: Path to a generated result artifact
+        required: true
+        type: string
+      baseline:
+        description: Reviewed baseline name under evals/baselines/
+        required: true
+        default: default
+        type: string
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - name: Compare against explicit baseline
+        run: uv run python evals/compare.py "${{ inputs.result }}" --baseline-name "${{ inputs.baseline }}"

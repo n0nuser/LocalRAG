@@ -71,7 +71,7 @@ flowchart LR
 | Ollama API models | `localrag/ollama/schemas.py` | Pydantic types + `parse_ollama_json` / `parse_ollama_json_line` for outbound requests and responses |
 | LLM abstraction | `localrag/llm/` | `BaseLLMProvider`, Ollama/OpenAI/Anthropic providers, factory, cost estimator |
 | Agent | `localrag/agent/service.py`, `localrag/api/routers/agent.py` | Anthropic tool-use agent; `POST /agent/query` |
-| Eval | `evals/dataset/`, `evals/run_evals.py` | Dataset registry + RAGAS runner; `localrag eval` CLI command |
+| Eval | `evals/dataset/`, `evals/run_evals.py`, `evals/results/`, `evals/compare.py` | Dataset registry + RAGAS runner, versioned result contract/comparison; `localrag eval` and `localrag eval-compare` CLI commands |
 | Audit log | `localrag/audit.py` | `write_audit_record` — durable local JSONL trail (question, sources, answer, model, latency); disabled by default via `AUDIT_LOG_PATH` |
 
 ## LLM abstraction

@@ -62,6 +62,7 @@ from evals.dataset.errors import DatasetError, OfflineArtifactsMissingError
 from evals.dataset.registry import load_dataset
 from evals.dataset.schema import DatasetRecord
 from evals.environment import capture_run_metadata, resolve_seed
+from evals.results.schema import MetricResult, ResultFile
 
 RESULTS_DIR = Path(__file__).parent / "results"
 
@@ -297,25 +298,28 @@ def main() -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out_path = RESULTS_DIR / f"{ts}.json"
-    out_path.write_text(
-        json.dumps(
-            {
-                "timestamp": ts,
-                "scores": scores,
-                "num_examples": len(rows),
-                "dataset": {
-                    "dataset_id": manifest.dataset_id,
-                    "dataset_version": manifest.dataset_version,
-                    "split": args.split,
-                    "checksum": manifest_checksum(manifest),
-                    "selected_record_ids": [row["record_id"] for row in rows],
-                },
-                "environment": metadata.to_dict(),
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
+    result = ResultFile(
+        run_id=ts,
+        timestamp=datetime.now(UTC),
+        dataset={
+            "dataset_id": manifest.dataset_id,
+            "dataset_version": manifest.dataset_version,
+            "split": args.split,
+            "checksum": manifest_checksum(manifest),
+        },
+        selected_ids=[row["record_id"] for row in rows],
+        metrics=[
+            MetricResult(
+                descriptor={"name": name, "direction": "higher_is_better", "threshold": PASS_THRESHOLDS[name]},
+                value=score,
+                cases={row["record_id"]: value for row, value in zip(rows, per_metric[name], strict=True)},
+                non_finite_cases=[row["record_id"] for row, value in zip(rows, per_metric[name], strict=True) if not math.isfinite(value)],
+            )
+            for name, score in scores.items()
+        ],
+        provenance=metadata.to_dict(),
     )
+    out_path.write_text(result.model_dump_json_safe(), encoding="utf-8")
     if metadata.git_dirty.value:
         print("WARNING: working tree is dirty — these results are not tied to a clean commit.")
     print(f"\nResults written to {out_path}")
