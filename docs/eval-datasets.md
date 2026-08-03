@@ -76,8 +76,19 @@ enough to tell whether two runs actually evaluated the same inputs.
 second dataset that exists to prove the registry supports more than one
 dataset and judgment type without runner changes.
 
+## Metric annotations
+
+Citation IDs are stable within a record and are the only valid join key for
+citation metrics. Relevance judgments identify the relevant IDs; an evaluator
+must also provide citation IDs for the answer being scored. If either side is
+absent, citation accuracy is explicitly unavailable rather than an invented
+score. Reference answers may be supplied in `reference_answers` for
+multi-reference EM/F1; the legacy `reference_answer` remains the fallback.
+
+Metric formulas, thresholds, and missing-data behavior are documented in
+[evaluation-metrics.md](evaluation-metrics.md).
+
 ## What this contract does not cover
 
-- **Metric formulas and thresholds** — see #74 (advanced metrics) once landed.
 - **Result comparison / regression gating across runs** — see #84.
 - **Per-case failure artifacts** — see #86.
