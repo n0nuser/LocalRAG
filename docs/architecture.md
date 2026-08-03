@@ -71,7 +71,7 @@ flowchart LR
 | Ollama API models | `localrag/ollama/schemas.py` | Pydantic types + `parse_ollama_json` / `parse_ollama_json_line` for outbound requests and responses |
 | LLM abstraction | `localrag/llm/` | `BaseLLMProvider`, Ollama/OpenAI/Anthropic providers, factory, cost estimator |
 | Agent | `localrag/agent/service.py`, `localrag/api/routers/agent.py` | Anthropic tool-use agent; `POST /agent/query` |
-| Eval | `evals/dataset.json`, `evals/run_evals.py` | RAGAS evaluation dataset and runner; `localrag eval` CLI command |
+| Eval | `evals/dataset/`, `evals/run_evals.py` | Dataset registry + RAGAS runner; `localrag eval` CLI command |
 | Audit log | `localrag/audit.py` | `write_audit_record` — durable local JSONL trail (question, sources, answer, model, latency); disabled by default via `AUDIT_LOG_PATH` |
 
 ## LLM abstraction
@@ -104,7 +104,7 @@ The `reasoning` field records which path was taken. The router in `localrag/api/
 
 ## Eval system
 
-`evals/run_evals.py` runs RAGAS metrics (`faithfulness`, `answer_relevancy`, `context_precision`, `context_recall`) against `evals/dataset.json` (20 Q/A/context triplets). Results write to `evals/results/`. The CLI command `uv run localrag eval --offline` delegates to this script.
+`evals/run_evals.py` runs RAGAS metrics (`faithfulness`, `answer_relevancy`, `context_precision`, `context_recall`) against a registered dataset (`--dataset`/`--version`/`--split`, default `localrag-core` `default`). Results write to `evals/results/` with dataset identity, a content checksum, selected record IDs, and environment provenance embedded. The CLI command `uv run localrag eval --offline` delegates to this script. See [docs/eval-datasets.md](eval-datasets.md) for the dataset contract and [docs/reproducibility.md](reproducibility.md) for the metadata contract.
 
 ## Extension points
 

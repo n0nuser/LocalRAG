@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "dataset_id": "localrag-graded",
+  "dataset_version": "1.0.0",
+  "description": "Small graded-relevance fixture proving the registry supports a second dataset with a different judgment_type, with no runner code changes.",
+  "source": "authored",
+  "license": "CC0-1.0",
+  "judgment_type": "graded",
+  "records": [
+    {
+      "record_id": "offline-first-definition",
+      "question": "Why is LocalRAG described as offline-first?",
+      "reference_answer": "Because documents, models, and computation all stay on the local machine — no data leaves the host to answer a query.",
+      "citations": [
+        {
+          "citation_id": "offline-first-definition-c1",
+          "source": "localrag-docs",
+          "text": "LocalRAG is an offline-first RAG system. Your documents, your models, your machine."
+        },
+        {
+          "citation_id": "offline-first-definition-c2",
+          "source": "localrag-docs",
+          "text": "It uses Chroma as the vector store and Ollama for embeddings and LLM inference."
+        }
+      ],
+      "judgments": [
+        {"citation_id": "offline-first-definition-c1", "relevant": true, "grade": 1.0},
+        {"citation_id": "offline-first-definition-c2", "relevant": true, "grade": 0.4}
+      ]
+    },
+    {
+      "record_id": "retrieval-mode-hybrid",
+      "question": "What does hybrid retrieval mode combine?",
+      "reference_answer": "Hybrid mode combines dense vector similarity search with BM25 keyword search, merged via reciprocal rank fusion.",
+      "citations": [
+        {
+          "citation_id": "retrieval-mode-hybrid-c1",
+          "source": "localrag-docs",
+          "text": "Hybrid retrieval merges dense (Chroma) and sparse (BM25) candidates using reciprocal rank fusion (RRF)."
+        }
+      ],
+      "judgments": [
+        {"citation_id": "retrieval-mode-hybrid-c1", "relevant": true, "grade": 1.0}
+      ]
+    }
+  ],
+  "splits": [
+    {"name": "default", "record_ids": ["offline-first-definition", "retrieval-mode-hybrid"]}
+  ]
+}
