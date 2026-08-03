@@ -44,3 +44,25 @@ at `value >= threshold`, while lower-is-better metrics pass at
 `value <= threshold`.
 
 The canonical JSON contract and migrations are in `evals/results/schema.py`.
+
+## Parallel evaluation
+
+The runner preserves the selected record order and writes case records in that
+order even when completion order differs. Live retrieval/generation uses the
+lowest of the retrieval, generation, and total limits; the default is 1
+generation request and 2 in-flight rows. Judge calls default to 1, embeddings
+to 1, metric rows to 4, and total work to 4. Override these with
+`--*-concurrency` flags. These defaults are intentionally conservative for a
+single local Ollama instance; increase them only after checking GPU memory and
+provider queueing.
+
+`--case-timeout` defaults to 120 seconds. A timeout cancels the row and its
+child provider work. Cancelling the runner cancels and awaits all child tasks.
+Provider, timeout, and metric failures are recorded per row in `cases`, with
+`failure_counts`; independent rows continue. A run exits 0 only when all rows
+complete and all metric thresholds pass, and exits 1 otherwise. Invalid CLI
+configuration exits 2.
+
+Concurrency does not promise bit-for-bit judge equality. Compare EM/F1 exactly
+for deterministic fixtures; compare judge-backed metrics with documented
+tolerance (the existing guidance treats deltas below roughly 0.02 as noise).
