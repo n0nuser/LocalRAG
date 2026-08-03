@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "run_id": "baseline-default",
+  "timestamp": "2026-08-03T00:00:00Z",
+  "dataset": {"dataset_id": "localrag-core", "dataset_version": "1.0.0", "split": "default", "checksum": "f32ac77b07618f1e0f1fad61701c62ac914f5e55251c0576c1e392a917aeb319"},
+  "selected_ids": ["what-is-localrag", "which-vector-store-does-localrag-use", "what-embedding-model-is-used-by-default", "how-do-i-ingest-a-pdf-file", "what-llm-is-used-by-default-for-answering-questions", "how-do-i-run-the-localrag-api-server", "what-is-the-chunk-size-used-during-ingestion", "can-i-restrict-which-directories-are-allowed-for-ingestion", "what-authentication-mechanism-does-the-api-use", "how-do-i-switch-from-ollama-to-openai", "what-prometheus-metrics-does-localrag-expose", "what-file-formats-can-localrag-ingest", "where-is-configuration-stored", "how-can-i-see-available-cli-commands", "what-is-the-health-check-endpoint", "how-is-context-built-for-the-llm-prompt", "does-localrag-support-streaming-responses", "what-is-the-capital-of-mars", "what-is-the-cost-of-using-ollama-models", "can-i-rebuild-the-vector-store-collection", "in-this-pricing-table-what-is-the-team-plan-monthly-price", "how-do-i-fix-err-localrag-42", "what-is-the-current-refund-policy"],
+  "metrics": [
+    {"descriptor": {"name": "faithfulness", "direction": "higher_is_better", "threshold": 0.6}, "value": 0.0},
+    {"descriptor": {"name": "answer_relevancy", "direction": "higher_is_better", "threshold": 0.6}, "value": 0.0},
+    {"descriptor": {"name": "context_precision", "direction": "higher_is_better", "threshold": 0.5}, "value": 0.0},
+    {"descriptor": {"name": "context_recall", "direction": "higher_is_better", "threshold": 0.5}, "value": 0.0}
+  ],
+  "provenance": {},
+  "status": "complete"
+}
