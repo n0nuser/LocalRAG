@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from localrag.llm.providers.base import BaseLLMProvider
+from localrag.rag.adaptive import AdaptiveRetrievalPolicy
 from localrag.rag.compressor import CompressionBudget, compress_contexts
 from localrag.rag.prompt import build_prompt
 from localrag.rag.retriever import Retriever
@@ -27,6 +28,19 @@ class RAGEngine:
         n_results: int | None = None,
         metadata_filter: dict[str, Any] | None = None,
     ) -> dict[str, object]:
+        if self.settings.adaptive_enabled:
+            events = list(self.stream_answer(question, model, n_results, metadata_filter))
+            return {
+                "answer": "".join(
+                    str(event["token"]) for event in events if event["type"] == "token"
+                ).strip(),
+                "sources": next(
+                    (list(event["sources"]) for event in events if event["type"] == "final"), []
+                ),
+                "trace": next(
+                    (event.get("trace") for event in events if event["type"] == "final"), None
+                ),
+            }
         chunks: list[str] = []
         sources: list[dict[str, object]] = []
         for event in self.stream_answer(
@@ -51,10 +65,26 @@ class RAGEngine:
             model,
             n_results,
         )
+        if self.settings.adaptive_enabled:
+            result = AdaptiveRetrievalPolicy(self.settings, self.retriever, self.provider).run(
+                question, model=model, n_results=n_results, metadata_filter=metadata_filter
+            )
+            if result.trace.abstained:
+                yield from self._adaptive_refusal(result.trace)
+                return
+            contexts = result.contexts
+            stream = self.stream_chat_from_contexts(
+                contexts=contexts, question=question, model=model
+            )
+            for event in stream:
+                if event["type"] == "final":
+                    event["trace"] = result.trace.to_dict()
+                yield event
+            return
         contexts = self.retriever.retrieve(
             question=question, n_results=n_results, metadata_filter=metadata_filter
         )
-        return self.stream_chat_from_contexts(contexts=contexts, question=question, model=model)
+        yield from self.stream_chat_from_contexts(contexts=contexts, question=question, model=model)
 
     def stream_chat_from_contexts(
         self,
@@ -85,6 +115,14 @@ class RAGEngine:
             "token": "I don't have enough information in the ingested documents to answer that.",
         }
         yield {"type": "final", "sources": [], "low_confidence": True}
+
+    @staticmethod
+    def _adaptive_refusal(trace: Any) -> Generator[dict[str, Any]]:
+        yield {
+            "type": "token",
+            "token": "I don't have enough information in the ingested documents to answer that.",
+        }
+        yield {"type": "final", "sources": [], "low_confidence": True, "trace": trace.to_dict()}
 
     def _stream_chat_tokens(
         self,
