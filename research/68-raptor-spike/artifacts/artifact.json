@@ -1,0 +1,296 @@
+{
+  "artifact_id": "raptor-ea42c53acfde76363046",
+  "build_stats": {
+    "failed_summaries": 0,
+    "leaf_count": 6,
+    "summary_calls": 2,
+    "summary_count": 2
+  },
+  "config": {
+    "cluster_count": 2,
+    "clustering": "deterministic_hash_partition",
+    "context_max_chars": 2400,
+    "level_weights": [
+      1.0,
+      0.85,
+      0.7
+    ],
+    "max_levels": 4,
+    "minimum_cluster_size": 2,
+    "prompt_version": "raptor-summary-v1",
+    "reduction_factor": 2,
+    "seed": 42,
+    "summary_max_chars": 800
+  },
+  "corpus_digest": "e751614c7fba26eaa6a63737012b222e3e131065172119a0d6b6f712e8735c2d",
+  "embedding_identity": "deterministic-fixture-2d-v1",
+  "invalidation_fingerprint": "ea42c53acfde763630465fb54fc12fb246060b587bbf98fa6d75b61c1536d7db",
+  "leaves": {
+    "alpha-0": {
+      "chunk_id": "alpha-0",
+      "content": "alpha vector retrieval",
+      "content_hash": "01250f9de5decba7a75780eb44e427cb2e5936e16ffb605fd1f6003a54ebcd0a",
+      "embedding": [
+        1.0,
+        0.0
+      ],
+      "source_id": "alpha"
+    },
+    "alpha-1": {
+      "chunk_id": "alpha-1",
+      "content": "alpha source provenance",
+      "content_hash": "10538a049d3043da77879cea58e380cad313100f364f7418276078cfbfc8113a",
+      "embedding": [
+        1.0,
+        0.0
+      ],
+      "source_id": "alpha"
+    },
+    "beta-0": {
+      "chunk_id": "beta-0",
+      "content": "beta tree summaries",
+      "content_hash": "27f1a8edc991185df5f1a599fe25849be845a2e3926d277ed2f7327cb6734296",
+      "embedding": [
+        0.0,
+        1.0
+      ],
+      "source_id": "beta"
+    },
+    "beta-1": {
+      "chunk_id": "beta-1",
+      "content": "beta context budget",
+      "content_hash": "28c4882c344b8f39344ec4563f0af79df686cf302338d66c9b5734c480eb26f8",
+      "embedding": [
+        0.0,
+        1.0
+      ],
+      "source_id": "beta"
+    },
+    "gamma-0": {
+      "chunk_id": "gamma-0",
+      "content": "gamma flat fallback",
+      "content_hash": "380f2ceee5a0f96581779b195e87dfdeb63cb9b4f442772e63ad7026a55c3e2c",
+      "embedding": [
+        0.7,
+        0.7
+      ],
+      "source_id": "gamma"
+    },
+    "gamma-1": {
+      "chunk_id": "gamma-1",
+      "content": "gamma citation serialization",
+      "content_hash": "287330b3950ffa47f747e8ae1f27b0a6d078773cdc63faf79dcafcbf35c47042",
+      "embedding": [
+        0.7,
+        0.7
+      ],
+      "source_id": "gamma"
+    }
+  },
+  "levels": {
+    "0": [
+      "alpha-0",
+      "alpha-1",
+      "beta-0",
+      "beta-1",
+      "gamma-0",
+      "gamma-1"
+    ],
+    "1": [
+      "summary-7de0813102b1d26b59cc",
+      "summary-7fff87f17a2816c65bdf"
+    ]
+  },
+  "nodes": {
+    "alpha-0": {
+      "child_ids": [],
+      "content_hashes": [
+        "01250f9de5decba7a75780eb44e427cb2e5936e16ffb605fd1f6003a54ebcd0a"
+      ],
+      "embedding": [
+        1.0,
+        0.0
+      ],
+      "kind": "leaf",
+      "level": 0,
+      "node_id": "alpha-0",
+      "source_chunk_ids": [
+        "alpha-0"
+      ],
+      "source_ids": [
+        "alpha"
+      ],
+      "summary_status": "not_applicable",
+      "text": "alpha vector retrieval"
+    },
+    "alpha-1": {
+      "child_ids": [],
+      "content_hashes": [
+        "10538a049d3043da77879cea58e380cad313100f364f7418276078cfbfc8113a"
+      ],
+      "embedding": [
+        1.0,
+        0.0
+      ],
+      "kind": "leaf",
+      "level": 0,
+      "node_id": "alpha-1",
+      "source_chunk_ids": [
+        "alpha-1"
+      ],
+      "source_ids": [
+        "alpha"
+      ],
+      "summary_status": "not_applicable",
+      "text": "alpha source provenance"
+    },
+    "beta-0": {
+      "child_ids": [],
+      "content_hashes": [
+        "27f1a8edc991185df5f1a599fe25849be845a2e3926d277ed2f7327cb6734296"
+      ],
+      "embedding": [
+        0.0,
+        1.0
+      ],
+      "kind": "leaf",
+      "level": 0,
+      "node_id": "beta-0",
+      "source_chunk_ids": [
+        "beta-0"
+      ],
+      "source_ids": [
+        "beta"
+      ],
+      "summary_status": "not_applicable",
+      "text": "beta tree summaries"
+    },
+    "beta-1": {
+      "child_ids": [],
+      "content_hashes": [
+        "28c4882c344b8f39344ec4563f0af79df686cf302338d66c9b5734c480eb26f8"
+      ],
+      "embedding": [
+        0.0,
+        1.0
+      ],
+      "kind": "leaf",
+      "level": 0,
+      "node_id": "beta-1",
+      "source_chunk_ids": [
+        "beta-1"
+      ],
+      "source_ids": [
+        "beta"
+      ],
+      "summary_status": "not_applicable",
+      "text": "beta context budget"
+    },
+    "gamma-0": {
+      "child_ids": [],
+      "content_hashes": [
+        "380f2ceee5a0f96581779b195e87dfdeb63cb9b4f442772e63ad7026a55c3e2c"
+      ],
+      "embedding": [
+        0.7,
+        0.7
+      ],
+      "kind": "leaf",
+      "level": 0,
+      "node_id": "gamma-0",
+      "source_chunk_ids": [
+        "gamma-0"
+      ],
+      "source_ids": [
+        "gamma"
+      ],
+      "summary_status": "not_applicable",
+      "text": "gamma flat fallback"
+    },
+    "gamma-1": {
+      "child_ids": [],
+      "content_hashes": [
+        "287330b3950ffa47f747e8ae1f27b0a6d078773cdc63faf79dcafcbf35c47042"
+      ],
+      "embedding": [
+        0.7,
+        0.7
+      ],
+      "kind": "leaf",
+      "level": 0,
+      "node_id": "gamma-1",
+      "source_chunk_ids": [
+        "gamma-1"
+      ],
+      "source_ids": [
+        "gamma"
+      ],
+      "summary_status": "not_applicable",
+      "text": "gamma citation serialization"
+    },
+    "summary-7de0813102b1d26b59cc": {
+      "child_ids": [
+        "alpha-1",
+        "beta-0",
+        "gamma-1"
+      ],
+      "content_hashes": [
+        "10538a049d3043da77879cea58e380cad313100f364f7418276078cfbfc8113a",
+        "27f1a8edc991185df5f1a599fe25849be845a2e3926d277ed2f7327cb6734296",
+        "287330b3950ffa47f747e8ae1f27b0a6d078773cdc63faf79dcafcbf35c47042"
+      ],
+      "embedding": [
+        0.5666666666666667,
+        0.5666666666666667
+      ],
+      "kind": "summary",
+      "level": 1,
+      "node_id": "summary-7de0813102b1d26b59cc",
+      "source_chunk_ids": [
+        "alpha-1",
+        "beta-0",
+        "gamma-1"
+      ],
+      "source_ids": [
+        "alpha",
+        "beta",
+        "gamma"
+      ],
+      "summary_status": "complete",
+      "text": "alpha source provenance\nbeta tree summaries\ngamma citation serialization"
+    },
+    "summary-7fff87f17a2816c65bdf": {
+      "child_ids": [
+        "alpha-0",
+        "beta-1",
+        "gamma-0"
+      ],
+      "content_hashes": [
+        "01250f9de5decba7a75780eb44e427cb2e5936e16ffb605fd1f6003a54ebcd0a",
+        "28c4882c344b8f39344ec4563f0af79df686cf302338d66c9b5734c480eb26f8",
+        "380f2ceee5a0f96581779b195e87dfdeb63cb9b4f442772e63ad7026a55c3e2c"
+      ],
+      "embedding": [
+        0.5666666666666667,
+        0.5666666666666667
+      ],
+      "kind": "summary",
+      "level": 1,
+      "node_id": "summary-7fff87f17a2816c65bdf",
+      "source_chunk_ids": [
+        "alpha-0",
+        "beta-1",
+        "gamma-0"
+      ],
+      "source_ids": [
+        "alpha",
+        "beta",
+        "gamma"
+      ],
+      "summary_status": "complete",
+      "text": "alpha vector retrieval\nbeta context budget\ngamma flat fallback"
+    }
+  },
+  "schema_version": 1,
+  "summarizer_identity": "fake-summary-v1"
+}
