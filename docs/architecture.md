@@ -71,7 +71,7 @@ flowchart LR
 | Ollama API models | `localrag/ollama/schemas.py` | Pydantic types + `parse_ollama_json` / `parse_ollama_json_line` for outbound requests and responses |
 | LLM abstraction | `localrag/llm/` | `BaseLLMProvider`, Ollama/OpenAI/Anthropic providers, factory, cost estimator |
 | Agent | `localrag/agent/service.py`, `localrag/api/routers/agent.py` | Anthropic tool-use agent; `POST /agent/query` |
-| Eval | `evals/dataset/`, `evals/metrics.py`, `evals/concurrency.py`, `evals/run_evals.py`, `evals/matrix.py`, `evals/results/`, `evals/compare.py`, `evals/report.py` | Dataset registry + deterministic/RAGAS metrics, bounded evaluation orchestration, canonical matrix runner, versioned result contract/comparison, and offline HTML rendering; `localrag eval`, `localrag benchmark`, `localrag eval-compare`, and `localrag report` CLI commands |
+| Eval | `evals/dataset/`, `evals/metrics.py`, `evals/concurrency.py`, `evals/run_evals.py`, `evals/matrix.py`, `evals/results/`, `evals/compare.py`, `evals/report.py`, `evals/leaderboard.py` | Dataset registry + deterministic/RAGAS metrics, bounded evaluation orchestration, canonical matrix runner, versioned result contract/comparison, offline HTML rendering, and strict leaderboard publication; `localrag eval`, `localrag benchmark`, `localrag eval-compare`, `localrag report`, and `localrag leaderboard` CLI commands |
 | Audit log | `localrag/audit.py` | `write_audit_record` — durable local JSONL trail (question, sources, answer, model, latency); disabled by default via `AUDIT_LOG_PATH` |
 
 ## LLM abstraction
@@ -109,6 +109,11 @@ The `reasoning` field records which path was taken. The router in `localrag/api/
 `evals/matrix.py` is the canonical cross-configuration benchmark contract. `uv run localrag benchmark` validates and expands versioned dimensions into stable case IDs, runs cases in isolated artifact directories, records structured failures, and continues independent cases. The existing single-run evaluator remains the adapter seam; reports must consume the matrix JSON rather than define another schema.
 
 `evals/report.py` consumes `MatrixManifest` and `ResultFile` directly and writes one deterministic, self-contained `report.html`. It deliberately omits raw document content and source paths, surfaces malformed inputs and missing values, and marks incompatible dataset identities instead of comparing them. The report is a local inspection view, not experiment tracking or leaderboard publication.
+
+`evals/leaderboard.py` is the strict publication adapter. It validates the
+provenance-rich leaderboard artifact contract, rejects incompatible or missing
+rows, orders exact model identities deterministically, and writes Markdown plus
+optional JSON without running benchmark work. See [benchmark-leaderboard.md](benchmark-leaderboard.md).
 
 ## Extension points
 

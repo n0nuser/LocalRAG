@@ -222,6 +222,20 @@ Reports omit questions, answers, contexts, and source paths by default. Treat re
 
 See [docs/evaluation-reports.md](docs/evaluation-reports.md) for the complete output, privacy, compatibility, and interpretation notes.
 
+### Benchmark leaderboard publication
+
+The leaderboard is a deterministic publication layer over reviewed canonical
+benchmark artifacts. It does not run models or invent missing results:
+
+```bash
+uv run localrag leaderboard sources/*.json --output leaderboard.md --json-output leaderboard.json
+```
+
+Incomplete or incomparable artifacts fail clearly; empty input produces an
+informative empty table. See [docs/benchmark-leaderboard.md](docs/benchmark-leaderboard.md)
+for provenance requirements, methodology, exact identity matrices, update
+policy, and comparability limits.
+
 ### Benchmark (offline baseline)
 
 The bundled `localrag-core` dataset contains 23 balanced Q/A/context records covering in-scope and out-of-scope cases (`default` split; `smoke` is a 3-record subset). Baseline metrics on the bundled dataset:
