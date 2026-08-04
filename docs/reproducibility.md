@@ -62,6 +62,7 @@ Use the manually invoked matrix command when comparing configurations:
 ```bash
 uv run localrag benchmark --profile fixture --dry-run
 uv run localrag benchmark --profile embedding-comparison
+uv run localrag benchmark --profile hyde --dataset localrag-core --seed 42
 uv run localrag benchmark --matrix path/to/matrix.json
 ```
 
@@ -77,6 +78,11 @@ provider identity, effective configuration, supported dimensions, seed, and
 timestamps.
 
 The matrix decision is recorded in [ADR 015](adr/015-canonical-benchmark-matrix.md), and bounded execution in [ADR 016](adr/016-bounded-parallel-evaluation.md).
+
+The `hyde` profile is a four-arm smoke comparison (`baseline`, `rewrite`, `hyde`,
+`rewrite+hyde`) on the same #73 dataset split and seed. Keep retrieval quality,
+generation latency, and retrieval latency as separate reported fields; it is an
+experiment scaffold, not evidence of a universal improvement.
 
 Dry runs exit `0`. A configuration or validation error exits `2` before any case
 starts. Execution continues across independent cases; if one or more cases fail,

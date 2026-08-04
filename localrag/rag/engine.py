@@ -78,7 +78,9 @@ class RAGEngine:
             )
             for event in stream:
                 if event["type"] == "final":
-                    event["trace"] = result.trace.to_dict()
+                    trace = result.trace.to_dict()
+                    trace["hyde"] = _hyde_trace(getattr(self.retriever, "last_hyde", None))
+                    event["trace"] = trace
                 yield event
             return
         contexts = self.retriever.retrieve(
@@ -96,7 +98,7 @@ class RAGEngine:
         """Stream LLM tokens when contexts were retrieved earlier (HTTP runs retrieve first)."""
         if self._is_low_confidence(contexts):
             logger.info("rag_low_confidence_refusal question_chars=%s", len(question))
-            return self._low_confidence_response()
+            return self._low_confidence_response(getattr(self.retriever, "last_hyde", None))
         return self._stream_chat_tokens(contexts=contexts, question=question, model=model)
 
     def _is_low_confidence(self, contexts: list[dict[str, Any]]) -> bool:
@@ -109,12 +111,12 @@ class RAGEngine:
         return top_score < min_score
 
     @staticmethod
-    def _low_confidence_response() -> Generator[dict[str, Any]]:
+    def _low_confidence_response(trace: Any = None) -> Generator[dict[str, Any]]:
         yield {
             "type": "token",
             "token": "I don't have enough information in the ingested documents to answer that.",
         }
-        yield {"type": "final", "sources": [], "low_confidence": True}
+        yield {"type": "final", "sources": [], "low_confidence": True, "trace": _hyde_trace(trace)}
 
     @staticmethod
     def _adaptive_refusal(trace: Any) -> Generator[dict[str, Any]]:
@@ -162,7 +164,12 @@ class RAGEngine:
             if event["type"] == "token":
                 yield event
         logger.info("rag_stream_done")
-        yield {"type": "final", "sources": self.extract_sources(contexts), "low_confidence": False}
+        yield {
+            "type": "final",
+            "sources": self.extract_sources(contexts),
+            "low_confidence": False,
+            "trace": _hyde_trace(getattr(self.retriever, "last_hyde", None)),
+        }
 
     @staticmethod
     def extract_sources(contexts: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -185,3 +192,16 @@ class RAGEngine:
                 }
             )
         return sources
+
+
+def _hyde_trace(trace: Any) -> dict[str, Any] | None:
+    if trace is None:
+        return None
+    return {
+        "mode": trace.mode,
+        "provider": trace.provider,
+        "model": trace.model,
+        "latency_ms": trace.latency_ms,
+        "status": trace.status,
+        "fallback_reason": trace.fallback_reason,
+    }
