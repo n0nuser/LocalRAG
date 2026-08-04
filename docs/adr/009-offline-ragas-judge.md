@@ -48,10 +48,11 @@ Ollama container. Both are overridable via `--judge-model`/`--ollama-url`.
 
 ## Consequences
 
-- Evals are fully offline-capable and reproducible on any machine running
-  the project's own Docker stack — no external API key needed anywhere,
-  including CI (`.github/workflows/evals-pr.yml` runs an `ollama/ollama`
-  service container and pulls the judge/embedding models before scoring).
+- Evals remain fully offline-capable and reproducible on any machine running
+  the project's own Docker stack. RAGAS remains in the evaluation path, but it
+  is invoked manually through `.github/workflows/evals.yml` using
+  `workflow_dispatch`; it is not an automatic CI or pull-request execution.
+  The workflow uploads generated artifacts for inspection.
 - Judge quality is bounded by a small local model (`gemma3:4b`, 4B params)
   rather than a GPT-4-class judge — `PASS_THRESHOLDS` may need recalibration
   if scores drift far from expectations on a real corpus. First full run:
@@ -61,5 +62,5 @@ Ollama container. Both are overridable via `--judge-model`/`--ollama-url`.
 
 ## Related
 
-`docs/superpowers/plans/2026-07-07-production-rag-hardening.md` (Task 1),
-session narrative in `log_reasonings/2026-07-07-ragas-offline-judge.md`.
+`.github/workflows/evals.yml`, [ADR 014](014-evaluation-metric-contract.md),
+and [Reproducibility](../reproducibility.md).

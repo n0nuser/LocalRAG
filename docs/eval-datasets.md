@@ -1,5 +1,7 @@
 # Evaluation dataset contract
 
+The durable decision behind this contract is [ADR 011](adr/011-evaluation-dataset-contract.md).
+
 The eval runner (`evals/run_evals.py`) does not read a fixed file. It selects
 a dataset from a registry by ID, version, and split. This page covers the
 manifest format, how to add a dataset, and what the registry guarantees.
@@ -92,3 +94,5 @@ Metric formulas, thresholds, and missing-data behavior are documented in
 
 - **Result comparison / regression gating across runs** — see #84.
 - **Per-case failure artifacts** — see #86.
+
+Result and metric consumers are specified by [ADR 013](adr/013-versioned-benchmark-results.md) and [ADR 014](adr/014-evaluation-metric-contract.md).

@@ -5,6 +5,8 @@ reviewed canonical result artifacts produced by the matrix/evaluation flows
 (#73 and #84) and writes a deterministic Markdown table. It never calls a
 model, samples a dataset, or fills missing measurements.
 
+This boundary is the decision in [ADR 017](adr/017-strict-leaderboard-publication.md).
+
 ## Contract
 
 Each input is a JSON object with `schema_version: 1`, `source_kind`

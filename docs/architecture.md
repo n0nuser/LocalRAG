@@ -104,7 +104,7 @@ The `reasoning` field records which path was taken. The router in `localrag/api/
 
 ## Eval system
 
-`evals/run_evals.py` runs deterministic EM/F1, annotation-backed citation accuracy, hallucination rate, and the existing RAGAS metrics against a registered dataset (`--dataset`/`--version`/`--split`, default `localrag-core` `default`). Results write to `evals/results/` with dataset identity, a content checksum, selected record IDs, per-case status/counts, and environment provenance embedded. The CLI command `uv run localrag eval --offline` delegates to this script. See [docs/evaluation-metrics.md](evaluation-metrics.md), [docs/eval-datasets.md](eval-datasets.md), and [docs/reproducibility.md](reproducibility.md).
+`evals/run_evals.py` runs deterministic EM/F1, annotation-backed citation accuracy, hallucination rate, and the existing RAGAS metrics against a registered dataset (`--dataset`/`--version`/`--split`, default `localrag-core` `default`). Results write to `evals/results/` with dataset identity, a content checksum, selected record IDs, per-case status/counts, and environment provenance embedded. The CLI command `uv run localrag eval --offline` delegates to this script. See [docs/evaluation-metrics.md](evaluation-metrics.md), [docs/eval-datasets.md](eval-datasets.md), [docs/reproducibility.md](reproducibility.md), and [evaluation ADRs 011-017](adr/011-evaluation-dataset-contract.md).
 
 `evals/matrix.py` is the canonical cross-configuration benchmark contract. `uv run localrag benchmark` validates and expands versioned dimensions into stable case IDs, runs cases in isolated artifact directories, records structured failures, and continues independent cases. The existing single-run evaluator remains the adapter seam; reports must consume the matrix JSON rather than define another schema.
 
@@ -113,7 +113,7 @@ The `reasoning` field records which path was taken. The router in `localrag/api/
 `evals/leaderboard.py` is the strict publication adapter. It validates the
 provenance-rich leaderboard artifact contract, rejects incompatible or missing
 rows, orders exact model identities deterministically, and writes Markdown plus
-optional JSON without running benchmark work. See [benchmark-leaderboard.md](benchmark-leaderboard.md).
+optional JSON without running benchmark work. See [benchmark-leaderboard.md](benchmark-leaderboard.md) and [ADR 017](adr/017-strict-leaderboard-publication.md).
 
 ## Extension points
 
