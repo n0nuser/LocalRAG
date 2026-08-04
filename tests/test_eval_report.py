@@ -182,8 +182,6 @@ def test_canonical_evaluation_result_and_cli_strict_mode(tmp_path: Path) -> None
     bad = tmp_path / "bad.json"
     bad.write_text("bad", encoding="utf-8")
     cli_output = tmp_path / "cli.html"
-    command = CliRunner().invoke(
-        app, ["report", str(bad), "--strict", "--output", str(cli_output)]
-    )
+    command = CliRunner().invoke(app, ["report", str(bad), "--strict", "--output", str(cli_output)])
     assert command.exit_code == 1
     assert cli_output.exists()
