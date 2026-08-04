@@ -14,10 +14,11 @@ Agents (and humans) move faster when they:
 ## Read order (minimal)
 
 1. [README](../README.md) — what LocalRAG does, quick start, API entry command.
-2. [`pyproject.toml`](../pyproject.toml) — dependencies, script entry `localrag = localrag.cli.app:app`, Ruff/pytest config.
-3. [`.env.example`](../.env.example) — canonical env var names and defaults (mirrors `Settings` in `localrag/settings.py`); [`config.example.yaml`](../config.example.yaml) shows structured configuration.
-4. [architecture.md](architecture.md) — layers, data flow, extension points.
-5. The specific file(s) for your task (see table below).
+2. [ROADMAP](../ROADMAP.md) — current milestone map, issue dependencies, and contributor selection guidance.
+3. [`pyproject.toml`](../pyproject.toml) — dependencies, script entry `localrag = localrag.cli.app:app`, Ruff/pytest config.
+4. [`.env.example`](../.env.example) — canonical env var names and defaults (mirrors `Settings` in `localrag/settings.py`); [`config.example.yaml`](../config.example.yaml) shows structured configuration.
+5. [architecture.md](architecture.md) — layers, data flow, extension points.
+6. The specific file(s) for your task (see table below).
 
 For contributor workflows, read [`Taskfile.yml`](../Taskfile.yml) and the
 Taskfile section in [CONTRIBUTING](../.github/CONTRIBUTING.md). It is the thin
@@ -47,6 +48,7 @@ override unless `COMPOSE_OVERRIDE` is supplied.
 | Cost estimation | `localrag/llm/costs.py` |
 | Agent tool-use (search_documents / answer_directly) | `localrag/agent/service.py`, `localrag/api/routers/agent.py` |
 | Architecture decisions | `docs/adr/` |
+| Roadmap status and milestone selection | `ROADMAP.md`, GitHub issues and milestones, `scripts/validate_roadmap.py` |
 | CLI commands | `localrag/cli/app.py`, `localrag/cli/commands/*.py`, [cli.md](cli.md) |
 | Structured configuration | `localrag/settings.py`, `localrag/cli/app.py`, `localrag/api/main.py`, `config.example.yaml` |
 | Parsing a file type | `localrag/ingestion/parsers/`, `localrag/ingestion/loader.py` |
