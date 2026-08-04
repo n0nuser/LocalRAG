@@ -11,12 +11,14 @@ import httpx
 from localrag.embedding.base import EmbeddingError, EmbeddingProvider
 from localrag.rag.bm25_index import Bm25Index
 from localrag.rag.exceptions import RetrievalError
-from localrag.rag.query_rewrite import rewrite_query
+from localrag.rag.query_rewrite import expand_query, rewrite_query
 from localrag.rag.reranker import CrossEncoderReranker
 from localrag.settings import Settings
 from localrag.storage.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
+
+_HARD_MAX_CANDIDATES = 100
 
 
 def _parse_ingested_at(value: Any) -> datetime | None:
@@ -57,29 +59,47 @@ class Retriever:
             else max(top_k * 2, top_k)
         )
         search_question = question
+        rewritten: str | None = None
         if self.settings.query_rewrite_enabled:
             search_question = rewrite_query(question, self.settings)
+            rewritten = search_question if search_question != question else None
             logger.debug(
                 "query_rewritten original_chars=%s rewritten_chars=%s",
                 len(question),
                 len(search_question),
             )
-        logger.debug(
-            "retrieve_embed_question top_k=%s question_chars=%s", top_k, len(search_question)
+        expansion = expand_query(question, search_question, self.settings, rewrite=rewritten)
+        variants = expansion.variants
+        candidate_budget = (
+            min(self.settings.query_expansion_candidate_budget, _HARD_MAX_CANDIDATES)
+            if self.settings.query_expansion_enabled
+            else fetch_k
         )
+        rank_list_count = 2 if self.settings.retrieval_mode == "hybrid" and self.bm25_index else 1
+        per_variant_k = min(fetch_k, max(1, candidate_budget // (len(variants) * rank_list_count)))
+        logger.debug(
+            "retrieve_query_plan status=%s variants=%s candidate_budget=%s",
+            expansion.status,
+            len(variants),
+            candidate_budget if self.settings.query_expansion_enabled else fetch_k,
+        )
+        vector_lists: list[list[dict[str, Any]]] = []
+        bm25_lists: list[list[dict[str, Any]]] = []
         try:
             ensure = getattr(self.vector_store, "ensure_embedding_compatibility", None)
             if ensure is not None:
                 ensure(self.embedder)
             embed = getattr(self.embedder, "embed", None)
             legacy_embedder: Any = self.embedder
-            embedding = (
-                embed(search_question)
-                if embed is not None
-                else legacy_embedder.embed_text(search_question)
-            )
-            if ensure is not None:
-                ensure(self.embedder, len(embedding))
+            for variant in variants:
+                embedding = (
+                    embed(variant) if embed is not None else legacy_embedder.embed_text(variant)
+                )
+                if ensure is not None:
+                    ensure(self.embedder, len(embedding))
+                vector_lists.append(
+                    self._retrieve_vector_hits(embedding, per_variant_k, metadata_filter)
+                )
         except (httpx.HTTPError, EmbeddingError) as exc:
             logger.error(
                 "retrieve_embed_provider_error provider=%s model=%s error=%s",
@@ -92,28 +112,35 @@ class Retriever:
                 "Embedding service unavailable.",
             ) from exc
 
-        vector_hits = self._retrieve_vector_hits(
-            embedding=embedding, top_k=fetch_k, where=metadata_filter
-        )
         fused = False
         if self.settings.retrieval_mode != "hybrid" or self.bm25_index is None:
-            candidates = vector_hits
+            if len(vector_lists) == 1:
+                candidates = vector_lists[0]
+            else:
+                candidates = self._fuse_rank_lists(
+                    vector_lists, [1.0 / len(vector_lists)] * len(vector_lists), per_variant_k
+                )
         else:
-            bm25_hits = [
-                {
-                    "text": hit.text,
-                    "source": hit.metadata.get("source", "unknown"),
-                    "chunk_index": hit.metadata.get("chunk_index", -1),
-                    "score": hit.score,
-                    "ingested_at": hit.metadata.get("ingested_at"),
-                    "metadata": hit.metadata,
-                }
-                for hit in self.bm25_index.query(search_question, top_k=fetch_k)
-                if _matches_filter(hit.metadata, metadata_filter)
-            ]
-            candidates = self._fuse_results(
-                vector_hits=vector_hits, bm25_hits=bm25_hits, top_k=fetch_k
-            )
+            for variant in variants:
+                bm25_lists.append(
+                    [
+                        {
+                            "text": hit.text,
+                            "source": hit.metadata.get("source", "unknown"),
+                            "chunk_index": hit.metadata.get("chunk_index", -1),
+                            "score": hit.score,
+                            "ingested_at": hit.metadata.get("ingested_at"),
+                            "metadata": hit.metadata,
+                        }
+                        for hit in self.bm25_index.query(variant, top_k=per_variant_k)
+                        if _matches_filter(hit.metadata, metadata_filter)
+                    ]
+                )
+            lists = vector_lists + bm25_lists
+            weights = [(1.0 - self.settings.bm25_weight) / len(variants)] * len(variants) + [
+                self.settings.bm25_weight / len(variants)
+            ] * len(variants)
+            candidates = self._fuse_rank_lists(lists, weights, per_variant_k)
             fused = True
 
         if self.reranker is not None:
@@ -166,12 +193,26 @@ class Retriever:
         bm25_hits: list[dict[str, Any]],
         top_k: int,
     ) -> list[dict[str, Any]]:
-        # Ties are broken by recency so equally-relevant candidates do not take an
+        return self._fuse_rank_lists(
+            [vector_hits, bm25_hits],
+            [1.0 - self.settings.bm25_weight, self.settings.bm25_weight],
+            top_k,
+        )
+
+    def _fuse_rank_lists(
+        self,
+        rank_lists: list[list[dict[str, Any]]],
+        weights: list[float],
+        top_k: int,
+    ) -> list[dict[str, Any]]:
+        """Fuse explicit ranked lists, deduplicating by source and chunk index."""
+        # Ties are broken by recency and stable identity so equally-relevant candidates
+        # do not depend on provider/list insertion order.
+        if len(rank_lists) != len(weights):
+            raise ValueError("rank_lists and weights must have the same length")
         # arbitrary order from the sort's stability — that order would otherwise
         # decide the fused ranking, since a tied pair differs by a single rank in
         # every list.
-        vector_sorted = self._sorted_by_score(vector_hits)
-        bm25_sorted = self._sorted_by_score(bm25_hits)
         candidate_map: dict[tuple[str, int], dict[str, Any]] = {}
         score_map: dict[tuple[str, int], float] = {}
         rrf_k = max(1, self.settings.rrf_k)
@@ -184,22 +225,27 @@ class Retriever:
         if self.settings.freshness_half_life_days <= 0:
             freshness_weight = 0.0
         relevance_weight = 1.0 - freshness_weight
-        vector_weight = relevance_weight * (1.0 - self.settings.bm25_weight)
-        bm25_weight = relevance_weight * self.settings.bm25_weight
-
-        for rank, hit in enumerate(vector_sorted, start=1):
-            key = self._hit_key(hit)
-            candidate_map[key] = hit
-            score_map[key] = score_map.get(key, 0.0) + vector_weight / (rrf_k + rank)
-        for rank, hit in enumerate(bm25_sorted, start=1):
-            key = self._hit_key(hit)
-            candidate_map[key] = hit
-            score_map[key] = score_map.get(key, 0.0) + bm25_weight / (rrf_k + rank)
+        for hits, weight in zip(rank_lists, weights, strict=True):
+            for rank, hit in enumerate(self._sorted_by_score(hits), start=1):
+                key = self._hit_key(hit)
+                candidate_map.setdefault(key, hit)
+                score_map[key] = score_map.get(key, 0.0) + relevance_weight * weight / (
+                    rrf_k + rank
+                )
         if freshness_weight > 0.0:
             for key, rank in self._recency_ranks(candidate_map).items():
                 score_map[key] = score_map.get(key, 0.0) + freshness_weight / (rrf_k + rank)
 
-        ranked_keys = sorted(score_map.keys(), key=lambda key: score_map[key], reverse=True)[:top_k]
+        ranked_keys = sorted(
+            score_map,
+            key=lambda key: (
+                score_map[key],
+                _parse_ingested_at(candidate_map[key].get("ingested_at"))
+                or datetime.min.replace(tzinfo=UTC),
+                key,
+            ),
+            reverse=True,
+        )[:top_k]
         fused: list[dict[str, Any]] = []
         for key in ranked_keys:
             hit = dict(candidate_map[key])
