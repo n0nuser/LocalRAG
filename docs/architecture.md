@@ -1,6 +1,6 @@
 # Architecture
 
-LocalRAG is a small, layered Python package. Most features touch one layer; cross-cutting behavior lives in `localrag/settings.py`, `localrag/logging_config.py`, `localrag/observability/tracing.py`, and `localrag/api/dependencies.py`, with HTTP lifecycle and middleware in `localrag/api/main.py`. Optional OpenTelemetry tracing is disabled by default and never carries content or replaces metrics; see [observability.md](observability.md) and [ADR 030](adr/030-optional-otel-observability-boundary.md).
+LocalRAG is a small, layered Python package. Most features touch one layer; cross-cutting behavior lives in `localrag/settings.py`, `localrag/logging_config.py`, `localrag/observability/tracing.py`, and `localrag/api/dependencies.py`, with HTTP lifecycle and middleware in `localrag/api/main.py`. Optional OpenTelemetry tracing is disabled by default and never carries content or replaces metrics; see [observability.md](observability.md) and [ADR 030](adr/030-optional-otel-observability-boundary.md). Retriever plugins are the first supported extension family: see [plugin-author-guide.md](plugin-author-guide.md) and [ADR 032](adr/032-retriever-plugin-contract.md).
 
 Configuration is resolved once per execution context by `localrag.settings`: built-in defaults < YAML < `.env` < process environment < explicit CLI `--set` overrides. The API loads `LOCALRAG_CONFIG` during lifespan before cached services are constructed. CLI users pass `--config PATH` before a command. YAML sections (`embedding`, `retrieval`, `generation`, `dataset`, and `evaluation`) map to the single flat `Settings` model; unknown YAML keys and CLI fields fail fast. YAML-relative paths resolve against the configuration file directory, while environment-only settings retain current-working-directory behavior. Environment interpolation uses `${NAME}`. Secrets are accepted from environment sources and redacted from `config-show` snapshots. See [ADR 020](adr/020-structured-configuration.md).
 
@@ -76,6 +76,7 @@ flowchart LR
 | Embedding cache | `localrag/embedding/cache.py` | Versioned hashed vector-only disk entries, atomic writes, process/thread locking, checksum validation, bounded LRU cleanup, and fail-open cache I/O |
 | Storage | `localrag/storage/vector_store.py` | Chroma client wrapper |
 | RAG | `localrag/rag/retriever.py`, `bm25_index.py`, `engine.py`, `prompt.py` | Hybrid retrieval (vector + BM25), freshness decay reranking, prompt build, LLM call |
+| Retriever plugins | `localrag/plugins/retriever.py`, `docs/plugin-author-guide.md` | Versioned `localrag.retrievers` entry points; deterministic selection and lifecycle ownership |
 | Context compression | `localrag/rag/compressor.py` | Disabled-by-default deterministic extractive compression after parent expansion; preserves retrieval provenance and hard token/character budgets |
 | Ollama API models | `localrag/ollama/schemas.py` | Pydantic types + `parse_ollama_json` / `parse_ollama_json_line` for outbound requests and responses |
 | LLM abstraction | `localrag/llm/` | `BaseLLMProvider`, Ollama/OpenAI/Anthropic providers, factory, cost estimator |
@@ -145,6 +146,7 @@ optional JSON without running benchmark work. See [benchmark-leaderboard.md](ben
 - **New CLI command:** new module under `localrag/cli/commands/`, register in `localrag/cli/app.py`.
 - **New config:** field on `Settings` in `localrag/settings.py`, document in `.env.example`, use via `get_settings()`.
 - **Retrieval ranking:** modify `localrag/rag/retriever.py` and `localrag/rag/bm25_index.py` for fusion/decay behavior.
+- **Retriever plugin:** use the public contract in `localrag/plugins/retriever.py`; install a pinned distribution exposing `localrag.retrievers` and select `retriever_plugin`.
 - **Stricter HTTP ingest policy:** adjust checks in `localrag/api/service.py` (`ingest_file` / `ingest_directory`) and/or `is_path_allowed` in `localrag/settings.py`.
 
 ## Tests
