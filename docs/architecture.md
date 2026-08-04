@@ -15,7 +15,7 @@ flowchart LR
   subgraph ingestion
     L[loader + parsers]
     C[structural chunker]
-    E[OllamaEmbedder]
+    E[EmbeddingProvider]
     VS[(Chroma VectorStore)]
     B[BM25Index]
   end
@@ -42,7 +42,7 @@ flowchart LR
   F --> P --> LLM
 ```
 
-- **Ingest:** files → `loader` / `ingestion/parsers/*` → text → structural chunker (`localrag/ingestion/structural_chunker.py`) or fixed fallback (`localrag/ingestion/chunker.py`) → `OllamaEmbedder` → `VectorStore` (Chroma, persistent path from settings). The **HTTP** ingest flow runs path decode, existence checks, and `INGEST_ROOTS` in `localrag/api/service.py` (`ingest_file` / `ingest_directory`), then calls `IngestionService`; optional per-request `embed_model` overrides `OLLAMA_EMBED_MODEL`. Failures raise `IngestApiError` → JSON in `main.py`. CLI ingests call `IngestionService` directly. `POST /ingest/upload` (`ingest_upload` in `service.py`) takes a multipart file instead of a server path: it validates the extension against `loader.SUPPORTED_EXTENSIONS`, streams it to disk under `UPLOAD_DIR` in 1 MiB chunks while enforcing `UPLOAD_MAX_BYTES` (bypassing `INGEST_ROOTS`, since the server picks the destination), then calls `IngestionService.ingest_file` the same way. See the endpoint's OpenAPI description for upload limitations (no AV scan, extension-only validation, single file per request). For long-running directory ingests, `POST /ingest/directory/async` (`ingest_directory_async` in `service.py`) runs the same path validation synchronously, then submits the actual `IngestionService.ingest_directory` call to the in-process `JobRegistry` (`localrag/api/jobs.py`) and returns `202 {job_id, status: "pending"}` immediately; poll `GET /ingest/jobs/{job_id}` (`get_ingest_job`) for `running` / `done` (with `result`) / `failed` (with `error`).
+  - **Ingest:** files → `loader` / `ingestion/parsers/*` → text → structural chunker (`localrag/ingestion/structural_chunker.py`) or fixed fallback (`localrag/ingestion/chunker.py`) → the factory-created `EmbeddingProvider` → `VectorStore` (Chroma, persistent path from settings). The same provider instance embeds retrieval queries. Collection metadata records provider/model/dimension and rejects incompatible operations; changing the embedding space requires an explicit rebuild. The **HTTP** ingest flow runs path decode, existence checks, and `INGEST_ROOTS` in `localrag/api/service.py` (`ingest_file` / `ingest_directory`), then calls `IngestionService`; optional per-request `embed_model` overrides the configured model and is compatibility-checked. Failures raise `IngestApiError` → JSON in `main.py`. CLI ingests call `IngestionService` directly. `POST /ingest/upload` (`ingest_upload` in `service.py`) takes a multipart file instead of a server path: it validates the extension against `loader.SUPPORTED_EXTENSIONS`, streams it to disk under `UPLOAD_DIR` in 1 MiB chunks while enforcing `UPLOAD_MAX_BYTES` (bypassing `INGEST_ROOTS`, since the server picks the destination), then calls `IngestionService.ingest_file` the same way. See the endpoint's OpenAPI description for upload limitations (no AV scan, extension-only validation, single file per request). For long-running directory ingests, `POST /ingest/directory/async` (`ingest_directory_async` in `service.py`) runs the same path validation synchronously, then submits the actual `IngestionService.ingest_directory` call to the in-process `JobRegistry` (`localrag/api/jobs.py`) and returns `202 {job_id, status: "pending"}` immediately; poll `GET /ingest/jobs/{job_id}` (`get_ingest_job`) for `running` / `done` (with `result`) / `failed` (with `error`).
 - **Rebuild:** `POST /collections/rebuild` and `localrag collections rebuild` list distinct `source` values in the active collection, drop vectors for missing files, and re-chunk/re-embed remaining paths (optional `embed_model` override). Implemented in `IngestionService.rebuild_collection`.
 - **Query (JSON):** `POST /query` returns a complete `QueryResponse` (answer, sources, latency_ms, model) from `query_json` in `localrag/api/service.py`. Retrieval supports vector-only and hybrid (vector + BM25 with reciprocal-rank fusion), then applies optional freshness decay based on chunk `ingested_at`. `RAGEngine` generates the answer via its injected `provider` (a `BaseLLMProvider` built by `llm/factory.py::build_provider`, resilience-wrapped), so `LLM_BACKEND` genuinely governs which backend answers `/query` — it is no longer hard-wired to Ollama. Requires `X-API-Key` when `API_KEY` is set.
 - **Query (SSE stream):** `POST /query/stream` streams tokens as Server-Sent Events. Retrieval runs synchronously first (`get_query_contexts`) so errors map to HTTP before SSE starts, then tokens are mapped via `iter_query_sse_events`. Token streaming likewise goes through `RAGEngine.provider.stream_from_prompt(...)`, so `LLM_BACKEND` governs the streaming path too.
@@ -52,9 +52,9 @@ flowchart LR
 
 | Area | Path | Role |
 | --- | --- | --- |
-| Settings | `localrag/settings.py` | `Settings` + `get_settings()`; env vars from `.env` (includes `log_level`, `api_key`, `llm_backend`, `embedding_model`) |
+| Settings | `localrag/settings.py` | `Settings` + `get_settings()`; env vars from `.env` (includes provider, model, timeout, `log_level`, `api_key`, and `llm_backend`) |
 | Logging | `localrag/logging_config.py`, `localrag/api/middleware.py` | `configure_logging()`, stderr handler on `localrag.*`, `X-Request-ID` on HTTP requests |
-| API wiring | `localrag/api/dependencies.py` | Cached factories: vector store, BM25 index, embedder, retriever, RAG engine, ingestion service, `ChromaCollectionRepository` |
+| API wiring | `localrag/api/dependencies.py` | Cached factories: vector store, shared embedding provider, BM25 index, retriever, RAG engine, ingestion service, `ChromaCollectionRepository` |
 | HTTP API (transport) | `localrag/api/main.py`, `localrag/api/routers/*` | Lifespan (`configure_logging`), `RequestContextMiddleware` (`X-Request-ID`), global exception + validation handlers + `HttpMappedError`; thin route handlers |
 | HTTP API (contracts) | `localrag/api/schemas.py` | Pydantic request/response models and path aliases (OpenAPI) |
 | HTTP API (use cases) | `localrag/api/service.py` | Health check, ingest HTTP rules, query JSON (`query_json`) + SSE events, collection list/delete/rebuild orchestration |
@@ -65,7 +65,7 @@ flowchart LR
 | CLI | `localrag/cli/app.py`, `localrag/cli/commands/*`, `docs/cli.md` | `localrag` Typer entry (`pyproject` `[project.scripts]`); `inspect` is read-only local diagnostics and `benchmark` delegates to `evals.matrix.run_matrix` |
 | Ingestion orchestration | `localrag/ingestion/service.py` | `IngestionService`: paths → parse → chunk → embed → upsert |
 | File formats | `localrag/ingestion/parsers/*` | pdf (Markdown extraction via pdf-inspector, with OCR fallback via pypdfium2 + pytesseract), docx, markdown, text, code |
-| Chunking / embed | `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/ingestion/embedder.py` | Structural chunking by markdown/code/text boundaries with fixed fallback; `.pdf` chunks as markdown via `loader.MARKDOWN_PRODUCING_EXTENSIONS` since `parse_pdf` emits Markdown; Ollama **`POST /api/embed`** (see `localrag/ollama/schemas.py`) |
+| Embedding | `localrag/embedding/`, `localrag/ingestion/embedder.py` | Provider protocol/factory, Ollama **`POST /api/embed`**, optional sentence-transformers backend, and collection identity checks |
 | Storage | `localrag/storage/vector_store.py` | Chroma client wrapper |
 | RAG | `localrag/rag/retriever.py`, `bm25_index.py`, `engine.py`, `prompt.py` | Hybrid retrieval (vector + BM25), freshness decay reranking, prompt build, LLM call |
 | Ollama API models | `localrag/ollama/schemas.py` | Pydantic types + `parse_ollama_json` / `parse_ollama_json_line` for outbound requests and responses |
@@ -75,7 +75,6 @@ flowchart LR
 | Audit log | `localrag/audit.py` | `write_audit_record` — durable local JSONL trail (question, sources, answer, model, latency); disabled by default via `AUDIT_LOG_PATH` |
 
 ## LLM abstraction
-
 `localrag/llm/` decouples the RAG engine from a specific model API:
 
 | Path | Role |
@@ -90,6 +89,14 @@ flowchart LR
 | `localrag/llm/costs.py` | `estimate_cost_usd(model, tokens)` with prefix-match price table |
 
 `RAGEngine` (`localrag/rag/engine.py`) holds a `provider: BaseLLMProvider` field (injected in `localrag/api/dependencies.py::get_engine` via `build_provider(settings)`) and builds its own citation-rich prompt with `localrag.rag.prompt.build_prompt`, then calls `self.provider.stream_from_prompt(prompt, model=model)` — it no longer talks to Ollama's `/api/chat` directly, so switching `LLM_BACKEND` to `openai` or `anthropic` actually changes what answers `/query` and `/query/stream`.
+
+## Embedding abstraction
+
+`localrag/embedding/` defines the provider-neutral single and batch contract.
+`build_embedding_provider` selects Ollama by default or the optional
+sentence-transformers backend. Ingestion and `Retriever` receive the same
+cached instance. Chroma metadata records provider, model, and vector dimension;
+an incompatible runtime fails before vector operations. See [ADR 019](adr/019-embedding-provider-contract.md).
 
 ## Agent layer
 

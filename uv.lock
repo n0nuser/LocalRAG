@@ -1955,6 +1955,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+embedding = [
+    { name = "sentence-transformers" },
+]
 rerank = [
     { name = "sentence-transformers" },
 ]
@@ -1996,6 +1999,7 @@ requires-dist = [
     { name = "ragas", specifier = ">=0.4.3" },
     { name = "rank-bm25", specifier = ">=0.2.2" },
     { name = "rich", specifier = ">=13" },
+    { name = "sentence-transformers", marker = "extra == 'embedding'", specifier = ">=3" },
     { name = "sentence-transformers", marker = "extra == 'rerank'", specifier = ">=3" },
     { name = "sse-starlette", specifier = ">=2.2" },
     { name = "structlog", specifier = ">=25.5.0" },
@@ -2003,7 +2007,7 @@ requires-dist = [
     { name = "typer", specifier = ">=0.15" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
 ]
-provides-extras = ["rerank", "tracking"]
+provides-extras = ["rerank", "embedding", "tracking"]
 
 [package.metadata.requires-dev]
 dev = [
