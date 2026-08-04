@@ -193,6 +193,38 @@ This adds one extra LLM round-trip per query, so it is off by default; enable
 it when lexical/embedding mismatch between conversational questions and
 indexed document phrasing is hurting retrieval recall.
 
+## Query expansion (optional)
+
+Expansion is a separate retrieval-stage operation, disabled by default
+(`QUERY_EXPANSION_ENABLED=false`). When both transformations are enabled, the
+fixed order is **original question -> one rewrite call -> one expansion call ->
+per-variant retrieval -> cross-variant fusion -> reranking -> freshness ->
+parent-section expansion**. Rewriting therefore never accidentally causes one
+expansion call per generated query. With expansion disabled, rewrite-only
+behavior remains unchanged.
+
+The expansion provider must return `{"queries": ["..."]}` (a JSON list is also
+accepted). The typed `QueryExpansionResult` records the original, optional
+rewrite, accepted variants, rejected values/reasons, and fallback status.
+Variants are stripped, deduplicated by case-folded whitespace-normalized text,
+and reject blank, non-string, and overlong values. The original question is
+always retained exactly when expansion is enabled, including exact identifiers
+and codes; generated text is only a search query and is never treated as a
+fact or answer source. Provider errors, timeouts, malformed output, and an
+empty response fall back to the original plus the rewrite when they differ.
+
+Fan-out is bounded to at most 8 variants, one expansion LLM call, and 100 total
+candidate slots allocated across the vector/BM25 rank lists (the configured
+limits are lower by default: 4 variants, 500 characters, and 40 candidates).
+Vector and BM25
+rank lists are passed explicitly to weighted RRF. A hit is identified by
+`source + chunk_index`, duplicate hits retain their first provenance, and ties
+are deterministic. Metadata filters apply to every variant's vector/BM25
+search. Cross-variant fusion happens before the existing original-question
+reranker, freshness handling, and parent-section expansion. Synonym maps and
+HyDE remain follow-up work; evaluation remains the existing RAGAS/manual-only
+workflow.
+
 ## Tenant tagging (optional)
 
 Per Chroma's own multi-tenancy guidance, this project uses a `tenant_id`
