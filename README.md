@@ -76,6 +76,51 @@ uv run localrag query "What are the key topics in these documents?"
 
 That's it — no cloud API keys needed for local Ollama mode.
 
+## Contributor Taskfile
+
+The portable [`Taskfile.yml`](Taskfile.yml) wraps the commands above without
+moving application logic into shell recipes. Install [Task](https://taskfile.dev),
+then use `task --list` to discover workflows:
+
+```bash
+task install
+task lint
+task test
+task format
+```
+
+Task requires Task 3.x, `uv`, Python 3.13+, and a POSIX shell, PowerShell, or
+WSL2 environment supported by the underlying tools. Docker Compose v2 is needed
+only for `task docker-up`, `task docker-down`, and `task test-integration`'s
+service prerequisite. Ollama is needed for live ingest/query/evaluation and
+live benchmarks; the offline eval and fixture benchmark do not need Ollama.
+Docker uses the host's available CPU/GPU support. The Compose file requests an
+NVIDIA GPU for Ollama when Docker supports it; CPU-only hosts may need to adjust
+that existing Compose deployment setting before starting the stack.
+
+Task variables are overridable on the command line or through the environment:
+`UV`, `PYTHON`, `COMPOSE`, `PROJECT`, `COMPOSE_FILE`, `COMPOSE_OVERRIDE`,
+`DATA_DIR`, `CONFIG`, `API_URL`, `OLLAMA_URL`, `COLLECTION`, `SAMPLE_SIZE`,
+`MODEL`, `DATASET`, `SPLIT`, `RESULTS_DIR`, `REPORT_INPUT`, `REPORT_OUTPUT`, `PROFILE`,
+`QUESTION`, `EVAL_ARGS`, `ARGS`, and `PYTEST_ARGS`. For example:
+
+```bash
+task ingest DATA_DIR=./documents
+task query QUESTION="What changed?" MODEL=gemma3:4b
+task inspect COLLECTION=localrag SAMPLE_SIZE=20
+task benchmark PROFILE=fixture ARGS=--dry-run
+```
+
+`task docker-down` preserves named volumes. Use the explicit
+`task docker-clean` task when removing them is intended. Docker tasks use only
+`docker-compose.yml` by default, so the repository's WSL2 bind-mount override
+is not silently applied; opt in with `COMPOSE_OVERRIDE=...` after configuring a
+portable host path. Tasks stop on the first failed command and propagate its
+exit code. `task format` modifies Python files, ingest/eval/benchmark/report
+can write application artifacts, inspect is read-only, and Docker tasks change
+container state. RAGAS and live benchmark tasks remain manual; CI does not
+trigger evaluation runs.
+
 ## API
 
 Start the API server:
@@ -197,7 +242,7 @@ uv run localrag report --strict run-a.json run-b.json -o report.html
 ## Docker (full stack)
 
 ```bash
-docker compose up --build
+task docker-up
 ```
 
 Starts: `localrag-api`, `ollama`, `chromadb`, `prometheus`, `grafana`. A one-shot
@@ -206,11 +251,11 @@ Starts: `localrag-api`, `ollama`, `chromadb`, `prometheus`, `grafana`. A one-sho
 starts — no manual `docker exec ... ollama pull` step needed. It exits 0 once
 done; that's expected, not a failure.
 
-`docker-compose.override.yml` is merged automatically for local dev — it's
-otherwise identical to the base file, plus a bind mount for a Windows-side
-folder (WSL2 only) so you can drag-and-drop documents instead of copying them
-into the WSL2 filesystem by hand. Edit the path in that file if it doesn't
-match your Windows username, or delete the volume line if you don't need it.
+The Taskfile uses only the base Compose file by default. The WSL2-only
+`docker-compose.override.yml` adds a bind mount for drag-and-drop documents;
+configure its host path for your machine and opt in explicitly with
+`task docker-up COMPOSE_OVERRIDE=docker-compose.override.yml`. The override is
+not applied automatically by Taskfile commands.
 
 Then open:
 - API: `http://localhost:8000/docs`

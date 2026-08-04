@@ -23,6 +23,34 @@ pre-commit install --hook-type commit-msg
 
 The second line registers the [Conventional Commits](https://www.conventionalcommits.org/) checker so invalid commit messages are rejected before the commit is created.
 
+## Contributor Taskfile
+
+Install Task 3.x, `uv`, and Python 3.13+ to use the repository's portable
+`Taskfile.yml`. Docker Compose v2 is required for the Docker and integration
+tasks; Ollama is required only for live model workflows. Linux and macOS work
+with their normal shells, Windows works with PowerShell when the underlying
+tools are installed, and WSL2 is supported when paths are configured for the
+WSL environment.
+
+Run `task --list` for the complete catalog. The common checks are `task install`,
+`task lint`, `task test`, and `task format`. `task test-integration` expects a
+healthy API stack at `API_URL` and does not start or stop services. Use
+`task docker-up` and `task docker-down` separately; `docker-down` preserves
+named volumes, while `task docker-clean` explicitly removes them. The default
+Compose file does not load the host-specific WSL2 override; pass
+`COMPOSE_OVERRIDE` only after configuring a portable path.
+
+Variables such as `UV`, `PYTHON`, `COMPOSE`, `PROJECT`, `DATA_DIR`, `CONFIG`,
+`API_URL`, `OLLAMA_URL`, `COLLECTION`, `SAMPLE_SIZE`, `MODEL`, `DATASET`,
+`REPORT_OUTPUT`, and `PYTEST_ARGS` can be set as `task NAME=value`. Tasks delegate to `uv`, the
+`localrag` CLI, pytest, Ruff, mypy, Bandit, and Compose. Failures propagate
+nonzero; `task format` modifies files, evaluation and reporting tasks may write
+artifacts, and `task inspect` is read-only.
+
+CI runs a non-service Task smoke job covering `task --list`, install, lint,
+tests, and help. Docker health checks and live RAGAS evaluation remain manual;
+RAGAS is not triggered automatically.
+
 ## Commits
 
 The project uses the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification. This is a lightweight convention on top of commit messages. It provides an easy set of rules for creating an explicit commit history. This convention dovetails with [SemVer](https://semver.org/), by describing the features, fixes, and breaking changes made in commit messages.

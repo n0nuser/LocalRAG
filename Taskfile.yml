@@ -1,0 +1,140 @@
+version: '3'
+
+vars:
+  UV: '{{.UV | default "uv"}}'
+  PYTHON: '{{.PYTHON | default "python3"}}'
+  COMPOSE: '{{.COMPOSE | default "docker compose"}}'
+  PROJECT: '{{.PROJECT | default "localrag"}}'
+  COMPOSE_FILE: '{{.COMPOSE_FILE | default "docker-compose.yml"}}'
+  COMPOSE_OVERRIDE: '{{.COMPOSE_OVERRIDE | default ""}}'
+  DATA_DIR: '{{.DATA_DIR | default "./docs"}}'
+  CONFIG: '{{.CONFIG | default ""}}'
+  API_URL: '{{.API_URL | default "http://localhost:8000"}}'
+  OLLAMA_URL: '{{.OLLAMA_URL | default "http://localhost:11434"}}'
+  COLLECTION: '{{.COLLECTION | default "localrag"}}'
+  SAMPLE_SIZE: '{{.SAMPLE_SIZE | default "5"}}'
+  MODEL: '{{.MODEL | default ""}}'
+  DATASET: '{{.DATASET | default "localrag-core"}}'
+  SPLIT: '{{.SPLIT | default "default"}}'
+  RESULTS_DIR: '{{.RESULTS_DIR | default "evals/results/matrices"}}'
+  REPORT_INPUT: '{{.REPORT_INPUT | default "evals/results/matrices/fixture/manifest.json"}}'
+  REPORT_OUTPUT: '{{.REPORT_OUTPUT | default "report.html"}}'
+  PROFILE: '{{.PROFILE | default "fixture"}}'
+  QUESTION: '{{.QUESTION | default "What are the key topics in these documents?"}}'
+  EVAL_ARGS: '{{.EVAL_ARGS | default "--offline"}}'
+  ARGS: '{{.ARGS | default ""}}'
+  PYTEST_ARGS: '{{.PYTEST_ARGS | default ""}}'
+
+tasks:
+  default:
+    desc: Show available contributor tasks
+    cmds:
+      - task --list
+
+  help:
+    desc: Show available contributor tasks
+    cmds:
+      - task --list
+
+  status:
+    desc: Show tool versions and the local Git status
+    cmds:
+      - '{{.UV}} --version'
+      - '{{.PYTHON}} --version'
+      - '{{.UV}} run localrag --help'
+      - git status --short --branch
+
+  install:
+    desc: Install locked application and development dependencies
+    cmds:
+      - '{{.UV}} sync'
+
+  sync:
+    desc: Alias for install
+    cmds:
+      - task: install
+
+  test:
+    desc: Run the unit and non-service test suite
+    deps: [install]
+    cmds:
+      - '{{.UV}} run pytest -x -q --cov=localrag --cov-report=term-missing {{.PYTEST_ARGS}}'
+
+  test-integration:
+    desc: Run integration tests against a healthy LocalRAG service
+    deps: [install]
+    env:
+      LOCALRAG_TEST_URL: '{{.API_URL}}'
+    cmds:
+      - '{{.UV}} run pytest -m integration -q {{.PYTEST_ARGS}}'
+
+  lint:
+    desc: Run Ruff, Bandit, and mypy checks
+    deps: [install]
+    cmds:
+      - '{{.UV}} run ruff check . {{.ARGS}}'
+      - '{{.UV}} run ruff format --check .'
+      - '{{.UV}} run bandit -r localrag/ -ll'
+      - '{{.UV}} run mypy localrag/ --ignore-missing-imports --no-strict-optional'
+
+  format:
+    desc: Format Python files in place with Ruff
+    deps: [install]
+    cmds:
+      - '{{.UV}} run ruff format . {{.ARGS}}'
+
+  ingest:
+    desc: Ingest DATA_DIR using the existing LocalRAG CLI
+    deps: [install]
+    cmds:
+      - '{{.UV}} run localrag {{if .CONFIG}}--config "{{.CONFIG}}" {{end}}ingest "{{.DATA_DIR}}" {{.ARGS}}'
+
+  query:
+    desc: Query the configured local collection using the existing CLI
+    deps: [install]
+    cmds:
+      - '{{.UV}} run localrag {{if .CONFIG}}--config "{{.CONFIG}}" {{end}}query "{{.QUESTION}}" {{if .MODEL}}--model "{{.MODEL}}" {{end}}{{.ARGS}}'
+
+  eval:
+    desc: Manually run the RAGAS CLI (offline by default)
+    deps: [install]
+    cmds:
+      - '{{.UV}} run localrag {{if .CONFIG}}--config "{{.CONFIG}}" {{end}}eval --api-url "{{.API_URL}}" --dataset "{{.DATASET}}" --split "{{.SPLIT}}" --sample {{.SAMPLE_SIZE}} {{.EVAL_ARGS}} {{.ARGS}}'
+
+  benchmark:
+    desc: Manually run an existing benchmark matrix/profile
+    deps: [install]
+    cmds:
+      - '{{.UV}} run localrag {{if .CONFIG}}--config "{{.CONFIG}}" {{end}}benchmark --profile "{{.PROFILE}}" --dataset "{{.DATASET}}" --ollama-url "{{.OLLAMA_URL}}" --result-output "{{.RESULTS_DIR}}" {{.ARGS}}'
+
+  report:
+    desc: Generate an offline HTML report from benchmark artifacts
+    deps: [install]
+    cmds:
+      - '{{.UV}} run localrag report "{{.REPORT_INPUT}}" --output "{{.REPORT_OUTPUT}}" {{.ARGS}}'
+
+  inspect:
+    desc: Read-only inspect of a local Chroma collection
+    deps: [install]
+    cmds:
+      - '{{.UV}} run localrag inspect --collection "{{.COLLECTION}}" --sample-count {{.SAMPLE_SIZE}} {{.ARGS}}'
+
+  docker-up:
+    desc: Start the Compose stack in the background without removing volumes
+    cmds:
+      - '{{.COMPOSE}} --project-name "{{.PROJECT}}" -f "{{.COMPOSE_FILE}}" {{if .COMPOSE_OVERRIDE}}-f "{{.COMPOSE_OVERRIDE}}" {{end}}up --build -d'
+
+  docker-down:
+    desc: Stop the Compose stack; named volumes are preserved
+    cmds:
+      - '{{.COMPOSE}} --project-name "{{.PROJECT}}" -f "{{.COMPOSE_FILE}}" {{if .COMPOSE_OVERRIDE}}-f "{{.COMPOSE_OVERRIDE}}" {{end}}down'
+
+  docker-clean:
+    desc: Stop the Compose stack and explicitly remove its named volumes
+    cmds:
+      - '{{.COMPOSE}} --project-name "{{.PROJECT}}" -f "{{.COMPOSE_FILE}}" {{if .COMPOSE_OVERRIDE}}-f "{{.COMPOSE_OVERRIDE}}" {{end}}down --volumes'
+
+  docker-logs:
+    desc: Follow logs from the Compose stack
+    cmds:
+      - '{{.COMPOSE}} --project-name "{{.PROJECT}}" -f "{{.COMPOSE_FILE}}" {{if .COMPOSE_OVERRIDE}}-f "{{.COMPOSE_OVERRIDE}}" {{end}}logs -f'
