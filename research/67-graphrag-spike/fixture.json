@@ -1,0 +1,15 @@
+{
+  "dataset_id": "localrag-graphrag-fixture",
+  "version": "1.0.0",
+  "embedding_model": "fixture-hash-embedding-v1",
+  "extractor_model": "fixture-structured-extractor-v1",
+  "chunks": [
+    {"source_id": "doc-a", "chunk_id": "chunk-1", "citation_id": "cite-1", "text": "Ada works at Acme."},
+    {"source_id": "doc-b", "chunk_id": "chunk-2", "citation_id": "cite-2", "text": "Acme employs Ada."},
+    {"source_id": "doc-c", "chunk_id": "chunk-3", "citation_id": "cite-3", "text": "The unrelated satellite is blue."}
+  ],
+  "queries": [
+    {"id": "q-1", "text": "Who works at Acme?", "entities": ["Acme"], "relevant_citation_ids": ["cite-1", "cite-2"]},
+    {"id": "q-2", "text": "What color is the satellite?", "entities": ["satellite"], "relevant_citation_ids": ["cite-3"]}
+  ]
+}
