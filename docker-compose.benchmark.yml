@@ -117,6 +117,9 @@ services:
     image: localrag-benchmark:locked
     profiles: [smoke]
     network_mode: none
+    # The result directory is a host bind mount owned by the CI runner. The
+    # benchmark is an ephemeral exporter; the API image remains non-root.
+    user: "0:0"
     command: ["uv", "run", "--no-dev", "python", "scripts/docker_benchmark.py", "run", "--mode", "fixture-offline", "--profile", "smoke"]
     volumes:
       - ./evals/results/docker:/app/evals/results/docker
