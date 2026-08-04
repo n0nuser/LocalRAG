@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from localrag.llm.providers.base import BaseLLMProvider
+from localrag.rag.compressor import CompressionBudget, compress_contexts
 from localrag.rag.prompt import build_prompt
 from localrag.rag.retriever import Retriever
 from localrag.settings import Settings
@@ -93,10 +94,31 @@ class RAGEngine:
         model: str | None,
     ) -> Generator[dict[str, Any]]:
         logger.debug("rag_contexts count=%s", len(contexts))
+        prompt_contexts = contexts
+        if self.settings.context_compression_enabled:
+            compression = compress_contexts(
+                contexts,
+                question,
+                CompressionBudget(
+                    max_contexts=self.settings.context_compression_max_contexts,
+                    candidate_count=self.settings.context_compression_candidate_count,
+                    per_context_tokens=self.settings.context_compression_per_context_tokens,
+                    total_tokens=self.settings.context_compression_total_tokens,
+                    per_context_chars=self.settings.context_compression_per_context_chars,
+                    total_chars=self.settings.context_compression_total_chars,
+                ),
+            )
+            prompt_contexts = compression.contexts
+            logger.info(
+                "rag_context_compression status=%s input_tokens=%s output_tokens=%s",
+                compression.status,
+                compression.input_tokens,
+                compression.output_tokens,
+            )
         prompt = build_prompt(
             system_prompt=self.settings.rag_system_prompt,
             question=question,
-            contexts=contexts,
+            contexts=prompt_contexts,
         )
         for event in self.provider.stream_from_prompt(prompt, model=model):
             if event["type"] == "token":

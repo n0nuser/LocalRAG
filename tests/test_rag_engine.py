@@ -206,3 +206,33 @@ def test_rag_engine_empty_contexts_are_low_confidence_when_threshold_enabled() -
 def test_rag_engine_low_confidence_disabled_by_default() -> None:
     settings = Settings()
     assert settings.rag_min_context_score == 0.0
+
+
+def test_rag_engine_compresses_shared_prompt_path_without_changing_sources() -> None:
+    settings = Settings(
+        rag_system_prompt="SYS",
+        context_compression_enabled=True,
+        context_compression_per_context_tokens=3,
+        context_compression_total_tokens=3,
+        context_compression_per_context_chars=30,
+        context_compression_total_chars=30,
+    )
+    context = {
+        "text": "irrelevant words. Python uses uv.",
+        "source": "guide.md",
+        "chunk_index": 4,
+        "metadata": {"heading_path": "Setup"},
+        "score": 0.9,
+    }
+    provider = FakeProvider(tokens=["ok"])
+    engine = RAGEngine(
+        settings=settings, retriever=StubRetriever(contexts=[context]), provider=provider
+    )
+
+    events = list(engine.stream_answer(question="How does Python use uv?"))
+
+    assert "Python uses uv." in provider.prompts_seen[0]
+    assert "irrelevant words." not in provider.prompts_seen[0]
+    assert events[-1]["sources"] == [
+        {"source": "guide.md", "chunk_index": 4, "heading_path": "Setup", "chunk_type": None}
+    ]
