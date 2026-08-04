@@ -40,7 +40,7 @@ Agents (and humans) move faster when they:
 | Cost estimation | `localrag/llm/costs.py` |
 | Agent tool-use (search_documents / answer_directly) | `localrag/agent/service.py`, `localrag/api/routers/agent.py` |
 | Architecture decisions | `docs/adr/` |
-| CLI commands | `localrag/cli/app.py`, `localrag/cli/commands/*.py` |
+| CLI commands | `localrag/cli/app.py`, `localrag/cli/commands/*.py`, [cli.md](cli.md) |
 | Parsing a file type | `localrag/ingestion/parsers/`, `localrag/ingestion/loader.py` |
 | PDF OCR (scanned/image-only pages) | `localrag/ingestion/parsers/pdf.py`, `OCR_*` in `localrag/settings.py`, [ocr.md](ocr.md) |
 | Chunking strategy and boundaries | `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/settings.py` |

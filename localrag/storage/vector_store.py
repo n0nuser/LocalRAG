@@ -32,6 +32,12 @@ class VectorStore:
         )
         return cls(client=client, collection=collection)
 
+    @classmethod
+    def open(cls, persist_path: str, collection_name: str) -> VectorStore:
+        """Open an existing collection without creating or mutating it."""
+        client = chromadb.PersistentClient(path=persist_path)
+        return cls(client=client, collection=client.get_collection(name=collection_name))
+
     def add_chunks(
         self,
         source: str,

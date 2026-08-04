@@ -62,7 +62,7 @@ flowchart LR
 | Prometheus metrics | `localrag/api/routers/metrics.py` | `GET /metrics` via `prometheus_client.generate_latest()` |
 | HTTP API (persistence) | `localrag/api/repository.py` | `ChromaCollectionRepository` → `VectorStore` for collection list/delete and health’s collection list |
 | Background ingest jobs | `localrag/api/jobs.py` | `JobRegistry` — in-memory `ThreadPoolExecutor`-backed job store for `POST /ingest/directory/async`; no persistence across process restarts |
-| CLI | `localrag/cli/app.py`, `localrag/cli/commands/*` | `localrag` Typer entry (`pyproject` `[project.scripts]`) |
+| CLI | `localrag/cli/app.py`, `localrag/cli/commands/*`, `docs/cli.md` | `localrag` Typer entry (`pyproject` `[project.scripts]`); `inspect` is read-only local diagnostics and `benchmark` delegates to `evals.matrix.run_matrix` |
 | Ingestion orchestration | `localrag/ingestion/service.py` | `IngestionService`: paths → parse → chunk → embed → upsert |
 | File formats | `localrag/ingestion/parsers/*` | pdf (Markdown extraction via pdf-inspector, with OCR fallback via pypdfium2 + pytesseract), docx, markdown, text, code |
 | Chunking / embed | `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/ingestion/embedder.py` | Structural chunking by markdown/code/text boundaries with fixed fallback; `.pdf` chunks as markdown via `loader.MARKDOWN_PRODUCING_EXTENSIONS` since `parse_pdf` emits Markdown; Ollama **`POST /api/embed`** (see `localrag/ollama/schemas.py`) |
