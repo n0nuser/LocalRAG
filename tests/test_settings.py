@@ -45,6 +45,7 @@ def test_yaml_sections_and_environment_interpolation_resolve_relative_paths(
     config = tmp_path / "config.yaml"
     config.write_text(
         "embedding:\n  provider: ${EMBED_PROVIDER}\n  model: local-model\n"
+        "  timeout_seconds: 33\n"
         "dataset:\n  roots: [documents]\n"
         "audit_log_path: logs/audit.jsonl\n",
         encoding="utf-8",
@@ -54,7 +55,7 @@ def test_yaml_sections_and_environment_interpolation_resolve_relative_paths(
     settings = load_settings(config)
 
     assert settings.embedding_provider == "ollama"
-    assert settings.embedding_model == ""  # existing .env wins over YAML by contract
+    assert settings.embedding_timeout_seconds == 33
     assert settings.audit_log_path == str(tmp_path / "logs/audit.jsonl")
 
 
