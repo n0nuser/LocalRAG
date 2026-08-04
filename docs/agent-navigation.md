@@ -64,6 +64,7 @@ Agents (and humans) move faster when they:
 | Optional evaluation tracking | `evals/tracking.py`, `.env.example`, [ADR 018](adr/018-optional-mlflow-experiment-tracking.md) |
 | Offline HTML benchmark reports | `evals/report.py`, `localrag/cli/commands/report.py`, README report usage |
 | Benchmark leaderboard publication | `evals/leaderboard.py`, `localrag/cli/commands/leaderboard.py`, [benchmark-leaderboard.md](benchmark-leaderboard.md) |
+| Late-interaction feasibility spike | `evals/late_interaction.py`, `research/70-late-interaction-spike/`, [ADR 027](adr/027-late-interaction-feasibility-boundary.md) |
 | Prompt / answer streaming | `localrag/rag/prompt.py`, `localrag/rag/engine.py` |
 | Human Ollama install (not Python) | [ollama.md](ollama.md) |
 | Human Tesseract install (not Python) | [ocr.md](ocr.md) |
