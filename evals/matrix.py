@@ -21,6 +21,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from evals.tracking import TrackingSession
+from localrag.observability.tracing import SpanName, span
 
 MATRIX_SCHEMA_VERSION = 1
 SUPPORTED_DIMENSIONS: dict[str, tuple[Any, ...]] = {
@@ -306,7 +307,8 @@ def run_matrix(
         if not dry_run:
             case_dir.mkdir(parents=True, exist_ok=True)
             try:
-                result = executor(case, case_dir) if executor else {"metrics": {}}
+                with span(SpanName.BENCHMARK, {"run_id": record["run_id"], "stage": "case"}):
+                    result = executor(case, case_dir) if executor else {"metrics": {}}
                 record.update(result)
                 record["status"] = result.get("status", "complete")
             except Exception as exc:  # failure is a result, not a runner abort

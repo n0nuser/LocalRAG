@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from localrag.llm.providers.base import BaseLLMProvider
+from localrag.observability.tracing import SpanName, span
 from localrag.rag.adaptive import AdaptiveRetrievalPolicy
 from localrag.rag.compressor import CompressionBudget, compress_contexts
 from localrag.rag.prompt import build_prompt
@@ -66,9 +67,10 @@ class RAGEngine:
             n_results,
         )
         if self.settings.adaptive_enabled:
-            result = AdaptiveRetrievalPolicy(self.settings, self.retriever, self.provider).run(
-                question, model=model, n_results=n_results, metadata_filter=metadata_filter
-            )
+            with span(SpanName.RETRIEVAL_ADAPTIVE, {"stage": "adaptive"}):
+                result = AdaptiveRetrievalPolicy(self.settings, self.retriever, self.provider).run(
+                    question, model=model, n_results=n_results, metadata_filter=metadata_filter
+                )
             if result.trace.abstained:
                 yield from self._adaptive_refusal(result.trace)
                 return
@@ -83,9 +85,10 @@ class RAGEngine:
                     event["trace"] = trace
                 yield event
             return
-        contexts = self.retriever.retrieve(
-            question=question, n_results=n_results, metadata_filter=metadata_filter
-        )
+        with span(SpanName.RETRIEVAL, {"stage": "retrieve"}):
+            contexts = self.retriever.retrieve(
+                question=question, n_results=n_results, metadata_filter=metadata_filter
+            )
         yield from self.stream_chat_from_contexts(contexts=contexts, question=question, model=model)
 
     def stream_chat_from_contexts(
@@ -136,18 +139,19 @@ class RAGEngine:
         logger.debug("rag_contexts count=%s", len(contexts))
         prompt_contexts = contexts
         if self.settings.context_compression_enabled:
-            compression = compress_contexts(
-                contexts,
-                question,
-                CompressionBudget(
-                    max_contexts=self.settings.context_compression_max_contexts,
-                    candidate_count=self.settings.context_compression_candidate_count,
-                    per_context_tokens=self.settings.context_compression_per_context_tokens,
-                    total_tokens=self.settings.context_compression_total_tokens,
-                    per_context_chars=self.settings.context_compression_per_context_chars,
-                    total_chars=self.settings.context_compression_total_chars,
-                ),
-            )
+            with span(SpanName.RETRIEVAL_COMPRESSION, {"count": len(contexts)}):
+                compression = compress_contexts(
+                    contexts,
+                    question,
+                    CompressionBudget(
+                        max_contexts=self.settings.context_compression_max_contexts,
+                        candidate_count=self.settings.context_compression_candidate_count,
+                        per_context_tokens=self.settings.context_compression_per_context_tokens,
+                        total_tokens=self.settings.context_compression_total_tokens,
+                        per_context_chars=self.settings.context_compression_per_context_chars,
+                        total_chars=self.settings.context_compression_total_chars,
+                    ),
+                )
             prompt_contexts = compression.contexts
             logger.info(
                 "rag_context_compression status=%s input_tokens=%s output_tokens=%s",
@@ -160,9 +164,10 @@ class RAGEngine:
             question=question,
             contexts=prompt_contexts,
         )
-        for event in self.provider.stream_from_prompt(prompt, model=model):
-            if event["type"] == "token":
-                yield event
+        with span(SpanName.GENERATION, {"model": model or "default"}):
+            for event in self.provider.stream_from_prompt(prompt, model=model):
+                if event["type"] == "token":
+                    yield event
         logger.info("rag_stream_done")
         yield {
             "type": "final",
