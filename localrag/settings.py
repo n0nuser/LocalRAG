@@ -360,6 +360,8 @@ class Settings(BaseSettings):
     def validate_configuration(self) -> Settings:
         if self.chunk_min_chars > self.chunk_max_chars:
             raise ValueError("chunk_min_chars must be less than or equal to chunk_max_chars")
+        if self.chunking_mode not in {"fixed", "structural", "recursive"}:
+            raise ValueError("chunking_mode must be 'fixed', 'structural', or 'recursive'")
         if self.retrieval_mode not in {"hybrid", "vector"}:
             raise ValueError("retrieval_mode must be 'hybrid' or 'vector'")
         if not 0 <= self.bm25_weight <= 1:

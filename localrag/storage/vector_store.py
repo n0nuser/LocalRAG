@@ -60,7 +60,10 @@ class VectorStore:
             logger.error("vector_upsert_empty_embedding source=%s", source)
             raise ValueError("embeddings must be non-empty vectors")
 
-        ids = [self._chunk_id(source=source, chunk_index=index) for index in range(len(chunks))]
+        ids = [
+            str(metadata.get("chunk_id") or self._chunk_id(source=source, chunk_index=index))
+            for index, metadata in enumerate(metadatas)
+        ]
         self.collection.upsert(
             ids=ids,
             documents=chunks,
