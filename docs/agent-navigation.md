@@ -15,7 +15,7 @@ Agents (and humans) move faster when they:
 
 1. [README](../README.md) — what LocalRAG does, quick start, API entry command.
 2. [`pyproject.toml`](../pyproject.toml) — dependencies, script entry `localrag = localrag.cli.app:app`, Ruff/pytest config.
-3. [`.env.example`](../.env.example) — canonical env var names and defaults (mirrors `Settings` in `localrag/settings.py`).
+3. [`.env.example`](../.env.example) — canonical env var names and defaults (mirrors `Settings` in `localrag/settings.py`); [`config.example.yaml`](../config.example.yaml) shows structured configuration.
 4. [architecture.md](architecture.md) — layers, data flow, extension points.
 5. The specific file(s) for your task (see table below).
 
@@ -23,7 +23,7 @@ Agents (and humans) move faster when they:
 
 | Task | Primary locations |
 | --- | --- |
-| Environment / defaults | `localrag/settings.py`, `.env.example` |
+| Environment / defaults | `localrag/settings.py`, `.env.example`, `config.example.yaml`, `docs/adr/020-structured-configuration.md` |
 | FastAPI routes (HTTP only) | `localrag/api/routers/*.py` |
 | API request/response OpenAPI models | `localrag/api/schemas.py` |
 | API use cases (health, ingest rules, query JSON + SSE, collections including rebuild) | `localrag/api/service.py` |
@@ -41,6 +41,7 @@ Agents (and humans) move faster when they:
 | Agent tool-use (search_documents / answer_directly) | `localrag/agent/service.py`, `localrag/api/routers/agent.py` |
 | Architecture decisions | `docs/adr/` |
 | CLI commands | `localrag/cli/app.py`, `localrag/cli/commands/*.py`, [cli.md](cli.md) |
+| Structured configuration | `localrag/settings.py`, `localrag/cli/app.py`, `localrag/api/main.py`, `config.example.yaml` |
 | Parsing a file type | `localrag/ingestion/parsers/`, `localrag/ingestion/loader.py` |
 | PDF OCR (scanned/image-only pages) | `localrag/ingestion/parsers/pdf.py`, `OCR_*` in `localrag/settings.py`, [ocr.md](ocr.md) |
 | Chunking strategy and boundaries | `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/settings.py` |

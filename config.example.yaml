@@ -1,0 +1,19 @@
+# LocalRAG structured configuration. Paths are relative to this file.
+embedding:
+  provider: ollama
+  model: "" # EMBEDDING_MODEL remains the legacy environment name.
+  timeout_seconds: 120
+
+retrieval:
+  mode: hybrid
+  top_k: 5
+
+generation:
+  backend: ollama
+  ollama_model: gemma3:4b
+
+dataset:
+  roots: [./documents]
+  recursive: true
+
+# API keys and other credentials must be supplied through environment variables.

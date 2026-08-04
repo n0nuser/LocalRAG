@@ -4,6 +4,28 @@ The `localrag` CLI accesses the configured local Chroma filesystem directly. It
 does not use the HTTP API and therefore does not send `X-API-Key`; protect the
 filesystem and `.env` with normal operating-system permissions.
 
+## Configuration
+
+Use the global options before a command:
+
+```bash
+uv run localrag --config config.yaml query "What is indexed?"
+uv run localrag --config config.yaml --set rag_top_k=10 config-show
+```
+
+Resolution order is built-in defaults, YAML, `.env`, process environment, then
+explicit `--set FIELD=VALUE` overrides. YAML is strict and supports the sections
+shown in [`config.example.yaml`](../config.example.yaml). `${ENV_NAME}` values
+are interpolated from the environment. Relative YAML paths are resolved against
+the YAML file directory. API startup uses the same loader through
+`LOCALRAG_CONFIG=./config.yaml`; invalid or missing selected files fail before
+services are constructed.
+
+`config-show` prints a deterministic resolved snapshot. API keys are redacted,
+path values are represented as `<path>`, and document contents or the full
+environment are never included. Keep credentials in environment variables or
+an untracked secrets mechanism, not YAML.
+
 ## Inspect
 
 `inspect` is read-only and never creates a missing collection, calls an LLM, or

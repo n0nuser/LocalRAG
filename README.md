@@ -142,6 +142,22 @@ Key settings:
 | `UPLOAD_MAX_BYTES` | `100000000` | Max size accepted by `POST /ingest/upload` |
 | `LOG_LEVEL` | `INFO` | Logging level (JSON in production, colored in TTY) |
 
+For structured configuration, start from [`config.example.yaml`](config.example.yaml):
+
+```bash
+uv run localrag --config config.yaml ingest ./documents
+uv run localrag --config config.yaml config-show
+```
+
+Configuration precedence is defaults < YAML < `.env` < process environment <
+explicit CLI `--set FIELD=VALUE`. YAML uses strict `embedding`, `retrieval`,
+`generation`, `dataset`, and `evaluation` sections, interpolates `${ENV_NAME}`,
+and resolves relative paths beside the YAML file. Set `LOCALRAG_CONFIG` when
+starting the API, for example `LOCALRAG_CONFIG=./config.yaml uv run uvicorn
+localrag.api.main:app`. Existing `.env` names remain supported; the nested YAML
+schema is mapped to the same resolved settings model. Secrets stay in the
+environment and are redacted by `config-show`.
+
 ## CLI
 
 ```bash

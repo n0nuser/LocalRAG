@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -18,13 +19,14 @@ from localrag.api.routers.ingest import router as ingest_router
 from localrag.api.routers.metrics import router as metrics_router
 from localrag.api.routers.query import router as query_router
 from localrag.logging_config import configure_logging
-from localrag.settings import get_settings
+from localrag.settings import get_settings, load_settings, set_current_settings
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    set_current_settings(load_settings(os.environ.get("LOCALRAG_CONFIG")))
     configure_logging(get_settings().log_level)
     logger.info("api_startup")
     try:
