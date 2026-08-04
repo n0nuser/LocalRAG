@@ -137,6 +137,13 @@ provenance-rich leaderboard artifact contract, rejects incompatible or missing
 rows, orders exact model identities deterministically, and writes Markdown plus
 optional JSON without running benchmark work. See [benchmark-leaderboard.md](benchmark-leaderboard.md) and [ADR 017](adr/017-strict-leaderboard-publication.md).
 
+Dockerized benchmark execution is an integration adapter, not another evaluator.
+The smoke profile uses `scripts/docker_benchmark.py` with the registered dataset,
+`evals.matrix.run_matrix`, and `evals.results.schema.ResultFile`; real CPU/GPU
+profiles add pinned Ollama/Chroma services and a readiness/model-digest gate.
+Results and matrix/per-case artifacts are exported under `evals/results/docker/`.
+See [ADR 033](adr/033-dockerized-benchmark-boundary.md).
+
 ## Extension points
 
 - **New file type:** add a parser under `localrag/ingestion/parsers/`, register it via `loader` / parser dispatch (see `localrag/ingestion/loader.py`).

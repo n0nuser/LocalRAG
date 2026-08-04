@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "models": [
+    {
+      "name": "gemma3:4b",
+      "digest": "sha256:a2af6cc3eb7fa8be8504abaf9b04e88f17a119ec3f04a3addf55f92841195f5a"
+    },
+    {
+      "name": "nomic-embed-text",
+      "digest": "sha256:0a109f422b47e3a30ba2b10eca18548e944e8a23073ee3f3e947efcf3c45e59f"
+    }
+  ]
+}
