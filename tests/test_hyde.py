@@ -123,7 +123,10 @@ def test_hyde_uses_hypothetical_dense_and_original_bm25(monkeypatch: pytest.Monk
     monkeypatch.setattr("localrag.rag.hyde.build_provider", lambda _: provider)
     embedder, bm25 = Embedder(), Bm25()
     retriever = Retriever(
-        Settings(hyde_enabled=True, retrieval_mode="hybrid"), embedder, Store(), bm25_index=bm25  # type: ignore[arg-type]
+        Settings(hyde_enabled=True, retrieval_mode="hybrid"),
+        embedder,
+        Store(),
+        bm25_index=bm25,  # type: ignore[arg-type]
     )
     retriever.retrieve("original question")
     assert embedder.inputs == ["hypothetical answer"]
@@ -134,6 +137,7 @@ def test_hyde_uses_hypothetical_dense_and_original_bm25(monkeypatch: pytest.Monk
 
 def test_experiment_mode_controls_rewrite_hyde_composition(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[str] = []
+
     def rewrite(_question: str, _settings: Settings) -> str:
         calls.append("rewrite")
         return "rewritten"
