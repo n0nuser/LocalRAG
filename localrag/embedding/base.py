@@ -62,6 +62,7 @@ class EmbeddingProvider(Protocol):
     model: str
     dimension: int | None
     timeout_seconds: float
+    model_revision: str
 
     def embed(self, text: str, *, model: str | None = None) -> list[float]: ...
 
