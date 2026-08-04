@@ -9,6 +9,7 @@ from typing import Any
 import httpx
 
 from localrag.embedding.base import EmbeddingError, EmbeddingProvider
+from localrag.observability.tracing import SpanName, span
 from localrag.rag.bm25_index import Bm25Index
 from localrag.rag.exceptions import RetrievalError
 from localrag.rag.hyde import HydeObservation, generate_hypothetical
@@ -128,9 +129,11 @@ class Retriever:
                         )
                 if ensure is not None:
                     ensure(self.embedder, len(embedding))
-                vector_lists.append(
-                    self._retrieve_vector_hits(embedding, per_variant_k, metadata_filter)
-                )
+                with span(SpanName.RETRIEVAL_VECTOR, {"count": per_variant_k}):
+                    vector_hits = self._retrieve_vector_hits(
+                        embedding, per_variant_k, metadata_filter
+                    )
+                vector_lists.append(vector_hits)
         except (httpx.HTTPError, EmbeddingError) as exc:
             logger.error(
                 "retrieve_embed_provider_error provider=%s model=%s error=%s",
@@ -154,38 +157,44 @@ class Retriever:
         else:
             bm25_queries = variants if not hypothetical else (lexical_question,)
             for variant in bm25_queries:
-                bm25_lists.append(
-                    [
-                        {
-                            "text": hit.text,
-                            "source": hit.metadata.get("source", "unknown"),
-                            "chunk_index": hit.metadata.get("chunk_index", -1),
-                            "score": hit.score,
-                            "ingested_at": hit.metadata.get("ingested_at"),
-                            "metadata": hit.metadata,
-                        }
-                        for hit in self.bm25_index.query(variant, top_k=per_variant_k)
-                        if _matches_filter(hit.metadata, metadata_filter)
-                    ]
-                )
+                with span(SpanName.RETRIEVAL_BM25, {"count": per_variant_k}):
+                    bm25_lists.append(
+                        [
+                            {
+                                "text": hit.text,
+                                "source": hit.metadata.get("source", "unknown"),
+                                "chunk_index": hit.metadata.get("chunk_index", -1),
+                                "score": hit.score,
+                                "ingested_at": hit.metadata.get("ingested_at"),
+                                "metadata": hit.metadata,
+                            }
+                            for hit in self.bm25_index.query(variant, top_k=per_variant_k)
+                            if _matches_filter(hit.metadata, metadata_filter)
+                        ]
+                    )
             lists = vector_lists + bm25_lists
             dense_count = len(dense_queries)
             bm25_count = len(bm25_queries)
             weights = [(1.0 - self.settings.bm25_weight) / dense_count] * dense_count + [
                 self.settings.bm25_weight / bm25_count
             ] * bm25_count
-            candidates = self._fuse_rank_lists(lists, weights, per_variant_k)
+            with span(SpanName.RETRIEVAL_RRF, {"count": len(lists)}):
+                candidates = self._fuse_rank_lists(lists, weights, per_variant_k)
             fused = True
 
         if self.reranker is not None:
-            candidates = self.reranker.rerank(question, candidates, top_k=top_k)
+            with span(SpanName.RETRIEVAL_RERANK, {"count": len(candidates)}):
+                candidates = self.reranker.rerank(question, candidates, top_k=top_k)
         else:
             candidates = candidates[:top_k]
 
         # Hybrid fusion already accounts for recency as its own ranked list, so the
         # multiplicative decay would double-count it. In vector-only mode scores
         # spread widely enough for decay to act as the intended tiebreaker.
-        return self._expand_to_parent_section(self.apply_freshness(candidates, rescore=not fused))
+        with span(SpanName.RETRIEVAL_FRESHNESS, {"count": len(candidates)}):
+            return self._expand_to_parent_section(
+                self.apply_freshness(candidates, rescore=not fused)
+            )
 
     def _retrieve_vector_hits(
         self, embedding: list[float], top_k: int, where: dict[str, Any] | None = None

@@ -34,6 +34,7 @@ Agents (and humans) move faster when they:
 | Background ingest jobs | `localrag/api/jobs.py`, `localrag/api/routers/ingest.py` (async routes), `localrag/api/service.py` (`ingest_directory_async`, `get_ingest_job`) |
 | DI / shared service instances | `localrag/api/dependencies.py` |
 | Log format, levels, request ID | `localrag/logging_config.py`, `localrag/api/middleware.py`, `LOG_LEVEL` in `localrag/settings.py` |
+| Optional tracing / observability | `localrag/observability/tracing.py`, `OTEL_*` in `localrag/settings.py`, [observability.md](observability.md), [ADR 030](adr/030-optional-otel-observability-boundary.md) |
 | API key auth | `localrag/api/dependencies.py` (`require_api_key`), `API_KEY` in `localrag/settings.py` |
 | Prometheus metrics endpoint | `localrag/api/routers/metrics.py` |
 | LLM provider abstraction | `localrag/llm/providers/`, `localrag/llm/factory.py` |

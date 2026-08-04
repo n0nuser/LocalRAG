@@ -141,6 +141,7 @@ Key settings:
 | `UPLOAD_DIR` | `./data/uploads` | Where `POST /ingest/upload` saves multipart uploads |
 | `UPLOAD_MAX_BYTES` | `100000000` | Max size accepted by `POST /ingest/upload` |
 | `LOG_LEVEL` | `INFO` | Logging level (JSON in production, colored in TTY) |
+| `OTEL_ENABLED` | `false` | Optional OpenTelemetry tracing; install the `observability` extra |
 
 For structured configuration, start from [`config.example.yaml`](config.example.yaml):
 
@@ -157,6 +158,8 @@ starting the API, for example `LOCALRAG_CONFIG=./config.yaml uv run uvicorn
 localrag.api.main:app`. Existing `.env` names remain supported; the nested YAML
 schema is mapped to the same resolved settings model. Secrets stay in the
 environment and are redacted by `config-show`.
+See [`docs/observability.md`](docs/observability.md) for OTLP setup and privacy
+defaults; Langfuse remains a separate optional adapter boundary.
 
 ## CLI
 

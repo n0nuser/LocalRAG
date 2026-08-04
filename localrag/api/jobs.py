@@ -11,6 +11,7 @@ import logging
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from contextvars import copy_context
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -63,7 +64,7 @@ class JobRegistry:
                 message = f"{pending} ingest jobs already pending/running (max {max_pending})."
                 raise TooManyPendingJobsError(message)
             self._jobs[job_id] = job
-        self._executor.submit(self._run, job_id, work)
+        self._executor.submit(copy_context().run, self._run, job_id, work)
         return job_id
 
     def _run(self, job_id: str, work: Callable[[], dict[str, Any]]) -> None:

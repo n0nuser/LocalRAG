@@ -10,6 +10,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from localrag.logging_config import request_id_ctx
+from localrag.observability.tracing import SpanName, span
 
 logger = logging.getLogger(__name__)
 _slog = structlog.get_logger(__name__)
@@ -25,7 +26,13 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         start = time.perf_counter()
         response: Response | None = None
         try:
-            response = await call_next(request)
+            span_name = (
+                SpanName.API_QUERY
+                if request.url.path.startswith("/query")
+                else "localrag.api.request"
+            )
+            with span(span_name, {"request_id": rid, "stage": request.method}):
+                response = await call_next(request)
             response.headers["X-Request-ID"] = rid
             return response
         finally:

@@ -1,6 +1,6 @@
 # Architecture
 
-LocalRAG is a small, layered Python package. Most features touch one layer; cross-cutting behavior lives in `localrag/settings.py`, `localrag/logging_config.py`, and `localrag/api/dependencies.py`, with HTTP lifecycle and middleware in `localrag/api/main.py`.
+LocalRAG is a small, layered Python package. Most features touch one layer; cross-cutting behavior lives in `localrag/settings.py`, `localrag/logging_config.py`, `localrag/observability/tracing.py`, and `localrag/api/dependencies.py`, with HTTP lifecycle and middleware in `localrag/api/main.py`. Optional OpenTelemetry tracing is disabled by default and never carries content or replaces metrics; see [observability.md](observability.md) and [ADR 030](adr/030-optional-otel-observability-boundary.md).
 
 Configuration is resolved once per execution context by `localrag.settings`: built-in defaults < YAML < `.env` < process environment < explicit CLI `--set` overrides. The API loads `LOCALRAG_CONFIG` during lifespan before cached services are constructed. CLI users pass `--config PATH` before a command. YAML sections (`embedding`, `retrieval`, `generation`, `dataset`, and `evaluation`) map to the single flat `Settings` model; unknown YAML keys and CLI fields fail fast. YAML-relative paths resolve against the configuration file directory, while environment-only settings retain current-working-directory behavior. Environment interpolation uses `${NAME}`. Secrets are accepted from environment sources and redacted from `config-show` snapshots. See [ADR 020](adr/020-structured-configuration.md).
 
@@ -84,6 +84,7 @@ flowchart LR
 | Late-interaction research | `evals/late_interaction.py`, `research/70-late-interaction-spike/` | Dependency-free MaxSim/index correctness spike and fixture evidence; isolated from Chroma and the default retriever; see ADR 027 |
 | RAPTOR research | `research/68-raptor-spike/` | Dependency-free hierarchical summary/provenance/persistence/retrieval feasibility spike; isolated from Chroma and default retrieval; see ADR 028 |
 | Audit log | `localrag/audit.py` | `write_audit_record` — durable local JSONL trail (question, sources, answer, model, latency); disabled by default via `AUDIT_LOG_PATH` |
+| Optional tracing | `localrag/observability/tracing.py` | Lazy OpenTelemetry setup, safe allowlisted attributes, sampling, context propagation, and fail-open lifecycle |
 
 ## LLM abstraction
 `localrag/llm/` decouples the RAG engine from a specific model API:

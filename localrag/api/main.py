@@ -19,6 +19,7 @@ from localrag.api.routers.ingest import router as ingest_router
 from localrag.api.routers.metrics import router as metrics_router
 from localrag.api.routers.query import router as query_router
 from localrag.logging_config import configure_logging
+from localrag.observability.tracing import configure_tracing, shutdown_tracing
 from localrag.settings import get_settings, load_settings, set_current_settings
 
 logger = logging.getLogger(__name__)
@@ -28,12 +29,14 @@ logger = logging.getLogger(__name__)
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     set_current_settings(load_settings(os.environ.get("LOCALRAG_CONFIG")))
     configure_logging(get_settings().log_level)
+    configure_tracing(get_settings())
     logger.info("api_startup")
     try:
         yield
     finally:
         if get_embedder.cache_info().currsize:
             get_embedder().close()
+        shutdown_tracing()
         logger.info("api_shutdown")
 
 
