@@ -9,6 +9,7 @@ from localrag.cli.commands.eval import eval_suite
 from localrag.cli.commands.eval_compare import eval_compare
 from localrag.cli.commands.ingest import ingest
 from localrag.cli.commands.query import query
+from localrag.cli.commands.report import report
 from localrag.cli.commands.setup import setup
 from localrag.logging_config import configure_logging
 from localrag.settings import get_settings
@@ -22,6 +23,7 @@ app.command("config-show")(show_config)
 app.command("eval")(eval_suite)
 app.command("benchmark")(benchmark)
 app.command("eval-compare")(eval_compare)
+app.command("report")(report)
 app.add_typer(collections_app, name="collections")
 
 
