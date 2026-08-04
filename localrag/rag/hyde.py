@@ -89,6 +89,10 @@ def generate_hypothetical(question: str, settings: Settings) -> tuple[str | None
     if settings.hyde_log_content:
         logger.debug("hyde_generated_content=%s", output)
     return output, HydeObservation(
-        "hyde", "ollama", response.model, latency, "generated",
+        "hyde",
+        "ollama",
+        response.model,
+        latency,
+        "generated",
         hypothetical=output if settings.hyde_log_content else None,
     )
