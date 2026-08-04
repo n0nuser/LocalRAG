@@ -9,6 +9,7 @@ import respx
 
 from localrag.ingestion.embedder import OllamaEmbedder
 from localrag.rag.exceptions import RetrievalError
+from localrag.rag.query_rewrite import QueryExpansionResult
 from localrag.rag.retriever import Retriever
 from localrag.settings import Settings
 
@@ -243,3 +244,68 @@ def test_retriever_uses_rewritten_query_for_embedding_when_enabled(
     retriever.retrieve("original question")
 
     assert seen_questions == ["rewritten original question"]
+
+
+def test_retriever_expands_with_bounded_variants_and_post_fusion_reranking(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "localrag.rag.retriever.expand_query",
+        lambda question, search, _settings, rewrite=None: QueryExpansionResult(
+            question, rewrite, (question, search, "alternative"), (), "expanded"
+        ),
+    )
+    seen_queries: list[str] = []
+
+    @dataclass
+    class RecordingEmbedder:
+        def embed_text(self, text: str, *, model: str | None = None) -> list[float]:
+            _ = model
+            seen_queries.append(text)
+            return [1.0, 2.0, 3.0]
+
+    @dataclass
+    class OneResultStore:
+        calls: int = 0
+
+        def query(
+            self, embedding: list[float], top_k: int, where: dict[str, object] | None = None
+        ) -> dict[str, object]:
+            _ = (embedding, top_k)
+            assert where == {"tenant_id": "team-a"}
+            self.calls += 1
+            if self.calls > 1:
+                return {"documents": [[]], "metadatas": [[]], "distances": [[]]}
+            return {
+                "documents": [["matching chunk"]],
+                "metadatas": [[{"source": "a.md", "chunk_index": 0, "tenant_id": "team-a"}]],
+                "distances": [[0.1]],
+            }
+
+    @dataclass
+    class RecordingReranker:
+        calls: list[tuple[str, int]]
+
+        def rerank(
+            self, question: str, contexts: list[dict[str, object]], top_k: int
+        ) -> list[dict[str, object]]:
+            self.calls.append((question, len(contexts)))
+            return contexts[:top_k]
+
+    reranker = RecordingReranker([])
+    retriever = Retriever(
+        settings=Settings(
+            query_expansion_enabled=True,
+            retrieval_mode="vector",
+            query_expansion_candidate_budget=2,
+        ),
+        embedder=RecordingEmbedder(),  # type: ignore[arg-type]
+        vector_store=OneResultStore(),  # type: ignore[arg-type]
+        reranker=reranker,  # type: ignore[arg-type]
+    )
+
+    contexts = retriever.retrieve("original ERR_CODE", metadata_filter={"tenant_id": "team-a"})
+
+    assert seen_queries == ["original ERR_CODE", "original ERR_CODE", "alternative"]
+    assert reranker.calls == [("original ERR_CODE", 1)]
+    assert contexts[0]["source"] == "a.md"

@@ -93,6 +93,10 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
             "freshness_weight": "freshness_weight",
             "parent_expansion_enabled": "parent_expansion_enabled",
             "query_rewrite_enabled": "query_rewrite_enabled",
+            "query_expansion_enabled": "query_expansion_enabled",
+            "query_expansion_max_variants": "query_expansion_max_variants",
+            "query_expansion_max_query_chars": "query_expansion_max_query_chars",
+            "candidate_budget": "query_expansion_candidate_budget",
             "rerank_enabled": "rerank_enabled",
             "rerank_model": "rerank_model",
             "rerank_fetch_k": "rerank_fetch_k",
@@ -214,7 +218,13 @@ class Settings(BaseSettings):
     **Query rewriting** — When ``query_rewrite_enabled`` is true (default
     false), an extra LLM round-trip rewrites the question into a keyword-dense
     search query before embedding/BM25 retrieval; the original question is
-    still used for the final answer prompt.
+        still used for the final answer prompt.
+
+        **Query expansion** — When ``query_expansion_enabled`` is true, one
+        additional LLM call generates bounded retrieval variants after the
+        optional rewrite. The original question is always retained for variant
+        retrieval; generated variants never become answer facts. Expansion is
+        capped by the variant, query-length, and candidate-budget settings.
 
     **API** — ``api_host`` / ``api_port`` are the uvicorn bind address and port.
 
@@ -298,6 +308,12 @@ class Settings(BaseSettings):
     freshness_weight: float = 0.15
     parent_expansion_enabled: bool = True
     query_rewrite_enabled: bool = False
+    # Expansion is off by default. The implementation also enforces hard caps
+    # independent of configuration values to bound provider and retrieval work.
+    query_expansion_enabled: bool = False
+    query_expansion_max_variants: int = 4
+    query_expansion_max_query_chars: int = 500
+    query_expansion_candidate_budget: int = 40
     rag_system_prompt: str = (
         "You are a helpful assistant. Answer only based on the provided context."
     )
@@ -366,6 +382,12 @@ class Settings(BaseSettings):
             raise ValueError("retrieval_mode must be 'hybrid' or 'vector'")
         if not 0 <= self.bm25_weight <= 1:
             raise ValueError("bm25_weight must be between 0 and 1")
+        if self.query_expansion_max_variants < 1:
+            raise ValueError("query_expansion_max_variants must be at least 1")
+        if self.query_expansion_max_query_chars < 1:
+            raise ValueError("query_expansion_max_query_chars must be at least 1")
+        if self.query_expansion_candidate_budget < 1:
+            raise ValueError("query_expansion_candidate_budget must be at least 1")
         return self
 
     def resolved_snapshot(self) -> dict[str, Any]:

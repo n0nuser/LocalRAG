@@ -8,7 +8,7 @@ import pytest
 
 from localrag.llm.providers.base import BaseLLMProvider
 from localrag.llm.types import LLMResponse
-from localrag.rag.query_rewrite import rewrite_query
+from localrag.rag.query_rewrite import expand_query, rewrite_query
 from localrag.settings import Settings
 
 
@@ -83,3 +83,76 @@ def test_rewrite_query_falls_back_to_original_on_provider_error(
     out = rewrite_query("original question", Settings())
 
     assert out == "original question"
+
+
+@dataclass
+class ExpansionProvider(FakeProvider):
+    answer: str = ""
+
+    def generate(self, prompt: str, context: list[str], *, model: str | None = None) -> LLMResponse:
+        _ = (prompt, context, model)
+        return LLMResponse(
+            answer=self.answer,
+            model="m",
+            tokens_used=1,
+            latency_ms=1.0,
+            estimated_cost_usd=0.0,
+        )
+
+
+def test_expand_query_retains_original_and_normalizes_variants(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "localrag.rag.query_rewrite.build_provider",
+        lambda _settings: ExpansionProvider(
+            answer=(
+                '{"queries":[" ERR_QUIC_PROTOCOL_ERROR fix ", " ", 7, '
+                '"err_quic_protocol_error fix", "second"]}'
+            )
+        ),
+    )
+
+    result = expand_query(
+        "How do I fix ERR_QUIC_PROTOCOL_ERROR?",
+        "ERR_QUIC_PROTOCOL_ERROR fix",
+        Settings(query_expansion_enabled=True),
+    )
+
+    assert result.variants == (
+        "How do I fix ERR_QUIC_PROTOCOL_ERROR?",
+        "ERR_QUIC_PROTOCOL_ERROR fix",
+        "second",
+    )
+    assert [item.reason for item in result.rejected] == ["empty", "malformed", "duplicate"]
+
+
+def test_expand_query_provider_failure_falls_back_without_fanout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "localrag.rag.query_rewrite.build_provider", lambda _settings: ExplodingProvider()
+    )
+
+    result = expand_query("original", "rewritten", Settings(query_expansion_enabled=True))
+
+    assert result.status == "fallback"
+    assert result.variants == ("original", "rewritten")
+    assert result.provider_error == "RuntimeError"
+
+
+def test_expand_query_caps_variants_and_query_length(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "localrag.rag.query_rewrite.build_provider",
+        lambda _settings: ExpansionProvider(
+            answer='{"queries":["one", "two", "three", "four", "five", "' + "x" * 501 + '"]}'
+        ),
+    )
+
+    result = expand_query(
+        "original",
+        "original",
+        Settings(query_expansion_enabled=True, query_expansion_max_variants=3),
+    )
+
+    assert result.variants == ("original", "one", "two")
