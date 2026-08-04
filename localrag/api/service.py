@@ -6,7 +6,7 @@ import time
 from collections.abc import Iterator
 from http import HTTPStatus
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, cast
 from urllib.parse import unquote
 from uuid import uuid4
 
@@ -339,6 +339,24 @@ def query_json(
             return QueryResponse(**cached)
 
     try:
+        if engine.settings.adaptive_enabled:
+            result = engine.answer(
+                request.question, request.model, request.n_results, request.metadata_filter
+            )
+            raw_sources = cast("list[dict[str, Any]]", result.get("sources") or [])
+            response = QueryResponse(
+                answer=str(result["answer"]),
+                sources=[SourceRef(**dict(source)) for source in raw_sources],
+                latency_ms=(time.perf_counter() - t0) * 1000,
+                model=request.model or engine.settings.ollama_llm_model,
+                low_confidence=not bool(raw_sources),
+                trace=cast("dict[str, object] | None", result.get("trace"))
+                if isinstance(result.get("trace"), dict)
+                else None,
+            )
+            if query_cache is not None and cache_key is not None:
+                query_cache.set(cache_key, response.model_dump())
+            return response
         contexts = engine.retriever.retrieve(
             question=request.question,
             n_results=request.n_results,
@@ -433,6 +451,7 @@ def iter_query_sse_events(
             payload = {
                 "sources": event["sources"],
                 "low_confidence": event.get("low_confidence", False),
+                "trace": event.get("trace"),
             }
             write_audit_record(
                 engine.settings.audit_log_path,

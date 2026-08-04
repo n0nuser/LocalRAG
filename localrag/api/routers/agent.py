@@ -44,4 +44,5 @@ def agent_query(
         sources=sources,
         latency_ms=result.latency_ms,
         model=result.model,
+        trace=result.trace,
     )
