@@ -133,3 +133,14 @@ def test_benchmark_malformed_runner_result_fails(monkeypatch: Any) -> None:
     result = runner.invoke(app, ["benchmark"])
     assert result.exit_code == 1
     assert "malformed" in result.stderr
+
+
+def test_leaderboard_help_and_empty_publication(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["leaderboard", "--help"])
+    assert result.exit_code == 0
+    assert "--json-output" in plain_help(result)
+
+    output = tmp_path / "leaderboard.md"
+    result = runner.invoke(app, ["leaderboard", "--output", str(output)])
+    assert result.exit_code == 0
+    assert "No valid benchmark artifacts" in output.read_text(encoding="utf-8")

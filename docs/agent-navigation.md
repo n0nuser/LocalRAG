@@ -56,6 +56,7 @@ Agents (and humans) move faster when they:
 | Eval dataset schema / registry / fixtures | `evals/dataset/schema.py`, `evals/dataset/registry.py`, `evals/dataset/fixtures/`, [eval-datasets.md](eval-datasets.md) |
 | Benchmark matrix contract / runner | `evals/matrix.py`, `localrag/cli/commands/benchmark.py`, [reproducibility.md](reproducibility.md) |
 | Offline HTML benchmark reports | `evals/report.py`, `localrag/cli/commands/report.py`, README report usage |
+| Benchmark leaderboard publication | `evals/leaderboard.py`, `localrag/cli/commands/leaderboard.py`, [benchmark-leaderboard.md](benchmark-leaderboard.md) |
 | Prompt / answer streaming | `localrag/rag/prompt.py`, `localrag/rag/engine.py` |
 | Human Ollama install (not Python) | [ollama.md](ollama.md) |
 | Human Tesseract install (not Python) | [ocr.md](ocr.md) |

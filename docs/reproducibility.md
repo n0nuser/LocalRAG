@@ -228,3 +228,8 @@ retrieval change caused it — comparing two results with a mismatched
 
 Result comparison and CI regression gating are implemented by
 `evals/compare.py` and documented above.
+
+Leaderboard publication is a separate, strict consumer of reviewed canonical
+artifacts. See [benchmark-leaderboard.md](benchmark-leaderboard.md): it rejects
+results that lack required provenance and cold/warm repetition fields and never
+runs a benchmark while generating a table.
