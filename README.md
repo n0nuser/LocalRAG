@@ -162,6 +162,10 @@ uv run localrag benchmark --profile embedding-comparison
 uv run localrag collections list
 uv run localrag collections rebuild
 
+# Read-only local collection diagnostics
+uv run localrag inspect --collection localrag --sample-count 5 --format table
+uv run localrag inspect --collection localrag --sample-count 20 --format json
+
 # Offline benchmark report (overwrites report.html)
 uv run localrag report evals/results/matrices/fixture/manifest.json -o report.html
 uv run localrag report --strict run-a.json run-b.json -o report.html
@@ -203,6 +207,8 @@ Results are written to `evals/results/`. Evaluation workflows are manually dispa
 Runs are seeded (`--seed`, default 42) and `--sample N` evaluates a deterministic subset. Datasets are selected from a registry (`--dataset`, `--version`, `--split`; default `localrag-core` `default`) — see [docs/eval-datasets.md](docs/eval-datasets.md). Each result file embeds dataset identity (ID, version, split, content checksum, selected record IDs) and the environment it was produced in — git SHA, model digests, dependency lock hash, hardware, and a settings snapshot — so numbers stay comparable across machines and over time. See [docs/reproducibility.md](docs/reproducibility.md) for the guarantees and their limits.
 
 The canonical matrix runner is invoked manually with `localrag benchmark`. It expands a versioned JSON matrix into stable, ordered case IDs, validates supported dimensions before execution, and writes an isolated manifest under `evals/results/matrices/<matrix_id>/`. `--dry-run` prints the exact expansion without running models. Independent cases continue after failures; a failed case or invalid configuration returns nonzero (`1` for execution failures, `2` for configuration/usage errors). The `fixture` profile is dependency-free, while `embedding-comparison` currently exposes only the installed Ollama `nomic-embed-text` artifact; unavailable E5, BGE, and Jina artifacts are not invented. Matrix JSON is the source contract for future reports and comparisons.
+
+`localrag inspect` is a read-only adapter over the local Chroma filesystem. It reports bounded, sanitized collection metadata and samples as a table or versioned JSON; it does not use API authentication, invoke an LLM, or make network requests. Local filesystem and `.env` permissions are the security boundary. See [docs/cli.md](docs/cli.md) for schemas, limits, and exit codes.
 
 Generate a self-contained report from one or more canonical `ResultFile` evaluation results or `MatrixManifest` benchmark manifests:
 
