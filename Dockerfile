@@ -36,6 +36,6 @@ FROM app AS benchmark
 
 # The benchmark image is self-contained: runner, registered fixtures, schemas,
 # failure-artifact code, and the committed dependency/model lock identities.
-COPY evals /app/evals
-COPY scripts /app/scripts
-COPY docker /app/docker
+COPY --chown=localrag:localrag evals /app/evals
+COPY --chown=localrag:localrag scripts /app/scripts
+COPY --chown=localrag:localrag docker /app/docker
