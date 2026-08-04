@@ -4,6 +4,8 @@ Benchmark numbers are only useful if you can tell a real regression from
 noise. This page defines what LocalRAG guarantees about a run, the full field
 reference for what gets recorded, and what it explicitly does not promise.
 
+See [ADR 012](adr/012-reproducible-evaluation-metadata.md) for the architectural decision.
+
 ## Reproducibility levels
 
 Two different things get called "reproducible" and conflating them leads to
@@ -57,6 +59,8 @@ units, metrics or an error, and artifact paths. The matrix manifest records run
 and matrix IDs, dataset and corpus checksums, revision/dirty state, model and
 provider identity, effective configuration, supported dimensions, seed, and
 timestamps.
+
+The matrix decision is recorded in [ADR 015](adr/015-canonical-benchmark-matrix.md), and bounded execution in [ADR 016](adr/016-bounded-parallel-evaluation.md).
 
 Dry runs exit `0`. A configuration or validation error exits `2` before any case
 starts. Execution continues across independent cases; if one or more cases fail,
@@ -228,6 +232,8 @@ retrieval change caused it — comparing two results with a mismatched
 
 Result comparison and CI regression gating are implemented by
 `evals/compare.py` and documented above.
+
+The canonical result and migration decision is [ADR 013](adr/013-versioned-benchmark-results.md).
 
 Leaderboard publication is a separate, strict consumer of reviewed canonical
 artifacts. See [benchmark-leaderboard.md](benchmark-leaderboard.md): it rejects

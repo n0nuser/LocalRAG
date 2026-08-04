@@ -13,6 +13,8 @@ or migrate a competing evaluation schema. `report.html` is the only output file
 and is overwritten on each invocation. Its embedded JSON and JavaScript/CSS are
 deterministic for the same inputs.
 
+See [ADR 013](adr/013-versioned-benchmark-results.md) and [ADR 015](adr/015-canonical-benchmark-matrix.md).
+
 The page shows run and dataset identity, configuration, metric scores and
 thresholds, available/unavailable status, per-case failures, and latency/resource
 fields when present. Missing and non-finite values remain unavailable. Different

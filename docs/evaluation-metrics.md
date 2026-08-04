@@ -5,6 +5,8 @@ RAGAS version in `pyproject.toml`/`uv.lock`. A result records
 `metric_contract_version`, the RAGAS prompt/version, judge seed, endpoint, and
 model digests in provenance.
 
+See [ADR 014](adr/014-evaluation-metric-contract.md) for the durable metric decision.
+
 ## Deterministic metrics
 
 `exact_match` normalizes Unicode with NFKC, applies Unicode case-folding,
@@ -46,6 +48,8 @@ at `value >= threshold`, while lower-is-better metrics pass at
 The canonical JSON contract and migrations are in `evals/results/schema.py`.
 
 ## Parallel evaluation
+
+The execution policy is [ADR 016](adr/016-bounded-parallel-evaluation.md).
 
 The runner preserves the selected record order and writes case records in that
 order even when completion order differs. Live retrieval/generation uses the
