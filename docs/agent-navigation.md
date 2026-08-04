@@ -65,6 +65,7 @@ Agents (and humans) move faster when they:
 | Benchmark matrix contract / runner | `evals/matrix.py`, `localrag/cli/commands/benchmark.py`, [reproducibility.md](reproducibility.md) |
 | Long-context live-local benchmark | `evals/long_context.py`, `localrag/cli/commands/benchmark.py`, [ADR 026](adr/026-long-context-benchmark-boundary.md) |
 | Optional evaluation tracking | `evals/tracking.py`, `.env.example`, [ADR 018](adr/018-optional-mlflow-experiment-tracking.md) |
+| Dockerized benchmark integration | `docker-compose.benchmark.yml`, `Dockerfile`, `scripts/docker_benchmark.py`, `docker/models.lock.json`, [ADR 033](adr/033-dockerized-benchmark-boundary.md) |
 | Offline HTML benchmark reports | `evals/report.py`, `localrag/cli/commands/report.py`, README report usage |
 | Benchmark leaderboard publication | `evals/leaderboard.py`, `localrag/cli/commands/leaderboard.py`, [benchmark-leaderboard.md](benchmark-leaderboard.md) |
 | Late-interaction feasibility spike | `evals/late_interaction.py`, `research/70-late-interaction-spike/`, [ADR 027](adr/027-late-interaction-feasibility-boundary.md) |

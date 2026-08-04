@@ -102,6 +102,9 @@ def benchmark(  # noqa: C901
     mode: str | None = typer.Option(
         None, help="Execution semantics: fixture-offline (stored artifacts) or live-local (Ollama)."
     ),
+    ollama_url: str = typer.Option(
+        "http://localhost:11434", help="Ollama URL for live-local benchmark profiles."
+    ),
     dry_run: bool = typer.Option(
         default=False, help="Expand and validate without executing cases."
     ),
@@ -134,7 +137,7 @@ def benchmark(  # noqa: C901
             model = str(matrix_config.dimensions.get("generation_model", ["gemma3:4b"])[0])
             executor = make_live_executor(
                 records,
-                base_url="http://localhost:11434",
+                base_url=ollama_url,
                 model=model,
                 seed=matrix_config.seed,
                 timeout=120.0,

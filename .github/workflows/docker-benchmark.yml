@@ -1,0 +1,22 @@
+name: Docker benchmark smoke
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    name: Offline fixture benchmark
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run fixture benchmark
+        run: docker compose -f docker-compose.benchmark.yml --profile smoke run --rm benchmark-smoke
+      - name: Validate exported result
+        run: test -s evals/results/docker/result.json && test -s evals/results/docker/matrices/docker-fixture/manifest.json
+      - name: Cleanup benchmark resources
+        if: always()
+        run: docker compose -f docker-compose.benchmark.yml --profile smoke down --volumes --remove-orphans

@@ -1,0 +1,130 @@
+services:
+  ollama:
+    image: ollama/ollama@sha256:4dea9fb511947e24a84237bb636b0203abcb2ff0d3fbc7b4ff865deb91362131
+    profiles: [cpu, gpu]
+    volumes:
+      - benchmark_ollama:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 256
+
+  chromadb:
+    image: chromadb/chroma@sha256:1e0b73a187a28757c572acba508c46f48c9e8b0acaf5c20e6d95cdedce1acdf6
+    profiles: [cpu, gpu]
+    volumes:
+      - benchmark_chroma:/chroma/.chroma/index
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8000/api/v2/heartbeat || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    cpus: 1.0
+    mem_limit: 1g
+    pids_limit: 128
+
+  localrag-api:
+    build:
+      context: .
+      target: benchmark
+    image: localrag-benchmark:locked
+    profiles: [cpu, gpu]
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+      CHROMA_PERSIST_PATH: /app/data/chroma
+      LLM_TEMPERATURE: "0"
+      LLM_SEED: "42"
+    volumes:
+      - benchmark_data:/app/data
+      - ./docs:/app/docs:ro
+    depends_on:
+      ollama:
+        condition: service_healthy
+      chromadb:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 256
+
+  model-prep:
+    image: localrag-benchmark:locked
+    profiles: [cpu, gpu]
+    command: ["uv", "run", "--no-dev", "python", "scripts/docker_benchmark.py", "prepare"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    volumes:
+      - benchmark_ollama:/root/.ollama
+    cpus: 0.5
+    mem_limit: 512m
+    pids_limit: 64
+
+  benchmark-cpu:
+    image: localrag-benchmark:locked
+    profiles: [cpu]
+    command: ["uv", "run", "--no-dev", "python", "scripts/docker_benchmark.py", "run", "--mode", "live-local", "--profile", "cpu", "--api-url", "http://localrag-api:8000", "--ollama-url", "http://ollama:11434"]
+    volumes:
+      - ./evals/results/docker:/app/evals/results/docker
+      - ./docker/models.lock.json:/app/docker/models.lock.json:ro
+    depends_on:
+      model-prep:
+        condition: service_completed_successfully
+      localrag-api:
+        condition: service_healthy
+    cpus: 4.0
+    mem_limit: 4g
+    pids_limit: 512
+
+  benchmark-gpu:
+    image: localrag-benchmark:locked
+    profiles: [gpu]
+    command: ["uv", "run", "--no-dev", "python", "scripts/docker_benchmark.py", "run", "--mode", "live-local", "--profile", "gpu", "--api-url", "http://localrag-api:8000", "--ollama-url", "http://ollama:11434"]
+    volumes:
+      - ./evals/results/docker:/app/evals/results/docker
+      - ./docker/models.lock.json:/app/docker/models.lock.json:ro
+    depends_on:
+      model-prep:
+        condition: service_completed_successfully
+      localrag-api:
+        condition: service_healthy
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    cpus: 8.0
+    mem_limit: 16g
+    pids_limit: 512
+
+  benchmark-smoke:
+    build:
+      context: .
+      target: benchmark
+    image: localrag-benchmark:locked
+    profiles: [smoke]
+    network_mode: none
+    command: ["uv", "run", "--no-dev", "python", "scripts/docker_benchmark.py", "run", "--mode", "fixture-offline", "--profile", "smoke"]
+    volumes:
+      - ./evals/results/docker:/app/evals/results/docker
+    cpus: 2.0
+    mem_limit: 2g
+    pids_limit: 256
+
+volumes:
+  benchmark_ollama:
+  benchmark_chroma:
+  benchmark_data:

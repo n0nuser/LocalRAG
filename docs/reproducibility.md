@@ -55,6 +55,38 @@ uv run python evals/run_evals.py --offline --seed 7 --sample 10
 
 See [docs/eval-datasets.md](eval-datasets.md) for `--dataset`/`--version`/`--split`.
 
+## Docker benchmark profiles
+
+The dependency- and model-pinned smoke command is safe for CI and performs no
+network access or large model download:
+
+```bash
+docker compose -f docker-compose.benchmark.yml --profile smoke run --rm benchmark-smoke
+```
+
+It clears stale exports first and writes the canonical result to
+`evals/results/docker/result.json`, with the matrix manifest and per-case work
+under `evals/results/docker/matrices/`. Use `docker compose ... down --volumes`
+to reset the isolated Chroma/Ollama/data volumes.
+
+For a real local-model run, explicitly populate the named Ollama volume while
+network access is allowed, then run `model-prep`; it verifies the exact content
+digests in `docker/models.lock.json`. The CPU command is:
+
+```bash
+docker compose -f docker-compose.benchmark.yml --profile cpu run --rm benchmark-cpu
+```
+
+Use `--profile gpu` only with an NVIDIA-enabled Docker runtime. Readiness,
+missing models, digest mismatches, unhealthy services, unsupported GPU runtime,
+and partial matrix failures are errors. Real runs do not promise bit-for-bit
+model text or scores across hardware; they promise comparable selected IDs,
+configuration/provenance, schema validation, and explicit comparator outcomes.
+Model pin updates require fetching the artifact intentionally, reviewing the
+new digest, and changing `docker/models.lock.json` in a separate reviewed diff.
+RAGAS remains a manually dispatched workflow and is not enabled by this smoke
+workflow.
+
 ## Canonical benchmark matrices
 
 Use the manually invoked matrix command when comparing configurations:
