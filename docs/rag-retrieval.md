@@ -246,6 +246,33 @@ a security boundary — anyone with API access can still query across all
 per-tenant isolation is ever required, revisit as a dedicated
 (out-of-scope-for-this-plan) access-control project.
 
+## Bounded adaptive retrieval
+
+`ADAPTIVE_ENABLED` is disabled by default. When enabled, the engine runs the
+typed controller in `localrag/rag/adaptive.py`:
+
+`INITIAL_RETRIEVE -> EVALUATE_EVIDENCE -> ANSWER | ESCALATE | REFINE -> RETRIEVE -> EVALUATE_EVIDENCE -> ANSWER | ABSTAIN -> DONE`.
+
+The controller is bounded by `ADAPTIVE_MAX_ROUNDS`,
+`ADAPTIVE_MAX_REFINEMENTS`, `ADAPTIVE_MAX_LATENCY_MS`, and initial/escalated
+`k`. It deduplicates stable `source#chunk_index` identities and stops on
+repeated evidence, empty corpus, metadata-filtered no-results, invalid
+structured refinement, provider failure, timeout, or budget exhaustion.
+Refinement is retrieval-only. The original query remains in the answer prompt
+and trace. Existing rewrite, expansion, reranking, filters, freshness, parent
+expansion, and compression are composed within each normal retrieval call;
+HyDE is intentionally unsupported until an explicit policy is added.
+
+Evidence acceptance combines non-empty evidence, top score, score margin,
+source diversity, and lexical query coverage. These are corpus-tuned heuristic
+signals, not calibrated raw LLM self-confidence. The additive `trace` response
+field contains only typed observable transitions, hit IDs, signals, decisions,
+provider/model accounting, and stop reasons; it never contains hidden
+chain-of-thought. JSON and SSE use the same controller, while disabled mode
+retains the existing single-shot behavior. Issue #72's unbounded iterative
+proposal is consolidated into this bounded policy. Evaluation remains the
+existing RAGAS/manual-only workflow.
+
 ## Query caching (optional)
 
 Disabled by default (`QUERY_CACHE_TTL_SECONDS=0`). When enabled (set a positive

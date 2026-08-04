@@ -79,6 +79,7 @@ class AgentResponse:
     sources: list[dict[str, Any]] = field(default_factory=list)
     latency_ms: float = 0.0
     model: str = ""
+    trace: dict[str, Any] | None = None
 
 
 def run_agent(
@@ -103,6 +104,7 @@ def run_agent(
     reasoning = ""
     answer = ""
     sources: list[dict[str, Any]] = []
+    trace: dict[str, Any] | None = None
 
     for block in resp.content:
         if block.type != "tool_use":
@@ -117,6 +119,7 @@ def run_agent(
             result: dict[str, Any] = engine.answer(question=query)
             answer = str(result.get("answer", ""))
             sources = [dict(s) for s in result.get("sources") or []]
+            trace = result.get("trace")
             reasoning = f"Used search_documents with query: {query!r}"
 
         elif block.name == "answer_directly":
@@ -138,4 +141,5 @@ def run_agent(
         sources=sources,
         latency_ms=latency_ms,
         model=model,
+        trace=trace,
     )

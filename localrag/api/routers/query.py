@@ -28,5 +28,7 @@ def query_stream(
     engine: RAGEngine = Depends(get_engine),
 ) -> EventSourceResponse:
     """Stream answer tokens via Server-Sent Events. Final event includes source references."""
-    contexts = api_service.get_query_contexts(request, engine)
+    contexts = (
+        [] if engine.settings.adaptive_enabled else api_service.get_query_contexts(request, engine)
+    )
     return EventSourceResponse(api_service.iter_query_sse_events(request, engine, contexts))

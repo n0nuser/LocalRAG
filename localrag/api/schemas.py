@@ -282,6 +282,9 @@ class QueryResponse(BaseModel):
         ),
         examples=[False],
     )
+    trace: dict[str, object] | None = Field(
+        default=None, description="Observable bounded retrieval trace."
+    )
 
 
 class AgentQueryRequest(BaseModel):
@@ -322,6 +325,7 @@ class AgentQueryResponse(BaseModel):
     )
     latency_ms: float = Field(description="Total latency in milliseconds.", examples=[450.0])
     model: str = Field(description="Model used for agent decisions.", examples=["claude-haiku-4-5"])
+    trace: dict[str, object] | None = Field(default=None, description="Observable retrieval trace.")
 
 
 class CollectionListResponse(BaseModel):

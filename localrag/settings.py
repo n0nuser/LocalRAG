@@ -107,6 +107,19 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
             "context_compression_total_tokens": "context_compression_total_tokens",
             "context_compression_per_context_chars": "context_compression_per_context_chars",
             "context_compression_total_chars": "context_compression_total_chars",
+            "adaptive_enabled": "adaptive_enabled",
+            "adaptive_initial_top_k": "adaptive_initial_top_k",
+            "adaptive_escalation_top_k": "adaptive_escalation_top_k",
+            "adaptive_max_rounds": "adaptive_max_rounds",
+            "adaptive_max_refinements": "adaptive_max_refinements",
+            "adaptive_max_latency_ms": "adaptive_max_latency_ms",
+            "adaptive_min_top_score": "adaptive_min_top_score",
+            "adaptive_min_score_margin": "adaptive_min_score_margin",
+            "adaptive_min_source_diversity": "adaptive_min_source_diversity",
+            "adaptive_min_query_coverage": "adaptive_min_query_coverage",
+            "adaptive_refinement_max_chars": "adaptive_refinement_max_chars",
+            "adaptive_critique_enabled": "adaptive_critique_enabled",
+            "adaptive_max_provider_calls": "adaptive_max_provider_calls",
         },
         "generation": {
             "backend": "llm_backend",
@@ -343,6 +356,22 @@ class Settings(BaseSettings):
     context_compression_reserved_answer_tokens: int = 512
     llm_context_window_tokens: int = 4096
 
+    # Disabled by default. Thresholds are corpus-tuned evidence heuristics, not
+    # calibrated model confidence; hard caps prevent agent-like unbounded loops.
+    adaptive_enabled: bool = False
+    adaptive_initial_top_k: int = 3
+    adaptive_escalation_top_k: int = 8
+    adaptive_max_rounds: int = 3
+    adaptive_max_refinements: int = 1
+    adaptive_max_latency_ms: float = 10_000.0
+    adaptive_min_top_score: float = 0.35
+    adaptive_min_score_margin: float = 0.02
+    adaptive_min_source_diversity: int = 1
+    adaptive_min_query_coverage: float = 0.2
+    adaptive_refinement_max_chars: int = 500
+    adaptive_critique_enabled: bool = False
+    adaptive_max_provider_calls: int = 2
+
     # In-process TTL cache for repeated/near-identical queries (0 disables; no external cache).
     query_cache_ttl_seconds: float = 0.0
     query_cache_maxsize: int = 256
@@ -393,7 +422,7 @@ class Settings(BaseSettings):
     eval_seed: int = 42
 
     @model_validator(mode="after")
-    def validate_configuration(self) -> Settings:
+    def validate_configuration(self) -> Settings:  # noqa: C901, PLR0912
         if self.chunk_min_chars > self.chunk_max_chars:
             raise ValueError("chunk_min_chars must be less than or equal to chunk_max_chars")
         if self.chunking_mode not in {"fixed", "structural", "recursive"}:
@@ -408,6 +437,17 @@ class Settings(BaseSettings):
             raise ValueError("query_expansion_max_query_chars must be at least 1")
         if self.query_expansion_candidate_budget < 1:
             raise ValueError("query_expansion_candidate_budget must be at least 1")
+        if (
+            self.adaptive_initial_top_k < 1
+            or self.adaptive_escalation_top_k < self.adaptive_initial_top_k
+        ):
+            raise ValueError("adaptive retrieval k settings are invalid")
+        if self.adaptive_max_rounds < 1 or self.adaptive_max_refinements < 0:
+            raise ValueError("adaptive retrieval budgets are invalid")
+        if self.adaptive_max_latency_ms <= 0 or self.adaptive_refinement_max_chars < 1:
+            raise ValueError("adaptive retrieval limits must be positive")
+        if self.adaptive_max_provider_calls < 0:
+            raise ValueError("adaptive provider call budget must not be negative")
         compression_values = (
             self.context_compression_candidate_count,
             self.context_compression_max_contexts,
