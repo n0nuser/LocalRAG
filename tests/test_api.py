@@ -47,7 +47,18 @@ class StubEngine:
         _ = (contexts, question, model)
         yield {"type": "token", "token": "hello "}
         yield {"type": "token", "token": "world"}
-        yield {"type": "final", "sources": [{"source": "doc.md", "chunk_index": 1}]}
+        yield {
+            "type": "final",
+            "sources": [{"source": "doc.md", "chunk_index": 1}],
+            "trace": {
+                "mode": "fallback",
+                "provider": "ollama",
+                "model": "stub-model",
+                "latency_ms": 1.0,
+                "status": "fallback",
+                "fallback_reason": "timeout",
+            },
+        }
 
     @staticmethod
     def extract_sources(contexts: list[dict[str, Any]]) -> list[dict[str, object]]:
@@ -69,6 +80,7 @@ def test_query_json_returns_answer() -> None:
     assert body["sources"][0]["source"] == "doc.md"
     assert "latency_ms" in body
     assert body["model"] == "stub-model"
+    assert body["trace"]["status"] == "fallback"
 
     app.dependency_overrides.clear()
 

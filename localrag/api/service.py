@@ -367,6 +367,7 @@ def query_json(
 
     answer_chunks: list[str] = []
     low_confidence = False
+    trace: dict[str, object] | None = None
     for event in engine.stream_chat_from_contexts(
         contexts=contexts,
         question=request.question,
@@ -376,6 +377,7 @@ def query_json(
             answer_chunks.append(str(event["token"]))
         if event["type"] == "final":
             low_confidence = bool(event.get("low_confidence", False))
+            trace = cast("dict[str, object] | None", event.get("trace"))
 
     latency_ms = (time.perf_counter() - t0) * 1000
     used_model = request.model or engine.settings.ollama_llm_model
@@ -397,6 +399,7 @@ def query_json(
         latency_ms=latency_ms,
         model=used_model,
         low_confidence=low_confidence,
+        trace=trace,
     )
     write_audit_record(
         engine.settings.audit_log_path,
