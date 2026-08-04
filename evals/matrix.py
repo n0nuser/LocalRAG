@@ -31,7 +31,9 @@ SUPPORTED_DIMENSIONS: dict[str, tuple[Any, ...]] = {
     "retrieval_experiment_mode": ("baseline", "rewrite", "hyde", "rewrite+hyde"),
     "chunking_mode": ("fixed", "structural"),
     "rerank_enabled": (False,),
-    "context_window": ("default",),
+    "context_window": ("default", 4096, 8192, 32768),
+    "context_strategy": ("fixed_top_k", "stuff"),
+    "top_k": (5,),
     "metric_profile": ("default",),
 }
 
@@ -59,6 +61,13 @@ class MatrixConfig(BaseModel):
     dimensions: dict[str, list[Any]] = Field(default_factory=dict)
     seed: int = 42
     mode: str = "offline"
+
+    @field_validator("mode")
+    @classmethod
+    def _mode(cls, value: str) -> str:
+        if value not in {"offline", "fixture-offline", "live-local"}:
+            raise ValueError("mode must be offline, fixture-offline, or live-local")
+        return value
 
     @field_validator("schema_version")
     @classmethod
@@ -99,6 +108,7 @@ class MatrixCaseResult(BaseModel):
     supported_dimensions: dict[str, tuple[Any, ...]]
     seed: int
     effective_config: dict[str, Any]
+    mode: str = "offline"
     status: str
     started_at: str
     finished_at: str
@@ -284,6 +294,7 @@ def run_matrix(
             "supported_dimensions": SUPPORTED_DIMENSIONS,
             "seed": config.seed,
             "effective_config": case.effective_config,
+            "mode": config.mode,
             "status": "planned" if dry_run else "running",
             "started_at": datetime.now(UTC),
             "metrics": {},
@@ -297,7 +308,7 @@ def run_matrix(
             try:
                 result = executor(case, case_dir) if executor else {"metrics": {}}
                 record.update(result)
-                record["status"] = "complete"
+                record["status"] = result.get("status", "complete")
             except Exception as exc:  # failure is a result, not a runner abort
                 record["status"] = "failed"
                 record["error"] = _error(exc)

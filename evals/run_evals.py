@@ -587,6 +587,7 @@ def main() -> None:
             ],
             "provenance": {
                 **metadata.to_dict(),
+                "evaluation_mode": "fixture-offline" if args.offline else "live-api",
                 "metric_contract_version": "1.0",
                 "judge_prompt_version": "ragas-default-prompts@0.4.3",
                 "judge_seed": seed,
