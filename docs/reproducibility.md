@@ -235,6 +235,24 @@ Result comparison and CI regression gating are implemented by
 
 The canonical result and migration decision is [ADR 013](adr/013-versioned-benchmark-results.md).
 
+## Optional experiment tracking
+
+MLflow is an optional best-effort mirror, not a replacement for local JSON:
+
+```bash
+uv sync --extra tracking
+EVAL_TRACKING_ENABLED=true uv run localrag benchmark --profile fixture
+```
+
+The default URI is the local `file:./evals/tracking` store; set
+`EVAL_TRACKING_URI` for a local MLflow server. Matrix runs create one stable
+parent and nested stable case runs. Failed cases and backend failures remain
+visible in the canonical manifest, while tracking failures are isolated. Only
+canonical JSON artifacts are selected deterministically. Secrets, paths,
+prompts, documents, contexts, questions, and answers are redacted unless the
+explicitly documented `EVAL_TRACKING_CAPTURE_CONTENT=true` opt-in is enabled.
+See [ADR 018](adr/018-optional-mlflow-experiment-tracking.md).
+
 Leaderboard publication is a separate, strict consumer of reviewed canonical
 artifacts. See [benchmark-leaderboard.md](benchmark-leaderboard.md): it rejects
 results that lack required provenance and cold/warm repetition fields and never

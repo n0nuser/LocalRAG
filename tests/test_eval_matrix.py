@@ -12,6 +12,7 @@ from evals.matrix import (
     expand_matrix,
     run_matrix,
 )
+from evals.tracking import TrackingConfig, TrackingSession
 
 
 def _config(**dimensions: object) -> MatrixConfig:
@@ -98,3 +99,37 @@ def test_runner_isolates_cases_and_continues_after_failure(tmp_path: Path) -> No
         assert case["run_id"]
     loaded = json.loads((tmp_path / "fixture" / "manifest.json").read_text(encoding="utf-8"))
     assert loaded["matrix_id"] == "fixture"
+
+
+def test_tracking_receives_stable_parent_and_nested_case_ids(tmp_path: Path) -> None:
+    class Backend:
+        def __init__(self) -> None:
+            self.started: list[tuple[str, str]] = []
+
+        def start_parent(self, run_id: str, params: dict[str, object]) -> None:
+            self.started.append(("parent", run_id))
+
+        def start_case(self, case_id: str, params: dict[str, object]) -> None:
+            self.started.append(("case", case_id))
+
+        def log_metrics(self, metrics: dict[str, float]) -> None: ...
+
+        def log_artifact(self, path: Path) -> None: ...
+
+        def finish_case(self, status: str, error: str | None) -> None: ...
+
+        def finish_parent(self, status: str, error: str | None) -> None: ...
+
+        def close(self) -> None: ...
+
+    backend = Backend()
+    tracker = TrackingSession(TrackingConfig(enabled=True), backend=backend)
+    first = run_matrix(_config(), tmp_path / "first", tracker=tracker)
+    second = run_matrix(_config(), tmp_path / "second", tracker=tracker)
+
+    assert backend.started == [
+        ("parent", first["run_id"]),
+        *[("case", case["case_id"]) for case in first["cases"]],
+        ("parent", second["run_id"]),
+        *[("case", case["case_id"]) for case in second["cases"]],
+    ]

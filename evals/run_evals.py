@@ -71,6 +71,7 @@ from evals.results.schema import (
     MetricResult,
     ResultFile,
 )
+from evals.tracking import TrackingSession
 
 RESULTS_DIR = Path(__file__).parent / "results"
 
@@ -610,6 +611,22 @@ def main() -> None:
         }
     )
     out_path.write_text(result.model_dump_json_safe(), encoding="utf-8")
+    tracking = TrackingSession()
+    tracking.start_parent(
+        result.run_id,
+        {
+            "dataset_id": manifest.dataset_id,
+            "dataset_version": manifest.dataset_version,
+            "split": args.split,
+            "status": result.status,
+        },
+    )
+    tracking.log_metrics(
+        {name: metric.value for name, metric in result.metric_map().items() if metric.value is not None}
+    )
+    tracking.log_artifacts([out_path])
+    tracking.finish_parent(result.status)
+    tracking.close()
     if metadata.git_dirty.value:
         print("WARNING: working tree is dirty — these results are not tied to a clean commit.")
     print(f"\nResults written to {out_path}")
