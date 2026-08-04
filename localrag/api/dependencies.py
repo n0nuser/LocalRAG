@@ -8,7 +8,8 @@ from fastapi.security import APIKeyHeader
 
 from localrag.api.jobs import JobRegistry
 from localrag.api.repository import ChromaCollectionRepository
-from localrag.ingestion.embedder import OllamaEmbedder
+from localrag.embedding.base import EmbeddingProvider
+from localrag.embedding.factory import build_embedding_provider
 from localrag.ingestion.service import IngestionService
 from localrag.llm.factory import build_provider
 from localrag.rag.bm25_index import Bm25Index
@@ -32,12 +33,9 @@ def get_vector_store() -> VectorStore:
 
 
 @lru_cache(maxsize=1)
-def get_embedder() -> OllamaEmbedder:
+def get_embedder() -> EmbeddingProvider:
     settings = get_settings()
-    return OllamaEmbedder(
-        base_url=settings.ollama_base_url,
-        model=settings.ollama_embed_model,
-    )
+    return build_embedding_provider(settings)
 
 
 @lru_cache(maxsize=1)

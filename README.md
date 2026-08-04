@@ -120,6 +120,9 @@ Key settings:
 | `LLM_BACKEND` | `ollama` | LLM provider: `ollama`, `openai`, or `anthropic` |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model |
+| `EMBEDDING_PROVIDER` | `ollama` | Embedding backend: `ollama` or optional `sentence-transformers` |
+| `EMBEDDING_MODEL` | _(legacy alias fallback)_ | Provider model; when empty, `OLLAMA_EMBED_MODEL` is used |
+| `EMBEDDING_TIMEOUT_SECONDS` | `120` | Embedding request timeout |
 | `OLLAMA_LLM_MODEL` | `gemma3:4b` | Chat model for Ollama backend |
 | `OPENAI_API_KEY` | _(empty)_ | OpenAI key (required for `openai` backend) |
 | `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model tag |

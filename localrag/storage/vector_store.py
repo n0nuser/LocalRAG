@@ -9,6 +9,8 @@ from typing import Any
 import chromadb
 from chromadb.api.models.Collection import Collection
 
+from localrag.embedding.base import EmbeddingIncompatibilityError, EmbeddingProvider
+
 logger = logging.getLogger(__name__)
 
 
@@ -70,6 +72,65 @@ class VectorStore:
             source,
             len(chunks),
         )
+
+    def ensure_embedding_compatibility(
+        self, provider: EmbeddingProvider, dimension: int | None = None, model: str | None = None
+    ) -> None:
+        """Reject a collection whose recorded embedding space differs from runtime."""
+        metadata = dict(self.collection.metadata or {})
+        expected = {
+            "localrag:embedding_provider": provider.provider_name,
+            "localrag:embedding_model": model or provider.model,
+        }
+        recorded_dimension = metadata.get("localrag:embedding_dimension")
+        if recorded_dimension is not None:
+            try:
+                recorded_dimension = int(recorded_dimension)
+            except (TypeError, ValueError) as exc:
+                raise EmbeddingIncompatibilityError(
+                    "Collection embedding metadata is malformed"
+                ) from exc
+        effective_dimension = dimension or provider.dimension
+        for key, value in expected.items():
+            if key in metadata and metadata[key] != value:
+                raise EmbeddingIncompatibilityError(
+                    "Embedding provider/model is incompatible with the collection; "
+                    "run `localrag collections rebuild` after selecting the new embedding space."
+                )
+        if (
+            recorded_dimension is not None
+            and effective_dimension is not None
+            and recorded_dimension != effective_dimension
+        ):
+            raise EmbeddingIncompatibilityError(
+                "Embedding dimension is incompatible with the collection; "
+                "run `localrag collections rebuild`."
+            )
+        if recorded_dimension is None and effective_dimension is not None:
+            raw = self.collection.get(include=["embeddings"], limit=1)
+            rows = raw.get("embeddings") or []
+            if rows and isinstance(rows[0], list) and len(rows[0]) != effective_dimension:
+                raise EmbeddingIncompatibilityError(
+                    "Embedding dimension is incompatible with the legacy collection; "
+                    "run `localrag collections rebuild`."
+                )
+        if effective_dimension is None and recorded_dimension is not None:
+            return
+
+    def record_embedding_compatibility(
+        self, provider: EmbeddingProvider, dimension: int, model: str | None = None
+    ) -> None:
+        """Record the embedding identity after vectors have been validated."""
+        self.ensure_embedding_compatibility(provider, dimension, model)
+        metadata = dict(self.collection.metadata or {})
+        metadata.update(
+            {
+                "localrag:embedding_provider": provider.provider_name,
+                "localrag:embedding_model": model or provider.model,
+                "localrag:embedding_dimension": dimension,
+            }
+        )
+        self.collection.modify(metadata=metadata)
 
     def delete_by_source(self, source: str) -> None:
         self.collection.delete(where={"source": source})
