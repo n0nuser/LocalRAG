@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,10 @@ from localrag.cli.commands import benchmark as benchmark_command
 from localrag.cli.commands import inspect as inspect_command
 
 runner = CliRunner()
+
+
+def plain_help(result: Any) -> str:
+    return re.sub(r"\x1b\[[0-9;]*m", "", result.stdout)
 
 
 class FakeCollection:
@@ -32,16 +37,18 @@ class FakeCollection:
 def test_help_lists_benchmark_and_inspect_contracts() -> None:
     result = runner.invoke(app, ["inspect", "--help"])
     assert result.exit_code == 0
-    assert "--collection" in result.stdout
-    assert "--sample-count" in result.stdout
-    assert "--format" in result.stdout
+    help_text = plain_help(result)
+    assert "--collection" in help_text
+    assert "--sample-count" in help_text
+    assert "--format" in help_text
 
     result = runner.invoke(app, ["benchmark", "--help"])
     assert result.exit_code == 0
-    assert "--dataset" in result.stdout
-    assert "--config" in result.stdout
-    assert "--matrix" in result.stdout
-    assert "--result-output" in result.stdout
+    help_text = plain_help(result)
+    assert "--dataset" in help_text
+    assert "--config" in help_text
+    assert "--matrix" in help_text
+    assert "--result-output" in help_text
 
 
 def test_inspect_json_is_sorted_bounded_and_sanitized(monkeypatch: Any) -> None:
