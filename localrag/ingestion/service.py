@@ -11,8 +11,10 @@ from typing import Any
 
 from localrag.embedding.base import EmbeddingProvider
 from localrag.ingestion.chunker import chunk_text
+from localrag.ingestion.contract import Chunk, stable_chunk_id
 from localrag.ingestion.loader import list_supported_files, parse_file
-from localrag.ingestion.structural_chunker import Chunk, chunk_document
+from localrag.ingestion.recursive_chunker import chunk_document as recursive_chunk_document
+from localrag.ingestion.structural_chunker import chunk_document
 from localrag.rag.bm25_index import Bm25Index
 from localrag.settings import Settings, is_path_allowed
 from localrag.storage.vector_store import VectorStore
@@ -202,13 +204,15 @@ class IngestionService:
         """Parse, chunk, embed, and upsert one file. Returns chunks added, or None if skipped."""
         logger.debug("ingest_parse_start path=%s", resolved_path)
         text = parse_file(resolved_path)
-        structural_chunks = self._build_chunks(text=text, file_type=resolved_path.suffix.lower())
+        source = str(resolved_path)
+        structural_chunks = self._build_chunks(
+            text=text, file_type=resolved_path.suffix.lower(), source=source
+        )
         chunks = [chunk.text for chunk in structural_chunks]
         if not chunks:
             logger.warning("ingest_skipped_no_chunks path=%s", resolved_path)
             return None
 
-        source = str(resolved_path)
         logger.debug("ingest_embed_start path=%s chunk_count=%s", resolved_path, len(chunks))
 
         ensure = getattr(self.vector_store, "ensure_embedding_compatibility", None)
@@ -240,9 +244,11 @@ class IngestionService:
         git_commit = _git_commit_for_path(resolved_path) or ""
         metadatas = [
             {
+                **chunk.metadata,
                 "source": source,
                 "file_type": resolved_path.suffix.lower(),
-                "chunk_index": index,
+                "chunk_index": chunk.chunk_index,
+                "chunk_id": chunk.chunk_id or "",
                 "heading_path": chunk.heading_path,
                 "chunk_type": chunk.chunk_type,
                 "ingested_at": created_at,
@@ -262,17 +268,32 @@ class IngestionService:
         logger.info("ingest_file_success path=%s chunks=%s", resolved_path, len(chunks))
         return len(chunks)
 
-    def _build_chunks(self, text: str, file_type: str) -> list[Chunk]:
+    def _build_chunks(self, text: str, file_type: str, source: str = "") -> list[Chunk]:
         if self.settings.chunking_mode == "fixed":
             fixed_chunks = chunk_text(
                 text=text,
                 chunk_chars=self.settings.chunk_chars,
                 overlap_chars=self.settings.chunk_overlap_chars,
             )
-            return [
-                Chunk(text=chunk, heading_path="", chunk_type="fixed") for chunk in fixed_chunks
-            ]
-        return chunk_document(text=text, file_type=file_type, settings=self.settings)
+            chunks = [Chunk(text=chunk, chunk_type="fixed") for chunk in fixed_chunks]
+            strategy = "fixed"
+        elif self.settings.chunking_mode == "recursive":
+            chunks = recursive_chunk_document(
+                text=text,
+                max_chars=self.settings.chunk_max_chars,
+                overlap_chars=self.settings.chunk_overlap_chars,
+            )
+            strategy = "recursive"
+        else:
+            chunks = chunk_document(text=text, file_type=file_type, settings=self.settings)
+            strategy = "structural"
+
+        for index, chunk in enumerate(chunks):
+            chunk.chunk_index = index
+            chunk.source = source or None
+            chunk.chunk_id = stable_chunk_id(source, strategy, index, chunk.text)
+            chunk.metadata.setdefault("chunking_strategy", strategy)
+        return chunks
 
 
 def _file_content_hash(path: Path) -> str:

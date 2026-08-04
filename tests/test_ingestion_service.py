@@ -118,6 +118,41 @@ def test_ingestion_service_ingest_paths_skips_not_allowed_and_empty_chunks(tmp_p
     assert seen_model is None
 
 
+def test_ingestion_service_recursive_chunks_have_stable_contract_metadata(tmp_path: Path) -> None:
+    path = tmp_path / "guide.txt"
+    path.write_text("alpha beta gamma delta epsilon zeta", encoding="utf-8")
+    settings = Settings(
+        ingest_roots=[str(tmp_path)],
+        chunking_mode="recursive",
+        chunk_max_chars=16,
+        chunk_min_chars=1,
+        chunk_overlap_chars=0,
+    )
+    embedder = StubEmbedder(seen_texts_batches=[])
+    vector_store = StubVectorStore(deleted_sources=[], added=[])
+    service = IngestionService(
+        settings=settings,
+        embedder=embedder,  # type: ignore[arg-type]
+        vector_store=vector_store,  # type: ignore[arg-type]
+    )
+
+    service.ingest_file(path)
+    first_metadata = vector_store.added[0]["metadatas"]
+    service.ingest_file(path)
+    second_metadata = vector_store.added[1]["metadatas"]
+
+    assert [metadata["chunk_id"] for metadata in first_metadata] == [  # type: ignore[index]
+        metadata["chunk_id"]
+        for metadata in second_metadata  # type: ignore[index]
+    ]
+    assert all(metadata["chunking_strategy"] == "recursive" for metadata in first_metadata)  # type: ignore[index]
+    assert [metadata["chunk_index"] for metadata in first_metadata] == list(  # type: ignore[index]
+        range(len(first_metadata))
+    )
+    assert all(metadata["source"] == str(path.resolve()) for metadata in first_metadata)  # type: ignore[index]
+    assert all(metadata["chunk_id"] for metadata in first_metadata)  # type: ignore[index]
+
+
 def test_ingestion_service_ingest_file_delegates_to_ingest_paths(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
