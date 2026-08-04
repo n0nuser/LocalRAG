@@ -14,14 +14,19 @@ COPY pyproject.toml uv.lock README.md /app/
 
 # Install all external dependencies; skip building the local package (no source yet).
 # The dev override (docker-compose.override.yml) mounts the live source and stops here.
-RUN uv sync --no-dev --no-install-project
+RUN uv sync --locked --no-dev --no-install-project
 
 FROM base AS app
 
 COPY localrag /app/localrag
+RUN useradd --create-home --uid 10001 localrag \
+    && mkdir -p /app/data \
+    && chown -R localrag:localrag /app
 
 # Build and install the local package on top of the already-cached deps.
-RUN uv sync --no-dev
+RUN uv sync --locked --no-dev
+
+USER localrag
 
 EXPOSE 8000
 

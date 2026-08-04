@@ -234,7 +234,8 @@ class Settings(BaseSettings):
     non-empty, only files and directories under those paths (after resolving) are
     allowed through the HTTP ingest API; an empty list disables that restriction.
     ``POST /ingest/upload`` bypasses ``ingest_roots`` (the server chooses the
-    destination) but enforces ``upload_max_bytes`` and saves under ``upload_dir``.
+    destination), enforces ``upload_max_bytes``, and treats files as temporary
+    artifacts unless ``upload_retention_seconds`` is positive.
 
     **PDF OCR** — When ``ocr_enabled`` is true (default), PDF pages that ``pdf-inspector``
     flags as unreliable, or whose extracted Markdown is shorter than
@@ -351,8 +352,16 @@ class Settings(BaseSettings):
 
     upload_dir: str = "./data/uploads"
     upload_max_bytes: int = 100_000_000
+    # Uploads are temporary ingest artifacts by default. A positive retention
+    # keeps them for rebuilds; the quota is enforced before and after ingest.
+    upload_retention_seconds: float = 0.0
+    upload_quota_bytes: int = 1_000_000_000
 
     audit_log_path: str = ""
+    audit_log_max_bytes: int = 10_000_000
+    audit_log_retention_seconds: float = 2_592_000.0
+    audit_log_metadata_only: bool = False
+    audit_log_redact_content: bool = False
 
     ocr_enabled: bool = True
     ocr_language: str = "eng"
@@ -484,7 +493,19 @@ class Settings(BaseSettings):
     langfuse_enabled: bool = False
 
     @model_validator(mode="after")
-    def validate_configuration(self) -> Settings:  # noqa: C901, PLR0912
+    def validate_configuration(self) -> Settings:  # noqa: C901, PLR0912, PLR0915
+        supported_backends = {"ollama", "openai", "anthropic"}
+        if self.llm_backend not in supported_backends:
+            message = (
+                f"llm_backend must be one of {sorted(supported_backends)}, got {self.llm_backend!r}"
+            )
+            raise ValueError(message)
+        if self.llm_fallback_backend and self.llm_fallback_backend not in supported_backends:
+            message = (
+                "llm_fallback_backend must be empty or one of "
+                f"{sorted(supported_backends)}, got {self.llm_fallback_backend!r}"
+            )
+            raise ValueError(message)
         if not 0 <= self.otel_sample_rate <= 1:
             raise ValueError("otel_sample_rate must be between 0 and 1")
         if self.otel_max_attribute_length < 1:
@@ -534,6 +555,12 @@ class Settings(BaseSettings):
             raise ValueError("adaptive provider call budget must not be negative")
         if self.embedding_cache_max_entries < 1 or self.embedding_cache_max_bytes < 1:
             raise ValueError("embedding cache limits must be positive")
+        if self.upload_max_bytes < 1 or self.upload_quota_bytes < 1:
+            raise ValueError("upload limits must be positive")
+        if self.upload_retention_seconds < 0:
+            raise ValueError("upload_retention_seconds must not be negative")
+        if self.audit_log_max_bytes < 1 or self.audit_log_retention_seconds < 0:
+            raise ValueError("audit log limits are invalid")
         compression_values = (
             self.context_compression_candidate_count,
             self.context_compression_max_contexts,

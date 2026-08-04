@@ -4,7 +4,7 @@ metadata:
   name: localrag-api-config
   namespace: default
 data:
-  OLLAMA_BASE_URL: "http://ollama:11434"
+  OLLAMA_BASE_URL: "http://ollama.default.svc.cluster.local:11434"
   CHROMA_PERSIST_PATH: "/app/data/chroma"
   CHROMA_COLLECTION_NAME: "localrag"
   OLLAMA_EMBED_MODEL: "nomic-embed-text"

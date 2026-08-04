@@ -15,10 +15,22 @@ spec:
       labels:
         app: localrag-api
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: localrag-api
-          image: localrag-api:latest
+          # CI publishes this release tag once; deployments must not use latest.
+          image: localrag-api:0.1.0
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
           ports:
             - containerPort: 8000
           envFrom:
@@ -34,7 +46,7 @@ spec:
             periodSeconds: 20
           readinessProbe:
             httpGet:
-              path: /health
+              path: /ready
               port: 8000
             initialDelaySeconds: 5
             periodSeconds: 10
@@ -48,6 +60,11 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /app/data
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: data
+          persistentVolumeClaim:
+            claimName: localrag-data
+        - name: tmp
           emptyDir: {}

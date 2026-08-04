@@ -19,6 +19,7 @@ from localrag.settings import Settings, get_settings
 
 @respx.mock
 def test_validation_error_is_mapped_to_422() -> None:
+    app.dependency_overrides[get_engine] = lambda: None
     client = TestClient(app)
 
     respx.get("http://ollama:11434/api/tags").mock(
@@ -31,6 +32,7 @@ def test_validation_error_is_mapped_to_422() -> None:
     body = response.json()
     assert "detail" in body
     assert any("question" in str(err.get("loc")) for err in body["detail"])
+    app.dependency_overrides.clear()
 
 
 @respx.mock
@@ -50,9 +52,9 @@ def test_unhandled_exception_results_in_500() -> None:
         return_value=httpx.Response(200, json={"models": [{"name": "m"}]}),
     )
 
-    response = client.get("/health")
-    assert response.status_code == 500
-    assert response.json()["detail"] == "Internal server error"
+    response = client.get("/ready")
+    assert response.status_code == 503
+    assert response.json() == {"status": "unavailable"}
 
     app.dependency_overrides.clear()
 

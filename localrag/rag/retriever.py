@@ -193,7 +193,7 @@ class Retriever:
         # spread widely enough for decay to act as the intended tiebreaker.
         with span(SpanName.RETRIEVAL_FRESHNESS, {"count": len(candidates)}):
             return self._expand_to_parent_section(
-                self.apply_freshness(candidates, rescore=not fused)
+                self.apply_freshness(candidates, rescore=not fused), metadata_filter
             )
 
     def _retrieve_vector_hits(
@@ -380,9 +380,25 @@ class Retriever:
         chunk_index = int(hit.get("chunk_index", -1))
         return source, chunk_index
 
-    def _expand_to_parent_section(self, contexts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _expand_to_parent_section(
+        self,
+        contexts: list[dict[str, Any]],
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         if not self.settings.parent_expansion_enabled:
             return contexts
+        parent_keys = {
+            (
+                str(context.get("source", "unknown")),
+                str((context.get("metadata") or {}).get("heading_path")),
+            )
+            for context in contexts
+            if (context.get("metadata") or {}).get("heading_path")
+        }
+        if not parent_keys:
+            return contexts
+        bulk_lookup = getattr(self.vector_store, "get_chunks_by_headings", None)
+        sections = bulk_lookup(list(parent_keys), metadata_filter) if bulk_lookup else {}
         expanded: list[dict[str, Any]] = []
         for context in contexts:
             metadata = context.get("metadata") or {}
@@ -391,9 +407,7 @@ class Retriever:
             if not heading_path:
                 expanded.append(context)
                 continue
-            siblings = self.vector_store.get_chunks_by_heading(
-                source=str(source), heading_path=str(heading_path)
-            )
+            siblings = sections.get((str(source), str(heading_path)), [])
             if len(siblings) <= 1:
                 expanded.append(context)
                 continue

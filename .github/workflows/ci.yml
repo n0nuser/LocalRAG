@@ -24,6 +24,9 @@ jobs:
       - name: List and validate contributor tasks
         run: task --list
 
+      - name: Validate dependency lock
+        run: task lock-check
+
       - name: Install dependencies
         run: task install
 
@@ -44,7 +47,7 @@ jobs:
           version: "latest"
 
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
 
       - name: Ruff check
         run: uv run ruff check .
@@ -69,10 +72,10 @@ jobs:
           version: "latest"
 
       - name: Install dependencies
-        run: uv sync --all-extras
+        run: uv sync --locked --all-extras
 
       - name: Run unit and integration tests
-        run: uv run pytest -x -q --cov=localrag --cov-report=xml
+         run: uv run pytest -x -q --cov=localrag --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4

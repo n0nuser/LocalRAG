@@ -112,8 +112,8 @@ def test_ingestion_service_ingest_paths_skips_not_allowed_and_empty_chunks(tmp_p
     assert result.total_chunks > 0
     assert result.processed_sources == [str(allowed_file.resolve())]
 
-    # delete_by_source + add_chunks should only run for the successful ingest.
-    assert vector_store.deleted_sources == [str(allowed_file.resolve())]
+    # Replacement uses an upsert-before-delete transaction at the vector-store boundary.
+    assert vector_store.deleted_sources == []
     assert len(vector_store.added) == 1
 
     added = vector_store.added[0]
@@ -154,7 +154,7 @@ def test_ingestion_cache_hit_still_rebuilds_source_metadata_and_upserts(tmp_path
     service.ingest_file(path)
 
     assert embedder.calls == 1
-    assert vector_store.deleted_sources == [str(path.resolve()), str(path.resolve())]
+    assert vector_store.deleted_sources == []
     assert len(vector_store.added) == 2
     assert vector_store.added[1]["metadatas"][0]["source"] == str(path.resolve())  # type: ignore[index]
 

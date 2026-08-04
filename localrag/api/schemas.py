@@ -204,27 +204,15 @@ class IngestJobStatusResponse(BaseModel):
 
 
 class HealthResponse(BaseModel):
-    status: str = Field(
-        description="Overall API process status.",
-        examples=["ok"],
-    )
-    ollama_ok: bool = Field(
-        description=(
-            "Whether the Ollama HTTP API responded successfully to `GET /api/tags` "
-            "within the health timeout."
-        ),
-        examples=[True],
-    )
-    chroma_path: str = Field(
-        description="Configured Chroma persist directory (`CHROMA_PERSIST_PATH`).",
-        examples=["./data/chroma"],
-    )
-    collections: list[str] = Field(
-        description=(
-            "Collection names reported by the vector store (same process as ingest/query)."
-        ),
-        examples=[["localrag"]],
-    )
+    """Unauthenticated process liveness response; intentionally contains no internals."""
+
+    status: str = Field(description="Overall API process status.", examples=["ok"])
+
+
+class ReadinessResponse(BaseModel):
+    """Dependency readiness response; details stay in logs, not the public payload."""
+
+    status: str = Field(description="Whether required dependencies are ready.", examples=["ok"])
 
 
 class SourceRef(BaseModel):
@@ -247,6 +235,19 @@ class SourceRef(BaseModel):
         ),
         examples=["markdown_section"],
     )
+
+
+class BenchmarkContext(BaseModel):
+    """Retrieved text and stable provenance for the protected evaluator contract."""
+
+    chunk_id: str
+    text: str
+    source: str
+    chunk_index: int
+
+
+class QueryContextsResponse(BaseModel):
+    contexts: list[BenchmarkContext]
 
 
 class QueryResponse(BaseModel):

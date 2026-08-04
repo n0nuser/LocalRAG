@@ -5,7 +5,7 @@ does not import or require telemetry packages, and `OTEL_ENABLED=false` is a
 no-op. Install the optional integration with:
 
 ```bash
-uv sync --extra observability
+uv sync --locked --extra observability
 ```
 
 Set `OTEL_EXPORTER_ENDPOINT` to an OTLP/HTTP collector, such as a local

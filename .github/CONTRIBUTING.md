@@ -33,7 +33,7 @@ tools are installed, and WSL2 is supported when paths are configured for the
 WSL environment.
 
 Run `task --list` for the complete catalog. The common checks are `task install`,
-`task lint`, `task test`, and `task format`. `task test-integration` expects a
+`task lock-check`, `task lint`, `task test`, and `task format`. `task test-integration` expects a
 healthy API stack at `API_URL` and does not start or stop services. Use
 `task docker-up` and `task docker-down` separately; `docker-down` preserves
 named volumes, while `task docker-clean` explicitly removes them. The default
@@ -48,8 +48,12 @@ nonzero; `task format` modifies files, evaluation and reporting tasks may write
 artifacts, and `task inspect` is read-only.
 
 CI runs a non-service Task smoke job covering `task --list`, install, lint,
-tests, and help. Docker health checks and live RAGAS evaluation remain manual;
+lock validation, tests, and help. Docker health checks and live RAGAS evaluation remain manual;
 RAGAS is not triggered automatically.
+
+`uv.lock` is committed. After changing dependency declarations, update it with
+`uv lock`, review the lock diff, and run `uv lock --check`; routine installs use
+`uv sync --locked` and must not rewrite the lock file.
 
 ## Commits
 

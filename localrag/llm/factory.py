@@ -42,6 +42,9 @@ def _build_raw_provider(settings: Settings, backend: str) -> BaseLLMProvider:
             default_model=settings.anthropic_model,
             system_prompt=settings.rag_system_prompt,
         )
+    if backend != "ollama":
+        message = f"Unsupported LLM backend: {backend}"
+        raise ValueError(message)
     return OllamaProvider(
         base_url=settings.ollama_base_url,
         default_model=settings.ollama_llm_model,
