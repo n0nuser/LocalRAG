@@ -92,13 +92,16 @@ def test_snapshot_redacts_secrets_and_host_paths(tmp_path: Path) -> None:
     assert snapshot["chroma_persist_path"] == "<path>"
 
 
-def test_legacy_yaml_alias_warns_and_cross_field_validation_rejects(tmp_path: Path) -> None:
+def test_legacy_yaml_alias_warns_and_cross_field_validation_rejects(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     config = tmp_path / "config.yaml"
     config.write_text("ollama:\n  embed_model: old-model\n", encoding="utf-8")
+    monkeypatch.setenv("OLLAMA_EMBED_MODEL", "environment-model")
 
     with pytest.warns(DeprecationWarning, match="ollama\\.embed_model"):
         settings = load_settings(config)
-    assert settings.ollama_embed_model == "nomic-embed-text"  # existing .env wins
+    assert settings.ollama_embed_model == "environment-model"
 
     with pytest.raises(ValueError, match="chunk_min_chars"):
         load_settings(None, {"chunk_max_chars": 10, "chunk_min_chars": 20})
