@@ -20,6 +20,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from evals.tracking import TrackingSession
+
 MATRIX_SCHEMA_VERSION = 1
 SUPPORTED_DIMENSIONS: dict[str, tuple[Any, ...]] = {
     "provider": ("ollama",),
@@ -223,6 +225,7 @@ def run_matrix(
     *,
     executor: Callable[[ExpandedCase, Path], dict[str, Any]] | None = None,
     dry_run: bool = False,
+    tracker: TrackingSession | None = None,
 ) -> dict[str, Any]:
     """Execute cases in isolated directories and write the canonical manifest."""
     cases = expand_matrix(config)
@@ -249,6 +252,11 @@ def run_matrix(
         "cases": [],
         "artifact_paths": {"matrix": str(matrix_dir)},
     }
+    tracking = tracker or TrackingSession()
+    tracking.start_parent(
+        manifest["run_id"],
+        {"matrix_id": config.matrix_id, "profile": config.profile, "dataset": config.dataset.model_dump()},
+    )
     for case in cases:
         case_dir = matrix_dir / "cases" / case.case_id
         record: dict[str, Any] = {
@@ -274,6 +282,7 @@ def run_matrix(
             "resources": {"unit": "unknown"},
             "artifact_paths": {"work": str(case_dir)},
         }
+        tracking.start_case(case.case_id, {"case_id": case.case_id, **case.effective_config})
         if not dry_run:
             case_dir.mkdir(parents=True, exist_ok=True)
             try:
@@ -283,6 +292,11 @@ def run_matrix(
             except Exception as exc:  # failure is a result, not a runner abort
                 record["status"] = "failed"
                 record["error"] = _error(exc)
+        tracking.log_metrics(record.get("metrics", {}))
+        tracking.log_artifacts(
+            [Path(path) for path in record.get("artifact_paths", {}).values() if Path(path).is_file()]
+        )
+        tracking.finish_case(record["status"], record.get("error", {}).get("message"))
         record["finished_at"] = datetime.now(UTC)
         manifest["cases"].append(record)
     manifest["status"] = (
@@ -299,4 +313,7 @@ def run_matrix(
     path = matrix_dir / "manifest.json"
     path.write_text(json.dumps(manifest, default=str, indent=2, sort_keys=True), encoding="utf-8")
     validated = MatrixManifest.model_validate(json.loads(path.read_text(encoding="utf-8")))
+    tracking.log_artifacts([path])
+    tracking.finish_parent(manifest["status"], None)
+    tracking.close()
     return validated.model_dump(mode="json")

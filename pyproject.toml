@@ -44,6 +44,7 @@ localrag = "localrag.cli.app:app"
 
 [project.optional-dependencies]
 rerank = ["sentence-transformers>=3"]
+tracking = ["mlflow>=3.1"]
 
 [dependency-groups]
 dev = [
