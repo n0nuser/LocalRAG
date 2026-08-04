@@ -9,6 +9,30 @@ permissions:
   contents: read
 
 jobs:
+  task-smoke:
+    name: Taskfile smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: arduino/setup-task@v2
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
+
+      - name: List and validate contributor tasks
+        run: task --list
+
+      - name: Install dependencies
+        run: task install
+
+      - name: Run Taskfile lint and tests
+        run: task lint && task test
+
+      - name: Validate help task
+        run: task help
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

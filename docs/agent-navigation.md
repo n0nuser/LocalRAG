@@ -19,6 +19,12 @@ Agents (and humans) move faster when they:
 4. [architecture.md](architecture.md) — layers, data flow, extension points.
 5. The specific file(s) for your task (see table below).
 
+For contributor workflows, read [`Taskfile.yml`](../Taskfile.yml) and the
+Taskfile section in [CONTRIBUTING](../.github/CONTRIBUTING.md). It is the thin
+wrapper contract for `uv`, CLI, test, lint, benchmark, report, and Compose
+commands; its Docker tasks intentionally do not load the host-specific WSL2
+override unless `COMPOSE_OVERRIDE` is supplied.
+
 ## “I’m changing X — open Y”
 
 | Task | Primary locations |
@@ -74,6 +80,7 @@ Agents (and humans) move faster when they:
 | Prompt / answer streaming | `localrag/rag/prompt.py`, `localrag/rag/engine.py` |
 | Human Ollama install (not Python) | [ollama.md](ollama.md) |
 | Human Tesseract install (not Python) | [ocr.md](ocr.md) |
+| Contributor workflow wrappers | `Taskfile.yml`, [CONTRIBUTING](../.github/CONTRIBUTING.md) |
 
 ## Commands (uv)
 
@@ -86,6 +93,7 @@ uv run ruff check .
 ```
 
 Pre-commit and contribution workflow: [`.github/CONTRIBUTING.md`](../.github/CONTRIBUTING.md).
+For portable task commands and their variable contract, use [`Taskfile.yml`](../Taskfile.yml).
 
 ## External dependencies
 
