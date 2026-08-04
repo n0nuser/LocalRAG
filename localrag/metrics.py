@@ -28,3 +28,30 @@ ingested_documents_total = Counter(
     "localrag_ingested_documents_total",
     "Total documents successfully ingested.",
 )
+
+query_failures_total = Counter(
+    "localrag_query_failures_total", "Queries that failed before producing a response."
+)
+provider_failures_total = Counter(
+    "localrag_provider_failures_total", "Provider calls that failed.", labelnames=["provider"]
+)
+cache_operations_total = Counter(
+    "localrag_query_cache_operations_total", "Query cache outcomes.", labelnames=["operation"]
+)
+ingest_failures_total = Counter("localrag_ingest_failures_total", "Sources that failed ingestion.")
+ingest_jobs_total = Counter(
+    "localrag_ingest_jobs_total",
+    "Background ingest jobs by terminal status.",
+    labelnames=["status"],
+)
+
+upload_cleanup_total = Counter(
+    "localrag_upload_cleanup_total",
+    "Uploaded temporary artifacts removed by retention or quota cleanup.",
+    labelnames=["reason"],
+)
+
+audit_log_rotations_total = Counter(
+    "localrag_audit_log_rotations_total",
+    "Audit log files rotated after reaching the configured size limit.",
+)

@@ -130,13 +130,17 @@ def test_retriever_expands_top_hits_to_full_heading_section() -> None:
             }
 
         @staticmethod
-        def get_chunks_by_heading(source: str, heading_path: str) -> list[tuple[int, str]]:
-            assert source == "guide.md"
-            assert heading_path == "Setup"
-            return [
-                (0, "Section intro sentence."),
-                (1, "Second sentence with the install command."),
-            ]
+        def get_chunks_by_headings(
+            headings: list[tuple[str, str]], metadata_filter: dict[str, object] | None = None
+        ) -> dict[tuple[str, str], list[tuple[int, str]]]:
+            assert headings == [("guide.md", "Setup")]
+            assert metadata_filter is None
+            return {
+                ("guide.md", "Setup"): [
+                    (0, "Section intro sentence."),
+                    (1, "Second sentence with the install command."),
+                ]
+            }
 
     retriever = Retriever(
         settings=Settings(),
@@ -150,6 +154,104 @@ def test_retriever_expands_top_hits_to_full_heading_section() -> None:
         "Section intro sentence.\n\nSecond sentence with the install command."
     )
     assert contexts[0]["text"] == "Section intro sentence."
+
+
+def test_retriever_expands_unique_parents_once_and_preserves_missing_hits() -> None:
+    @dataclass
+    class CountingStore:
+        bulk_calls: list[tuple[list[tuple[str, str]], dict[str, object] | None]]
+
+        def query(
+            self, embedding: list[float], top_k: int, where: dict[str, object] | None = None
+        ) -> dict[str, object]:
+            _ = (embedding, top_k, where)
+            return {
+                "documents": [["first", "second", "orphan"]],
+                "metadatas": [
+                    [
+                        {"source": "guide.md", "chunk_index": 0, "heading_path": "Setup"},
+                        {"source": "guide.md", "chunk_index": 1, "heading_path": "Setup"},
+                        {"source": "guide.md", "chunk_index": 2, "heading_path": "Missing"},
+                    ]
+                ],
+                "distances": [[0.1, 0.2, 0.3]],
+            }
+
+        def get_chunks_by_headings(
+            self, headings: list[tuple[str, str]], metadata_filter: dict[str, object] | None = None
+        ) -> dict[tuple[str, str], list[tuple[int, str]]]:
+            self.bulk_calls.append((headings, metadata_filter))
+            return {
+                ("guide.md", "Setup"): [(0, "first"), (1, "second")],
+            }
+
+    store = CountingStore(bulk_calls=[])
+    retriever = Retriever(
+        settings=Settings(retrieval_mode="vector"),
+        embedder=StubEmbedder(),  # type: ignore[arg-type]
+        vector_store=store,  # type: ignore[arg-type]
+    )
+
+    contexts = retriever.retrieve("q", n_results=3)
+
+    assert len(store.bulk_calls) == 1
+    assert set(store.bulk_calls[0][0]) == {
+        ("guide.md", "Setup"),
+        ("guide.md", "Missing"),
+    }
+    assert [(context["text"], context["chunk_index"]) for context in contexts] == [
+        ("first", 0),
+        ("second", 1),
+        ("orphan", 2),
+    ]
+    assert contexts[0]["expanded_text"] == "first\n\nsecond"
+    assert "expanded_text" not in contexts[2]
+
+
+def test_retriever_passes_filter_to_parent_expansion_and_filters_siblings() -> None:
+    @dataclass
+    class FilteredStore:
+        filters: list[dict[str, object] | None]
+
+        def query(
+            self, embedding: list[float], top_k: int, where: dict[str, object] | None = None
+        ) -> dict[str, object]:
+            _ = (embedding, top_k)
+            assert where == {"tenant_id": "team-a"}
+            return {
+                "documents": [["team-a match"]],
+                "metadatas": [
+                    [
+                        {
+                            "source": "guide.md",
+                            "chunk_index": 1,
+                            "heading_path": "Setup",
+                            "tenant_id": "team-a",
+                        }
+                    ]
+                ],
+                "distances": [[0.1]],
+            }
+
+        def get_chunks_by_headings(
+            self, headings: list[tuple[str, str]], metadata_filter: dict[str, object] | None = None
+        ) -> dict[tuple[str, str], list[tuple[int, str]]]:
+            _ = headings
+            self.filters.append(metadata_filter)
+            assert metadata_filter == {"tenant_id": "team-a"}
+            return {("guide.md", "Setup"): [(1, "team-a match"), (2, "team-a sibling")]}
+
+    store = FilteredStore(filters=[])
+    retriever = Retriever(
+        settings=Settings(retrieval_mode="vector"),
+        embedder=StubEmbedder(),  # type: ignore[arg-type]
+        vector_store=store,  # type: ignore[arg-type]
+    )
+
+    contexts = retriever.retrieve("q", metadata_filter={"tenant_id": "team-a"})
+
+    assert store.filters == [{"tenant_id": "team-a"}]
+    assert contexts[0]["expanded_text"] == "team-a match\n\nteam-a sibling"
 
 
 def test_retriever_applies_reranker_over_widened_candidate_pool() -> None:

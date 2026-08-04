@@ -47,7 +47,12 @@ tasks:
   install:
     desc: Install locked application and development dependencies
     cmds:
-      - '{{.UV}} sync'
+      - '{{.UV}} sync --locked'
+
+  lock-check:
+    desc: Verify that uv.lock matches the project metadata
+    cmds:
+      - '{{.UV}} lock --check'
 
   sync:
     desc: Alias for install

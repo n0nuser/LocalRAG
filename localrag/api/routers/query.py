@@ -5,7 +5,7 @@ from sse_starlette import EventSourceResponse
 
 from localrag.api import service as api_service
 from localrag.api.dependencies import get_engine, get_query_cache, require_api_key
-from localrag.api.schemas import QueryRequest, QueryResponse
+from localrag.api.schemas import QueryContextsResponse, QueryRequest, QueryResponse
 from localrag.rag.engine import RAGEngine
 from localrag.rag.query_cache import QueryCache
 
@@ -20,6 +20,27 @@ def query(
 ) -> QueryResponse:
     """Retrieve context and return a complete JSON response with answer, sources, and latency."""
     return api_service.query_json(request, engine, query_cache)
+
+
+@router.post("/query/contexts", response_model=QueryContextsResponse)
+def query_contexts(
+    request: QueryRequest,
+    engine: RAGEngine = Depends(get_engine),
+) -> QueryContextsResponse:
+    """Return raw contexts only for authenticated benchmark clients."""
+    contexts = api_service.get_query_contexts(request, engine)
+    payload = []
+    for context in contexts:
+        metadata = context.get("metadata") or {}
+        payload.append(
+            {
+                "chunk_id": str(metadata.get("chunk_id", "")),
+                "text": str(context.get("expanded_text") or context.get("text", "")),
+                "source": str(context.get("source", "unknown")),
+                "chunk_index": int(context.get("chunk_index", -1)),
+            }
+        )
+    return QueryContextsResponse(contexts=payload)
 
 
 @router.post("/query/stream", summary="Query (SSE stream)")

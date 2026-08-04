@@ -23,7 +23,7 @@ Make reranking an optional, off-by-default final step:
 - Reranking runs on the raw candidate list, strictly before freshness decay
   (ADR 006) and parent-section expansion — it is the last relevance-ordering
   step; freshness/expansion apply to the reranked, already-trimmed result.
-- `sentence-transformers` is an optional dependency (`uv sync --extra
+- `sentence-transformers` is an optional dependency (`uv sync --locked --extra
   rerank`); nothing imports it unless the feature is enabled, keeping the
   default install lightweight.
 

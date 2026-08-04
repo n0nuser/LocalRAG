@@ -42,7 +42,7 @@ class StubIngestionService:
 
 
 @respx.mock
-def test_health_success_and_collections_endpoints(tmp_path: Path) -> None:
+def test_readiness_success_and_collections_endpoints(tmp_path: Path) -> None:
     base_url = "http://ollama:11434"
     settings = Settings(ollama_base_url=base_url, chroma_persist_path=str(tmp_path))
     repo = StubCollectionRepo(names=["col-1", "col-2"], deleted=[])
@@ -55,10 +55,9 @@ def test_health_success_and_collections_endpoints(tmp_path: Path) -> None:
         return_value=httpx.Response(200, json={"models": [{"name": "m"}]}),
     )
 
-    health = client.get("/health")
+    health = client.get("/ready")
     assert health.status_code == 200
-    assert health.json()["ollama_ok"] is True
-    assert health.json()["collections"] == ["col-1", "col-2"]
+    assert health.json() == {"status": "ok"}
 
     collections = client.get("/collections")
     assert collections.status_code == 200
@@ -77,7 +76,7 @@ def test_health_success_and_collections_endpoints(tmp_path: Path) -> None:
 
 
 @respx.mock
-def test_health_marks_ollama_unreachable_on_http_error() -> None:
+def test_readiness_marks_ollama_unreachable_on_http_error() -> None:
     base_url = "http://ollama:11434"
     settings = Settings(ollama_base_url=base_url, chroma_persist_path="./data/chroma")
     repo = StubCollectionRepo(names=["col"], deleted=[])
@@ -88,15 +87,15 @@ def test_health_marks_ollama_unreachable_on_http_error() -> None:
 
     respx.get(f"{base_url}/api/tags").mock(return_value=httpx.Response(500, json={"x": 1}))
 
-    health = client.get("/health")
-    assert health.status_code == 200
-    assert health.json()["ollama_ok"] is False
+    health = client.get("/ready")
+    assert health.status_code == 503
+    assert health.json() == {"status": "unavailable"}
 
     app.dependency_overrides.clear()
 
 
 @respx.mock
-def test_health_marks_ollama_unreachable_on_invalid_response() -> None:
+def test_readiness_marks_ollama_unreachable_on_invalid_response() -> None:
     base_url = "http://ollama:11434"
     settings = Settings(ollama_base_url=base_url, chroma_persist_path="./data/chroma")
     repo = StubCollectionRepo(names=["col"], deleted=[])
@@ -107,9 +106,9 @@ def test_health_marks_ollama_unreachable_on_invalid_response() -> None:
 
     respx.get(f"{base_url}/api/tags").mock(return_value=httpx.Response(200, json={"wrong": True}))
 
-    health = client.get("/health")
-    assert health.status_code == 200
-    assert health.json()["ollama_ok"] is False
+    health = client.get("/ready")
+    assert health.status_code == 503
+    assert health.json() == {"status": "unavailable"}
 
     app.dependency_overrides.clear()
 
