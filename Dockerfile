@@ -39,3 +39,5 @@ FROM app AS benchmark
 COPY --chown=localrag:localrag evals /app/evals
 COPY --chown=localrag:localrag scripts /app/scripts
 COPY --chown=localrag:localrag docker /app/docker
+RUN mkdir -p /app/evals/results/docker/matrices \
+    && chown -R localrag:localrag /app/evals/results
