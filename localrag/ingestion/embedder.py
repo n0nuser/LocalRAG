@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 import httpx
 
+from localrag.embedding.base import (
+    EmbeddingResponseError,
+    EmbeddingTransportError,
+    validate_vectors,
+)
 from localrag.ollama.schemas import (
     OllamaEmbedRequest,
     OllamaEmbedResponse,
@@ -19,17 +25,25 @@ class OllamaEmbedder:
     base_url: str
     model: str
     timeout_seconds: float = 120.0
+    provider_name: str = "ollama"
+    dimension: int | None = None
 
-    def embed_text(self, text: str, *, model: str | None = None) -> list[float]:
-        rows = self._embed_inputs([text], model=model)
+    def embed(self, text: str, *, model: str | None = None) -> list[float]:
+        rows = self.embed_batch([text], model=model)
         return rows[0]
 
-    def embed_texts(
-        self, texts: list[str], batch_size: int, *, model: str | None = None
+    def embed_batch(
+        self,
+        texts: Sequence[str],
+        *,
+        batch_size: int | None = None,
+        model: str | None = None,
     ) -> list[list[float]]:
         if not texts:
             return []
-        safe_batch_size = max(1, batch_size)
+        if batch_size is not None and batch_size < 1:
+            raise EmbeddingResponseError("batch_size must be positive")
+        safe_batch_size = batch_size or len(texts)
         out: list[list[float]] = []
         logger.debug(
             "ollama_embed_batch total_texts=%s batch_size=%s",
@@ -38,8 +52,17 @@ class OllamaEmbedder:
         )
         for start in range(0, len(texts), safe_batch_size):
             batch = texts[start : start + safe_batch_size]
-            out.extend(self._embed_inputs(batch, model=model))
+            out.extend(self._embed_inputs(list(batch), model=model))
         return out
+
+    # Compatibility aliases for callers from before the provider contract.
+    def embed_text(self, text: str, *, model: str | None = None) -> list[float]:
+        return self.embed(text, model=model)
+
+    def embed_texts(
+        self, texts: list[str], batch_size: int, *, model: str | None = None
+    ) -> list[list[float]]:
+        return self.embed_batch(texts, batch_size=batch_size, model=model)
 
     def _embed_inputs(self, inputs: list[str], *, model: str | None = None) -> list[list[float]]:
         effective_model = model if model is not None else self.model
@@ -65,13 +88,15 @@ class OllamaEmbedder:
                 self.base_url,
                 exc,
             )
-            raise
+            message = f"Ollama embedding request failed for model {effective_model}"
+            raise EmbeddingTransportError(message) from exc
 
         try:
             body = parse_ollama_json(response.json(), OllamaEmbedResponse)
-        except ValueError as exc:
+        except (ValueError, TypeError) as exc:
             logger.error("ollama_embed_invalid_response model=%s error=%s", effective_model, exc)
-            raise
+            message = f"Ollama returned an invalid embedding response for model {effective_model}"
+            raise EmbeddingResponseError(message) from exc
 
         if len(body.embeddings) != len(inputs):
             logger.error(
@@ -80,23 +105,17 @@ class OllamaEmbedder:
                 len(inputs),
                 len(body.embeddings),
             )
-            raise ValueError(
+            raise EmbeddingResponseError(
                 "Ollama returned a different number of embeddings than inputs; "
                 "check OLLAMA_EMBED_MODEL and server version."
             )
 
-        result: list[list[float]] = []
-        for index, row in enumerate(body.embeddings):
-            vector = [float(value) for value in row]
-            if not vector:
-                logger.error(
-                    "ollama_embed_empty_vector model=%s embedding_index=%s",
-                    effective_model,
-                    index,
-                )
-                raise ValueError(
-                    "Ollama returned an empty embedding vector; "
-                    "check OLLAMA_EMBED_MODEL, OLLAMA_BASE_URL, and that the model is pulled."
-                )
-            result.append(vector)
+        result = validate_vectors(
+            body.embeddings, provider=self.provider_name, model=effective_model
+        )
+        self.dimension = len(result[0]) if result else self.dimension
         return result
+
+    def close(self) -> None:
+        """Release provider resources (Ollama uses per-call clients)."""
+        return

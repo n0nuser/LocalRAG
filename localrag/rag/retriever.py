@@ -8,7 +8,7 @@ from typing import Any
 
 import httpx
 
-from localrag.ingestion.embedder import OllamaEmbedder
+from localrag.embedding.base import EmbeddingError, EmbeddingProvider
 from localrag.rag.bm25_index import Bm25Index
 from localrag.rag.exceptions import RetrievalError
 from localrag.rag.query_rewrite import rewrite_query
@@ -39,7 +39,7 @@ def _matches_filter(metadata: dict[str, Any], metadata_filter: dict[str, Any] | 
 @dataclass
 class Retriever:
     settings: Settings
-    embedder: OllamaEmbedder
+    embedder: EmbeddingProvider
     vector_store: VectorStore
     bm25_index: Bm25Index | None = None
     reranker: CrossEncoderReranker | None = None
@@ -68,20 +68,29 @@ class Retriever:
             "retrieve_embed_question top_k=%s question_chars=%s", top_k, len(search_question)
         )
         try:
-            embedding = self.embedder.embed_text(search_question)
-        except httpx.HTTPError as exc:
+            ensure = getattr(self.vector_store, "ensure_embedding_compatibility", None)
+            if ensure is not None:
+                ensure(self.embedder)
+            embed = getattr(self.embedder, "embed", None)
+            legacy_embedder: Any = self.embedder
+            embedding = (
+                embed(search_question)
+                if embed is not None
+                else legacy_embedder.embed_text(search_question)
+            )
+            if ensure is not None:
+                ensure(self.embedder, len(embedding))
+        except (httpx.HTTPError, EmbeddingError) as exc:
             logger.error(
-                "retrieve_embed_ollama_http_error url=%s error=%s",
-                self.embedder.base_url,
+                "retrieve_embed_provider_error provider=%s model=%s error=%s",
+                getattr(self.embedder, "provider_name", "embedding"),
+                getattr(self.embedder, "model", "unknown"),
                 exc,
             )
             raise RetrievalError(
                 HTTPStatus.BAD_GATEWAY,
                 "Embedding service unavailable.",
             ) from exc
-        except ValueError as exc:
-            logger.error("retrieve_embed_invalid_response error=%s", exc)
-            raise RetrievalError(HTTPStatus.BAD_GATEWAY, str(exc)) from exc
 
         vector_hits = self._retrieve_vector_hits(
             embedding=embedding, top_k=fetch_k, where=metadata_filter

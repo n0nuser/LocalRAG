@@ -109,6 +109,9 @@ class Settings(BaseSettings):
     chunk_max_chars: int = 1200
     chunk_min_chars: int = 200
     embedding_batch_size: int = 32
+    embedding_provider: str = "ollama"
+    embedding_timeout_seconds: float = 120.0
+    sentence_transformers_model: str = "sentence-transformers/all-MiniLM-L6-v2"
 
     ingest_recursive: bool = True
     ingest_roots: list[str] = []
@@ -159,6 +162,11 @@ class Settings(BaseSettings):
 
     # Canonical embedding model alias (maps to ollama_embed_model when backend=ollama).
     embedding_model: str = ""
+
+    @property
+    def effective_embedding_model(self) -> str:
+        """Resolve the new model name while preserving legacy Ollama deployments."""
+        return self.embedding_model.strip() or self.ollama_embed_model
 
     # OpenAI provider settings
     openai_api_key: str = ""

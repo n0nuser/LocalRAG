@@ -44,11 +44,12 @@ Agents (and humans) move faster when they:
 | Parsing a file type | `localrag/ingestion/parsers/`, `localrag/ingestion/loader.py` |
 | PDF OCR (scanned/image-only pages) | `localrag/ingestion/parsers/pdf.py`, `OCR_*` in `localrag/settings.py`, [ocr.md](ocr.md) |
 | Chunking strategy and boundaries | `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/settings.py` |
-| Embeddings / Ollama HTTP for embed | `localrag/ingestion/embedder.py` |
+| Embeddings / provider contract and factory | `localrag/embedding/`, `localrag/ingestion/embedder.py` |
 | Ingest orchestration | `localrag/ingestion/service.py` |
 | Chroma collection / persist path | `localrag/storage/vector_store.py`, settings |
 | Retrieval mode / hybrid ranking / freshness decay | `localrag/rag/retriever.py`, `localrag/rag/bm25_index.py`, `localrag/settings.py` |
 | Ollama HTTP request/response shapes | `localrag/ollama/schemas.py` (used by embedder, RAG engine, health, setup) |
+| Embedding collection compatibility | `localrag/storage/vector_store.py`, [ADR 019](adr/019-embedding-provider-contract.md), embedding settings in `localrag/settings.py` |
 | Generation sampling (temperature/seed) | `localrag/ollama/schemas.py` (`OllamaChatOptions`), `localrag/llm/providers/ollama.py`, `LLM_TEMPERATURE` / `LLM_SEED` in `localrag/settings.py` |
 | Eval suite / metric contracts / bounded RAGAS scoring | `evals/metrics.py`, `evals/concurrency.py`, `evals/run_evals.py`, `evals/results/schema.py`, `docs/evaluation-metrics.md`, `localrag/cli/commands/eval.py` |
 | Eval reproducibility (seed, run metadata) | `evals/environment.py`, `evals/run_evals.py`, [reproducibility.md](reproducibility.md) |

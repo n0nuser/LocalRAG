@@ -7,9 +7,10 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
+from localrag.embedding.base import EmbeddingProvider
 from localrag.ingestion.chunker import chunk_text
-from localrag.ingestion.embedder import OllamaEmbedder
 from localrag.ingestion.loader import list_supported_files, parse_file
 from localrag.ingestion.structural_chunker import Chunk, chunk_document
 from localrag.rag.bm25_index import Bm25Index
@@ -50,7 +51,7 @@ class RebuildCollectionResult:
 @dataclass
 class IngestionService:
     settings: Settings
-    embedder: OllamaEmbedder
+    embedder: EmbeddingProvider
     vector_store: VectorStore
     bm25_index: Bm25Index | None = None
 
@@ -210,11 +211,26 @@ class IngestionService:
         source = str(resolved_path)
         logger.debug("ingest_embed_start path=%s chunk_count=%s", resolved_path, len(chunks))
 
-        embeddings = self.embedder.embed_texts(
-            chunks,
-            self.settings.embedding_batch_size,
-            model=embed_model,
-        )
+        ensure = getattr(self.vector_store, "ensure_embedding_compatibility", None)
+        if ensure is not None:
+            ensure(self.embedder, model=embed_model)
+
+        embed_batch = getattr(self.embedder, "embed_batch", None)
+        if embed_batch is not None:
+            embeddings = embed_batch(
+                chunks,
+                batch_size=self.settings.embedding_batch_size,
+                model=embed_model,
+            )
+        else:
+            # Keep third-party integrations written against the pre-provider seam working.
+            legacy_embedder: Any = self.embedder
+            embeddings = legacy_embedder.embed_texts(
+                chunks, self.settings.embedding_batch_size, model=embed_model
+            )
+        record = getattr(self.vector_store, "record_embedding_compatibility", None)
+        if record is not None:
+            record(self.embedder, len(embeddings[0]), model=embed_model)
         # Only drop the old vectors once the new embeddings are in hand, so a failed
         # embed call leaves the previous (still valid) vectors for this source in place.
         self.vector_store.delete_by_source(source)
