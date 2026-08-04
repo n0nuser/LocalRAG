@@ -1,0 +1,19 @@
+{
+  "dataset_id": "localrag-raptor-fixture",
+  "version": "1",
+  "embedding_model": "deterministic-fixture-2d-v1",
+  "summarizer_model": "fake-summary-v1",
+  "chunks": [
+    {"source_id": "alpha", "chunk_id": "alpha-0", "text": "alpha vector retrieval", "embedding": [1.0, 0.0]},
+    {"source_id": "alpha", "chunk_id": "alpha-1", "text": "alpha source provenance", "embedding": [1.0, 0.0]},
+    {"source_id": "beta", "chunk_id": "beta-0", "text": "beta tree summaries", "embedding": [0.0, 1.0]},
+    {"source_id": "beta", "chunk_id": "beta-1", "text": "beta context budget", "embedding": [0.0, 1.0]},
+    {"source_id": "gamma", "chunk_id": "gamma-0", "text": "gamma flat fallback", "embedding": [0.7, 0.7]},
+    {"source_id": "gamma", "chunk_id": "gamma-1", "text": "gamma citation serialization", "embedding": [0.7, 0.7]}
+  ],
+  "queries": [
+    {"id": "q-alpha", "text": "alpha", "embedding": [1.0, 0.0], "relevant_source_id": "alpha"},
+    {"id": "q-beta", "text": "beta", "embedding": [0.0, 1.0], "relevant_source_id": "beta"},
+    {"id": "q-gamma", "text": "gamma", "embedding": [0.7, 0.7], "relevant_source_id": "gamma"}
+  ]
+}

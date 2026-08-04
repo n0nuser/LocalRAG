@@ -1,0 +1,67 @@
+{
+  "dataset": {
+    "dataset_id": "localrag-raptor-fixture",
+    "version": "1"
+  },
+  "metrics": [
+    {
+      "descriptor": {
+        "direction": "higher_is_better",
+        "name": "source_recall_at_3"
+      },
+      "value": 1.0
+    },
+    {
+      "descriptor": {
+        "direction": "lower_is_better",
+        "name": "artifact_bytes",
+        "unit": "bytes"
+      },
+      "value": 7187
+    }
+  ],
+  "provenance": {
+    "build_seconds": 0.0006327479932224378,
+    "cold_start": "not measured: dependency-free fixture process startup dominates",
+    "config": {
+      "cluster_count": 2,
+      "clustering": "deterministic_hash_partition",
+      "context_max_chars": 2400,
+      "level_weights": [
+        1.0,
+        0.85,
+        0.7
+      ],
+      "max_levels": 4,
+      "minimum_cluster_size": 2,
+      "prompt_version": "raptor-summary-v1",
+      "reduction_factor": 2,
+      "seed": 42,
+      "summary_max_chars": 800
+    },
+    "embedding_model": "deterministic-fixture-2d-v1",
+    "experiment": "issue-68-raptor-fixture",
+    "fixture_sha256": "262fc60971863a283e194c90b377a8919fa2237fa1d7a6d29d4e258d4e1e5dcd",
+    "hardware": {
+      "platform": "Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+      "python": "3.13.13"
+    },
+    "llm_calls": 2,
+    "measurement_repetitions": 20,
+    "peak_python_bytes": 8119,
+    "summarizer_model": "fake-summary-v1",
+    "summary_failures": 0,
+    "warm_query_p50_ms": 0.008235991117544472,
+    "warm_query_p95_ms": 0.01146200520452112,
+    "warmup_repetitions": 0
+  },
+  "run_id": "raptor-fixture-v1",
+  "schema_version": 1,
+  "selected_ids": [
+    "q-alpha",
+    "q-beta",
+    "q-gamma"
+  ],
+  "status": "complete",
+  "timestamp": "2026-08-04T15:59:52.581621+00:00"
+}
