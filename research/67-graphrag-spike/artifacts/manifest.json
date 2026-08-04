@@ -1,0 +1,17 @@
+{
+  "artifact_paths": {
+    "artifact": "research/67-graphrag-spike/artifacts/artifact.json",
+    "result": "research/67-graphrag-spike/artifacts/result.json"
+  },
+  "dataset": {
+    "dataset_id": "localrag-graphrag-fixture",
+    "version": "1.0.0"
+  },
+  "matrix_id": "graphrag-fixture",
+  "mode": "fixture-offline",
+  "profile": "fixture",
+  "run_id": "graphrag-fixture-v1",
+  "schema_version": 1,
+  "seed": 42,
+  "status": "complete"
+}

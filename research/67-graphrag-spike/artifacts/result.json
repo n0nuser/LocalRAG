@@ -1,0 +1,54 @@
+{
+  "dataset": {
+    "dataset_id": "localrag-graphrag-fixture",
+    "version": "1.0.0"
+  },
+  "metrics": [
+    {
+      "descriptor": {
+        "direction": "higher_is_better",
+        "name": "citation_recall_at_3"
+      },
+      "value": 1.0
+    },
+    {
+      "descriptor": {
+        "direction": "lower_is_better",
+        "name": "artifact_bytes",
+        "unit": "bytes"
+      },
+      "value": 2840
+    }
+  ],
+  "provenance": {
+    "build_seconds": 0.0007713450031587854,
+    "config": {
+      "context_max_chars": 2400,
+      "max_chars_per_chunk": 4000,
+      "max_hops": 2,
+      "max_neighbors": 20,
+      "prompt_version": "graph-extraction-v1"
+    },
+    "embedding_model": "fixture-hash-embedding-v1",
+    "experiment": "issue-67-graphrag-fixture",
+    "extraction_failures": 0,
+    "extractor_model": "fixture-structured-extractor-v1",
+    "fixture_sha256": "f8835e130aef39333cdea850a149157b9e0a9cb473938239decd93a4125c4fe5",
+    "hardware": {
+      "platform": "Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+      "python": "3.13.13"
+    },
+    "measurement_repetitions": 20,
+    "peak_python_bytes": 15005,
+    "warm_query_p50_ms": 0.002457498339936137,
+    "warm_query_p95_ms": 0.004928006092086434
+  },
+  "run_id": "graphrag-fixture-v1",
+  "schema_version": 1,
+  "selected_ids": [
+    "q-1",
+    "q-2"
+  ],
+  "status": "complete",
+  "timestamp": "2026-08-04T16:05:45.290899+00:00"
+}
