@@ -359,6 +359,7 @@ See [docs/agent-navigation.md](docs/agent-navigation.md) for codebase navigation
 
 ## Documentation
 
+- [ROADMAP.md](ROADMAP.md) — project phases, milestone outcomes, and contributor guidance
 - [docs/ollama.md](docs/ollama.md) — Installing Ollama
 - [docs/architecture.md](docs/architecture.md) — Architecture deep-dive
 - [docs/agent-navigation.md](docs/agent-navigation.md) — Fast codebase orientation for agents
