@@ -96,6 +96,7 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
             "cache_task_prefix": "embedding_cache_task_prefix",
         },
         "retrieval": {
+            "plugin": "retriever_plugin",
             "top_k": "rag_top_k",
             "min_context_score": "rag_min_context_score",
             "mode": "retrieval_mode",
@@ -358,6 +359,7 @@ class Settings(BaseSettings):
     ocr_min_chars_per_page: int = 20
 
     rag_top_k: int = 5
+    retriever_plugin: str = "builtin"
     rag_min_context_score: float = 0.0
     retrieval_mode: str = "hybrid"
     bm25_weight: float = 0.5

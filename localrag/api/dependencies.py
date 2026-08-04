@@ -13,6 +13,7 @@ from localrag.embedding.cache import EmbeddingCache
 from localrag.embedding.factory import build_embedding_provider
 from localrag.ingestion.service import IngestionService
 from localrag.llm.factory import build_provider
+from localrag.plugins.retriever import ManagedRetriever, discover_retriever_plugins
 from localrag.rag.bm25_index import Bm25Index
 from localrag.rag.engine import RAGEngine
 from localrag.rag.query_cache import QueryCache
@@ -50,13 +51,8 @@ def get_reranker() -> CrossEncoderReranker | None:
 @lru_cache(maxsize=1)
 def get_retriever() -> Retriever:
     settings = get_settings()
-    return Retriever(
-        settings=settings,
-        embedder=get_embedder(),
-        vector_store=get_vector_store(),
-        bm25_index=get_bm25_index(),
-        reranker=get_reranker(),
-    )
+    registry = discover_retriever_plugins()
+    return ManagedRetriever(registry, registry.create(settings.retriever_plugin, settings))  # type: ignore[return-value]
 
 
 @lru_cache(maxsize=1)

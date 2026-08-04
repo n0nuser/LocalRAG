@@ -7,6 +7,7 @@ embedding:
   cache_path: ./data/embedding-cache
 
 retrieval:
+  plugin: builtin
   mode: hybrid
   top_k: 5
 

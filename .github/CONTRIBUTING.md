@@ -29,6 +29,14 @@ The project uses the [Conventional Commits](https://www.conventionalcommits.org/
 
 Each commit message should be conceptually unique and should be able to be understood by itself. It should only contain changes related to the name of the commit. If you need to make a commit with multiple changes that are independent (conceptually), you should split it into multiple commits.
 
+## Retriever Plugins
+
+Retriever extensions use only the documented `localrag.retrievers` Python
+package entry-point group. Read [the plugin author guide](../docs/plugin-author-guide.md)
+before publishing a plugin. Plugin code is trusted in-process code; explicitly
+install and pin plugin distributions, keep optional dependencies in those
+distributions, and do not add arbitrary module-path or network discovery.
+
 ## Pull request process
 
 1. **Update `main` locally:** `git checkout main && git pull origin main`.

@@ -51,6 +51,7 @@ Agents (and humans) move faster when they:
 | Ingest orchestration | `localrag/ingestion/service.py` |
 | Chroma collection / persist path | `localrag/storage/vector_store.py`, settings |
 | Retrieval mode / hybrid ranking / freshness decay / HyDE experiment | `localrag/rag/retriever.py`, `localrag/rag/hyde.py`, `localrag/rag/bm25_index.py`, `localrag/settings.py`, [ADR 025](adr/025-hyde-retrieval-experiment.md) |
+| Retriever plugin contract / discovery | `localrag/plugins/retriever.py`, [plugin-author-guide.md](plugin-author-guide.md), [ADR 032](adr/032-retriever-plugin-contract.md) |
 | Bounded adaptive retrieval policy / trace | `localrag/rag/adaptive.py`, `localrag/rag/engine.py`, adaptive settings, [ADR 023](adr/023-bounded-adaptive-retrieval.md) |
 | Context compression contract and budgets | `localrag/rag/compressor.py`, `localrag/rag/engine.py`, `localrag/settings.py`, `docs/adr/022-context-compression-contract.md` |
 | Ollama HTTP request/response shapes | `localrag/ollama/schemas.py` (used by embedder, RAG engine, health, setup) |

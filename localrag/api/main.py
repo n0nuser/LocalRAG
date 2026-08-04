@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from localrag.api.dependencies import get_embedder
+from localrag.api.dependencies import get_embedder, get_retriever
 from localrag.api.exceptions import HttpMappedError
 from localrag.api.middleware import RequestContextMiddleware
 from localrag.api.routers.agent import router as agent_router
@@ -36,6 +36,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     finally:
         if get_embedder.cache_info().currsize:
             get_embedder().close()
+        if get_retriever.cache_info().currsize:
+            get_retriever().close()  # type: ignore[attr-defined]
         shutdown_tracing()
         logger.info("api_shutdown")
 
