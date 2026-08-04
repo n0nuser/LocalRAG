@@ -64,6 +64,16 @@ Set `FRESHNESS_HALF_LIFE_DAYS=0` or `FRESHNESS_WEIGHT=0` to disable recency.
 
 ## Chunk overlap
 
+Ingestion uses one `Chunk` contract for fixed, structural, and recursive
+strategies. It records deterministic `chunk_id` metadata, source order,
+provenance, and existing structural metadata. Offsets are intentionally absent
+because current strategies normalize whitespace or repack blocks. Empty input
+produces no chunks; oversized atomic input is retained with an `oversized`
+marker. See [ADR 021](adr/021-chunking-strategy-contract.md). Recursive is the
+first additional strategy; semantic, sentence-window, and parent-child modes
+remain follow-up work. The latter must not be confused with the existing
+retrieval-time parent-section expansion below.
+
 `CHUNK_OVERLAP_CHARS` (default 150, ~12.5% of `CHUNK_MAX_CHARS=1200`) only applies
 where `localrag/ingestion/structural_chunker.py::_split_long_paragraph` must
 hard-split a single paragraph that exceeds `chunk_max_chars`. Adjacent

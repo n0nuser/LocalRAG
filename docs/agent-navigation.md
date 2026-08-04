@@ -44,7 +44,7 @@ Agents (and humans) move faster when they:
 | Structured configuration | `localrag/settings.py`, `localrag/cli/app.py`, `localrag/api/main.py`, `config.example.yaml` |
 | Parsing a file type | `localrag/ingestion/parsers/`, `localrag/ingestion/loader.py` |
 | PDF OCR (scanned/image-only pages) | `localrag/ingestion/parsers/pdf.py`, `OCR_*` in `localrag/settings.py`, [ocr.md](ocr.md) |
-| Chunking strategy and boundaries | `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/settings.py` |
+| Chunking strategy and boundaries | `localrag/ingestion/contract.py`, `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/ingestion/recursive_chunker.py`, `localrag/settings.py`, `docs/adr/021-chunking-strategy-contract.md` |
 | Embeddings / provider contract and factory | `localrag/embedding/`, `localrag/ingestion/embedder.py` |
 | Ingest orchestration | `localrag/ingestion/service.py` |
 | Chroma collection / persist path | `localrag/storage/vector_store.py`, settings |

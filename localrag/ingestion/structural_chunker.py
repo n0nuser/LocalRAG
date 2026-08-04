@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 
+from localrag.ingestion.contract import Chunk
 from localrag.ingestion.loader import (
     CODE_EXTENSIONS,
     MARKDOWN_EXTENSIONS,
@@ -12,13 +12,6 @@ from localrag.settings import Settings
 
 _HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.*)$")
 _SENTENCE_BOUNDARY_PATTERN = re.compile(r"(?<=[.!?])\s+")
-
-
-@dataclass
-class Chunk:
-    text: str
-    heading_path: str
-    chunk_type: str
 
 
 def chunk_document(text: str, file_type: str, settings: Settings) -> list[Chunk]:
