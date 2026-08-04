@@ -86,3 +86,18 @@ Bug fixes and small hotfixes follow the same flow: branch from `main`, PR to `ma
 ## GitHub Projects
 
 You can use GitHub Projects to manage the project's tasks.
+
+## Roadmap and ADRs
+
+Use [`ROADMAP.md`](../ROADMAP.md) to choose work thematically, but use the
+linked GitHub issue and milestone for live status, scope, and dependencies. The
+roadmap is refreshed when milestone or issue membership changes and at least
+once per release. Validate references with `uv run python
+scripts/validate_roadmap.py`; this check does not run live RAGAS or model
+benchmarks.
+
+Record durable architectural decisions in [`docs/adr/`](../docs/adr/): public
+contracts, persistence or schema boundaries, compatibility/migration policy,
+extension or trust boundaries, and behavior-changing defaults require an ADR.
+Pure experiments need a documented feasibility boundary instead; update
+`docs/agent-navigation.md` when entry points or package boundaries change.
