@@ -38,7 +38,24 @@ def _profile(name: str, dataset_id: str) -> MatrixConfig:
             ),
             dimensions={"embedding_model": ["nomic-embed-text"]},
         )
-    message = f"unknown profile {name!r}; use fixture or embedding-comparison"
+    if name == "hyde":
+        dataset = load_dataset(dataset_id)
+        return MatrixConfig(
+            matrix_id="hyde-retrieval",
+            profile=name,
+            dataset=DatasetReference(
+                dataset_id=dataset_id,
+                dataset_version=dataset.dataset_version,
+                split="smoke",
+                checksum=manifest_checksum(dataset),
+            ),
+            dimensions={
+                "provider": ["ollama"],
+                "retrieval_mode": ["hybrid"],
+                "retrieval_experiment_mode": ["baseline", "rewrite", "hyde", "rewrite+hyde"],
+            },
+        )
+    message = f"unknown profile {name!r}; use fixture, embedding-comparison, or hyde"
     raise typer.BadParameter(message)
 
 

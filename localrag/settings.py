@@ -108,6 +108,15 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
             "query_expansion_enabled": "query_expansion_enabled",
             "query_expansion_max_variants": "query_expansion_max_variants",
             "query_expansion_max_query_chars": "query_expansion_max_query_chars",
+            "experiment_mode": "retrieval_experiment_mode",
+            "hyde_enabled": "hyde_enabled",
+            "hyde_model": "hyde_model",
+            "hyde_timeout_seconds": "hyde_timeout_seconds",
+            "hyde_input_max_chars": "hyde_input_max_chars",
+            "hyde_output_max_chars": "hyde_output_max_chars",
+            "hyde_output_max_tokens": "hyde_output_max_tokens",
+            "hyde_lexical_input": "hyde_lexical_input",
+            "hyde_log_content": "hyde_log_content",
             "candidate_budget": "query_expansion_candidate_budget",
             "rerank_enabled": "rerank_enabled",
             "rerank_model": "rerank_model",
@@ -143,6 +152,7 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
             "retry_max_attempts": "llm_retry_max_attempts",
             "circuit_fail_max": "llm_circuit_fail_max",
             "circuit_reset_timeout_seconds": "llm_circuit_reset_timeout_seconds",
+            "timeout_seconds": "llm_timeout_seconds",
         },
         "dataset": {"roots": "ingest_roots", "recursive": "ingest_recursive"},
         "evaluation": {"seed": "eval_seed"},
@@ -302,6 +312,7 @@ class Settings(BaseSettings):
     # defaults; set them (e.g. 0.0 / any int) to make answers reproducible.
     llm_temperature: float | None = None
     llm_seed: int | None = None
+    llm_timeout_seconds: float = 180.0
 
     chroma_persist_path: str = "./data/chroma"
     chroma_collection_name: str = "localrag"
@@ -352,6 +363,16 @@ class Settings(BaseSettings):
     query_expansion_max_variants: int = 4
     query_expansion_max_query_chars: int = 500
     query_expansion_candidate_budget: int = 40
+    # HyDE is an explicit experiment arm and is disabled by default.
+    retrieval_experiment_mode: str = "auto"
+    hyde_enabled: bool = False
+    hyde_model: str = ""
+    hyde_timeout_seconds: float = 30.0
+    hyde_input_max_chars: int = 2000
+    hyde_output_max_chars: int = 4000
+    hyde_output_max_tokens: int = 512
+    hyde_lexical_input: str = "original"
+    hyde_log_content: bool = False
     rag_system_prompt: str = (
         "You are a helpful assistant. Answer only based on the provided context."
     )
@@ -455,6 +476,24 @@ class Settings(BaseSettings):
             raise ValueError("query_expansion_max_query_chars must be at least 1")
         if self.query_expansion_candidate_budget < 1:
             raise ValueError("query_expansion_candidate_budget must be at least 1")
+        if self.retrieval_experiment_mode not in {
+            "auto",
+            "baseline",
+            "rewrite",
+            "hyde",
+            "rewrite+hyde",
+        }:
+            raise ValueError("retrieval_experiment_mode is invalid")
+        if self.hyde_lexical_input not in {"original", "rewritten"}:
+            raise ValueError("hyde_lexical_input must be 'original' or 'rewritten'")
+        hyde_limits = (
+            self.hyde_timeout_seconds,
+            self.hyde_input_max_chars,
+            self.hyde_output_max_chars,
+            self.hyde_output_max_tokens,
+        )
+        if min(hyde_limits) <= 0:
+            raise ValueError("HyDE limits must be positive")
         if (
             self.adaptive_initial_top_k < 1
             or self.adaptive_escalation_top_k < self.adaptive_initial_top_k

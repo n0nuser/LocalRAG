@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from http import HTTPStatus
 from typing import Any
@@ -11,6 +11,7 @@ import httpx
 from localrag.embedding.base import EmbeddingError, EmbeddingProvider
 from localrag.rag.bm25_index import Bm25Index
 from localrag.rag.exceptions import RetrievalError
+from localrag.rag.hyde import HydeObservation, generate_hypothetical
 from localrag.rag.query_rewrite import expand_query, rewrite_query
 from localrag.rag.reranker import CrossEncoderReranker
 from localrag.settings import Settings
@@ -45,8 +46,9 @@ class Retriever:
     vector_store: VectorStore
     bm25_index: Bm25Index | None = None
     reranker: CrossEncoderReranker | None = None
+    last_hyde: HydeObservation | None = None
 
-    def retrieve(
+    def retrieve(  # noqa: C901, PLR0912, PLR0915
         self,
         question: str,
         n_results: int | None = None,
@@ -60,7 +62,13 @@ class Retriever:
         )
         search_question = question
         rewritten: str | None = None
-        if self.settings.query_rewrite_enabled:
+        mode = self.settings.retrieval_experiment_mode
+        rewrite_enabled = self.settings.query_rewrite_enabled
+        hyde_enabled = self.settings.hyde_enabled
+        if mode != "auto":
+            rewrite_enabled = mode in {"rewrite", "rewrite+hyde"}
+            hyde_enabled = mode in {"hyde", "rewrite+hyde"}
+        if rewrite_enabled:
             search_question = rewrite_query(question, self.settings)
             rewritten = search_question if search_question != question else None
             logger.debug(
@@ -68,8 +76,14 @@ class Retriever:
                 len(question),
                 len(search_question),
             )
+        hyde_settings = self.settings.model_copy(update={"hyde_enabled": hyde_enabled})
+        hypothetical, self.last_hyde = generate_hypothetical(search_question, hyde_settings)
+        lexical_question = question
+        if self.settings.hyde_lexical_input == "rewritten" and rewritten is not None:
+            lexical_question = search_question
         expansion = expand_query(question, search_question, self.settings, rewrite=rewritten)
         variants = expansion.variants
+        dense_queries = (hypothetical,) if hypothetical else variants
         candidate_budget = (
             min(self.settings.query_expansion_candidate_budget, _HARD_MAX_CANDIDATES)
             if self.settings.query_expansion_enabled
@@ -91,10 +105,27 @@ class Retriever:
                 ensure(self.embedder)
             embed = getattr(self.embedder, "embed", None)
             legacy_embedder: Any = self.embedder
-            for variant in variants:
-                embedding = (
-                    embed(variant) if embed is not None else legacy_embedder.embed_text(variant)
-                )
+            for variant in dense_queries:
+                try:
+                    embedding = (
+                        embed(variant) if embed is not None else legacy_embedder.embed_text(variant)
+                    )
+                except (httpx.HTTPError, EmbeddingError):
+                    if hypothetical is None or variant != hypothetical:
+                        raise
+                    fallback_query = search_question
+                    embedding = (
+                        embed(fallback_query)
+                        if embed is not None
+                        else legacy_embedder.embed_text(fallback_query)
+                    )
+                    if self.last_hyde is not None:
+                        self.last_hyde = replace(
+                            self.last_hyde,
+                            mode="fallback",
+                            status="fallback",
+                            fallback_reason="embedding_failure",
+                        )
                 if ensure is not None:
                     ensure(self.embedder, len(embedding))
                 vector_lists.append(
@@ -121,7 +152,8 @@ class Retriever:
                     vector_lists, [1.0 / len(vector_lists)] * len(vector_lists), per_variant_k
                 )
         else:
-            for variant in variants:
+            bm25_queries = variants if not hypothetical else (lexical_question,)
+            for variant in bm25_queries:
                 bm25_lists.append(
                     [
                         {
@@ -137,9 +169,11 @@ class Retriever:
                     ]
                 )
             lists = vector_lists + bm25_lists
-            weights = [(1.0 - self.settings.bm25_weight) / len(variants)] * len(variants) + [
-                self.settings.bm25_weight / len(variants)
-            ] * len(variants)
+            dense_count = len(dense_queries)
+            bm25_count = len(bm25_queries)
+            weights = [(1.0 - self.settings.bm25_weight) / dense_count] * dense_count + [
+                self.settings.bm25_weight / bm25_count
+            ] * bm25_count
             candidates = self._fuse_rank_lists(lists, weights, per_variant_k)
             fused = True
 

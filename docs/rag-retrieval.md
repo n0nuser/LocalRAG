@@ -221,9 +221,35 @@ rank lists are passed explicitly to weighted RRF. A hit is identified by
 `source + chunk_index`, duplicate hits retain their first provenance, and ties
 are deterministic. Metadata filters apply to every variant's vector/BM25
 search. Cross-variant fusion happens before the existing original-question
-reranker, freshness handling, and parent-section expansion. Synonym maps and
-HyDE remain follow-up work; evaluation remains the existing RAGAS/manual-only
-workflow.
+reranker, freshness handling, and parent-section expansion. Synonym maps remain
+follow-up work; evaluation remains the existing RAGAS/manual-only workflow.
+
+## HyDE experiment (optional)
+
+HyDE is disabled by default (`HYDE_ENABLED=false`). Use the explicit
+`RETRIEVAL_EXPERIMENT_MODE` arms `baseline`, `rewrite`, `hyde`, and `rewrite+hyde`
+for comparisons; `auto` preserves the existing boolean settings. The `rewrite+hyde`
+order is one rewrite call followed by one hypothetical-document call. The generated
+passage is embedded for dense retrieval only. BM25 uses the original question by
+default (`HYDE_LEXICAL_INPUT=original`) to avoid generated-term drift; selecting the
+rewritten lexical input is an explicit measured experiment.
+
+HyDE calls only Ollama, uses bounded prompt/output/token limits, and inherits the
+configured temperature and seed. Unsupported providers, timeouts, provider errors,
+empty/malformed output, and embedding errors fall back to the non-HyDE path. Typed
+trace metadata reports the arm, provider/model, latency, status, and fallback reason;
+raw hypothetical text is excluded by default. Retrieval then follows the existing
+metadata filter, RRF fusion, reranking, freshness, parent expansion, and compression
+order. The original question remains the answer and reranker input.
+
+Run the small reproducible #73 smoke profile manually with a fixed seed:
+
+```bash
+uv run localrag benchmark --profile hyde --dataset localrag-core --seed 42
+```
+
+Report retrieval quality and generation/retrieval latency separately. This profile
+makes no broad quality claim and does not alter the RAGAS/manual-only workflow.
 
 ## Tenant tagging (optional)
 

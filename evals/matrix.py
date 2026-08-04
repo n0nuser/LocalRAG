@@ -28,6 +28,7 @@ SUPPORTED_DIMENSIONS: dict[str, tuple[Any, ...]] = {
     "embedding_model": ("nomic-embed-text",),
     "generation_model": ("gemma3:4b",),
     "retrieval_mode": ("hybrid", "vector"),
+    "retrieval_experiment_mode": ("baseline", "rewrite", "hyde", "rewrite+hyde"),
     "chunking_mode": ("fixed", "structural"),
     "rerank_enabled": (False,),
     "context_window": ("default",),
@@ -203,11 +204,15 @@ def _git_provenance() -> tuple[str, bool]:
     root = Path(__file__).parent.parent
     try:
         revision = subprocess.run(
-            ["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True, check=True
+            ["git", "rev-parse", "HEAD"],  # noqa: S607
+            cwd=root,
+            capture_output=True,
+            text=True,
+            check=True,
         ).stdout.strip()
         dirty = bool(
             subprocess.run(
-                ["git", "status", "--porcelain"],
+                ["git", "status", "--porcelain"],  # noqa: S607
                 cwd=root,
                 capture_output=True,
                 text=True,
@@ -255,7 +260,11 @@ def run_matrix(
     tracking = tracker or TrackingSession()
     tracking.start_parent(
         manifest["run_id"],
-        {"matrix_id": config.matrix_id, "profile": config.profile, "dataset": config.dataset.model_dump()},
+        {
+            "matrix_id": config.matrix_id,
+            "profile": config.profile,
+            "dataset": config.dataset.model_dump(),
+        },
     )
     for case in cases:
         case_dir = matrix_dir / "cases" / case.case_id
@@ -294,7 +303,11 @@ def run_matrix(
                 record["error"] = _error(exc)
         tracking.log_metrics(record.get("metrics", {}))
         tracking.log_artifacts(
-            [Path(path) for path in record.get("artifact_paths", {}).values() if Path(path).is_file()]
+            [
+                Path(path)
+                for path in record.get("artifact_paths", {}).values()
+                if Path(path).is_file()
+            ]
         )
         tracking.finish_case(record["status"], record.get("error", {}).get("message"))
         record["finished_at"] = datetime.now(UTC)
