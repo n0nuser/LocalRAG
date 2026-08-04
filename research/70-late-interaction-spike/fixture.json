@@ -1,0 +1,20 @@
+{
+  "dataset": {
+    "dataset_id": "localrag-late-interaction-fixture",
+    "dataset_version": "1.0.0",
+    "split": "smoke",
+    "checksum": "sha256:late-interaction-fixture-v1"
+  },
+  "documents": [
+    {"id": "chunk-auth", "text": "API keys authenticate requests", "dense": [1.0, 0.0], "tokens": [[1.0, 0.0], [0.9, 0.1], [0.0, 1.0]]},
+    {"id": "chunk-upload", "text": "Uploads enforce a maximum file size", "dense": [0.0, 1.0], "tokens": [[0.0, 1.0], [0.1, 0.9], [1.0, 0.0]]},
+    {"id": "chunk-cache", "text": "Embedding cache entries use checksums", "dense": [0.7, 0.7], "tokens": [[0.7, 0.7], [0.8, 0.6], [0.0, 1.0]]},
+    {"id": "chunk-ollama", "text": "Ollama serves local language models", "dense": [-1.0, 0.0], "tokens": [[-1.0, 0.0], [-0.9, 0.1], [0.0, -1.0]]}
+  ],
+  "queries": [
+    {"id": "q-auth", "text": "authenticate API requests", "dense": [1.0, 0.0], "tokens": [[1.0, 0.0], [0.9, 0.1]], "relevant": ["chunk-auth"]},
+    {"id": "q-upload", "text": "maximum upload file size", "dense": [0.0, 1.0], "tokens": [[0.0, 1.0], [0.1, 0.9]], "relevant": ["chunk-upload"]},
+    {"id": "q-cache", "text": "embedding checksum cache", "dense": [0.7, 0.7], "tokens": [[0.7, 0.7], [0.8, 0.6]], "relevant": ["chunk-cache"]},
+    {"id": "q-ollama", "text": "local Ollama models", "dense": [-1.0, 0.0], "tokens": [[-1.0, 0.0], [-0.9, 0.1]], "relevant": ["chunk-ollama"]}
+  ]
+}

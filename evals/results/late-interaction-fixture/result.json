@@ -1,0 +1,77 @@
+{
+  "dataset": {
+    "checksum": "sha256:late-interaction-fixture-v1",
+    "dataset_id": "localrag-late-interaction-fixture",
+    "dataset_version": "1.0.0",
+    "split": "smoke"
+  },
+  "metrics": [
+    {
+      "descriptor": {
+        "direction": "higher_is_better",
+        "name": "recall_at_1_dense"
+      },
+      "value": 1.0
+    },
+    {
+      "descriptor": {
+        "direction": "higher_is_better",
+        "name": "recall_at_1_bm25"
+      },
+      "value": 1.0
+    },
+    {
+      "descriptor": {
+        "direction": "higher_is_better",
+        "name": "recall_at_1_hybrid"
+      },
+      "value": 1.0
+    },
+    {
+      "descriptor": {
+        "direction": "higher_is_better",
+        "name": "recall_at_1_late_interaction"
+      },
+      "value": 0.75
+    },
+    {
+      "descriptor": {
+        "direction": "lower_is_better",
+        "name": "late_index_bytes",
+        "unit": "bytes"
+      },
+      "value": 222
+    }
+  ],
+  "provenance": {
+    "batch_size": 1,
+    "cold_start": "not measured: dependency-free process startup dominates this toy fixture",
+    "experiment": "issue-70-late-interaction-fixture",
+    "fixture": "/home/pablo/dev/LocalRAG/research/70-late-interaction-spike/fixture.json",
+    "hardware": {
+      "platform": "Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.39",
+      "python": "3.13.13"
+    },
+    "index_artifact_bytes": 222,
+    "index_build_seconds": 8.353400335181504e-05,
+    "measurement_repetitions": 20,
+    "model": "deterministic hand-authored token vectors; no model download",
+    "peak_python_bytes": 2056,
+    "precision": "float64 Python values",
+    "tokenizer": "whitespace split in fixture text; token vectors are explicit",
+    "vram": "not measured; CPU-only fixture",
+    "warm_query_p50_ms": 0.012990007235202938,
+    "warm_query_p95_ms": 0.013600001693703234,
+    "warmup_repetitions": 1
+  },
+  "run_id": "late-interaction-fixture-v1",
+  "schema_version": 1,
+  "selected_ids": [
+    "q-auth",
+    "q-upload",
+    "q-cache",
+    "q-ollama"
+  ],
+  "status": "complete",
+  "timestamp": "2026-08-04T15:49:20.208030+00:00"
+}
