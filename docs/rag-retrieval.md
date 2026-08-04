@@ -298,3 +298,31 @@ decisions are visible in API and test traces.
 
 `content_hash` also drives incremental rebuild — `POST /collections/rebuild` skips
 re-embedding any source whose file bytes haven't changed.
+
+## Extractive context compression
+
+Compression is disabled by default (`CONTEXT_COMPRESSION_ENABLED=false`). When
+enabled, the exact order is **retrieve -> optional cross-encoder rerank ->
+freshness/ranking -> parent-section expansion -> compression -> prompt ->
+generation**. It receives the final text, including `expanded_text`, but never
+changes retrieval scores or source identity. JSON and SSE share the same engine
+prompt path, so they receive identical compressed context behavior.
+
+`localrag/rag/compressor.py` uses deterministic query-term scoring and a Unicode-
+aware whitespace token count (`len(re.findall(r"\\S+", text))`). It preserves
+ranked context order, source/chunk/parent identity, and records selected character
+spans, token/character counts, version, and status under `compression`. Complete
+fenced code blocks and contiguous Markdown tables are indivisible; an oversized
+unit is omitted instead of being malformed or exceeding a budget. Duplicate
+chunks retain distinct chunk identities, while overlapping units remain in source
+order.
+
+`CONTEXT_COMPRESSION_PER_CONTEXT_TOKENS` and
+`CONTEXT_COMPRESSION_TOTAL_TOKENS` are hard limits, as are the corresponding
+character settings. The total token budget must be no larger than
+`LLM_CONTEXT_WINDOW_TOKENS` minus `CONTEXT_COMPRESSION_RESERVED_PROMPT_TOKENS`
+and `CONTEXT_COMPRESSION_RESERVED_ANSWER_TOKENS`. Empty input, no fitting spans,
+and scorer/tokenizer/timeout failures return explicit `no_context` or bounded
+`fallback` results; they never silently exceed the budget. The first slice is
+extractive only and does not add an LLM summarizer or fabricated citations. See
+[ADR 022](adr/022-context-compression-contract.md).

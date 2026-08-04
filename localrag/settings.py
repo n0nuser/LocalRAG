@@ -100,6 +100,13 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
             "rerank_enabled": "rerank_enabled",
             "rerank_model": "rerank_model",
             "rerank_fetch_k": "rerank_fetch_k",
+            "context_compression_enabled": "context_compression_enabled",
+            "context_compression_candidate_count": "context_compression_candidate_count",
+            "context_compression_max_contexts": "context_compression_max_contexts",
+            "context_compression_per_context_tokens": "context_compression_per_context_tokens",
+            "context_compression_total_tokens": "context_compression_total_tokens",
+            "context_compression_per_context_chars": "context_compression_per_context_chars",
+            "context_compression_total_chars": "context_compression_total_chars",
         },
         "generation": {
             "backend": "llm_backend",
@@ -323,6 +330,19 @@ class Settings(BaseSettings):
     rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     rerank_fetch_k: int = 20
 
+    # Disabled by default. The token counter is the documented whitespace-token
+    # approximation; total context tokens must fit inside this reserved window.
+    context_compression_enabled: bool = False
+    context_compression_candidate_count: int = 20
+    context_compression_max_contexts: int = 5
+    context_compression_per_context_tokens: int = 256
+    context_compression_total_tokens: int = 1024
+    context_compression_per_context_chars: int = 4000
+    context_compression_total_chars: int = 16000
+    context_compression_reserved_prompt_tokens: int = 512
+    context_compression_reserved_answer_tokens: int = 512
+    llm_context_window_tokens: int = 4096
+
     # In-process TTL cache for repeated/near-identical queries (0 disables; no external cache).
     query_cache_ttl_seconds: float = 0.0
     query_cache_maxsize: int = 256
@@ -388,6 +408,25 @@ class Settings(BaseSettings):
             raise ValueError("query_expansion_max_query_chars must be at least 1")
         if self.query_expansion_candidate_budget < 1:
             raise ValueError("query_expansion_candidate_budget must be at least 1")
+        compression_values = (
+            self.context_compression_candidate_count,
+            self.context_compression_max_contexts,
+            self.context_compression_per_context_tokens,
+            self.context_compression_total_tokens,
+            self.context_compression_per_context_chars,
+            self.context_compression_total_chars,
+            self.context_compression_reserved_prompt_tokens,
+            self.context_compression_reserved_answer_tokens,
+            self.llm_context_window_tokens,
+        )
+        if any(value < 1 for value in compression_values):
+            raise ValueError("context compression budgets must be positive")
+        if self.context_compression_total_tokens > (
+            self.llm_context_window_tokens
+            - self.context_compression_reserved_prompt_tokens
+            - self.context_compression_reserved_answer_tokens
+        ):
+            raise ValueError("context compression total token budget exceeds model context window")
         return self
 
     def resolved_snapshot(self) -> dict[str, Any]:
