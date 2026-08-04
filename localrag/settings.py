@@ -6,15 +6,159 @@ Use :func:`get_settings` for a cached singleton. Variable names match
 
 from __future__ import annotations
 
+import contextvars
+import os
+import re
+import warnings
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
+import yaml
+from pydantic import model_validator
+from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings.sources import PydanticBaseSettingsSource
 
 # Defaults for Ollama model tags (`ollama pull` / `ollama list`).
 # Keep in sync with docs and API examples.
 DEFAULT_OLLAMA_EMBED_MODEL = "nomic-embed-text"
 DEFAULT_OLLAMA_LLM_MODEL = "gemma3:4b"
+
+_yaml_path: contextvars.ContextVar[Path | None] = contextvars.ContextVar(
+    "localrag_yaml_path", default=None
+)
+_active_settings: contextvars.ContextVar[Settings | None] = contextvars.ContextVar(
+    "localrag_active_settings", default=None
+)
+_SECRET_FIELDS = {"api_key", "openai_api_key", "anthropic_api_key"}
+_PATH_FIELDS = {"chroma_persist_path", "upload_dir", "audit_log_path", "ingest_roots"}
+_INTERPOLATION = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
+
+
+class ConfigError(ValueError):
+    """Raised when an explicitly selected configuration file cannot be loaded."""
+
+
+class _YamlSource(PydanticBaseSettingsSource):
+    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
+        return None, field_name, False
+
+    def __call__(self) -> dict[str, Any]:
+        path = _yaml_path.get()
+        if path is None:
+            return {}
+        return _read_yaml(path)
+
+
+def _interpolate(value: Any) -> Any:
+    if isinstance(value, str):
+        return _INTERPOLATION.sub(
+            lambda match: os.environ.get(match.group(1), match.group(0)), value
+        )
+    if isinstance(value, list):
+        return [_interpolate(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _interpolate(item) for key, item in value.items()}
+    return value
+
+
+def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
+    if not path.exists():
+        raise ConfigError(f"Configuration file does not exist: {path}")  # noqa: EM102
+    try:
+        document = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        raise ConfigError(f"Unable to parse YAML configuration {path}: {exc}") from exc  # noqa: EM102
+    if document is None:
+        return {}
+    if not isinstance(document, dict):
+        raise ConfigError("YAML configuration must contain a mapping at its root")
+
+    sections = {
+        "embedding": {
+            "provider": "embedding_provider",
+            "model": "embedding_model",
+            "timeout_seconds": "embedding_timeout_seconds",
+            "batch_size": "embedding_batch_size",
+            "sentence_transformers_model": "sentence_transformers_model",
+        },
+        "retrieval": {
+            "top_k": "rag_top_k",
+            "min_context_score": "rag_min_context_score",
+            "mode": "retrieval_mode",
+            "bm25_weight": "bm25_weight",
+            "rrf_k": "rrf_k",
+            "freshness_half_life_days": "freshness_half_life_days",
+            "freshness_weight": "freshness_weight",
+            "parent_expansion_enabled": "parent_expansion_enabled",
+            "query_rewrite_enabled": "query_rewrite_enabled",
+            "rerank_enabled": "rerank_enabled",
+            "rerank_model": "rerank_model",
+            "rerank_fetch_k": "rerank_fetch_k",
+        },
+        "generation": {
+            "backend": "llm_backend",
+            "ollama_model": "ollama_llm_model",
+            "temperature": "llm_temperature",
+            "seed": "llm_seed",
+            "system_prompt": "rag_system_prompt",
+            "fallback_backend": "llm_fallback_backend",
+            "retry_max_attempts": "llm_retry_max_attempts",
+            "circuit_fail_max": "llm_circuit_fail_max",
+            "circuit_reset_timeout_seconds": "llm_circuit_reset_timeout_seconds",
+        },
+        "dataset": {"roots": "ingest_roots", "recursive": "ingest_recursive"},
+        "evaluation": {"seed": "eval_seed"},
+    }
+    fields = set(Settings.model_fields)
+    flattened: dict[str, Any] = {}
+    for key, value in document.items():
+        if key in sections:
+            if not isinstance(value, dict):
+                raise ConfigError(f"YAML section {key} must be a mapping")  # noqa: EM102
+            for nested_key, nested_value in value.items():
+                target = sections[key].get(nested_key)
+                if target is None:
+                    raise ConfigError(f"Unknown YAML key: {key}.{nested_key}")  # noqa: EM102
+                flattened[target] = nested_value
+        elif key == "ollama":
+            if not isinstance(value, dict) or set(value) - {"embed_model", "base_url"}:
+                unknown = next(iter(set(value) - {"embed_model", "base_url"}), key)
+                raise ConfigError(f"Unknown YAML key: ollama.{unknown}")  # noqa: EM102
+            warnings.warn(
+                "ollama.embed_model and ollama.base_url YAML keys are deprecated; "
+                "use top-level legacy field names or embedding.*. "
+                "Removal is planned after the next major release.",
+                DeprecationWarning,
+                stacklevel=3,
+            )
+            if "embed_model" in value:
+                flattened["ollama_embed_model"] = value["embed_model"]
+            if "base_url" in value:
+                flattened["ollama_base_url"] = value["base_url"]
+        elif key in fields:
+            if key in _SECRET_FIELDS and value and not (isinstance(value, str) and "${" in value):
+                raise ConfigError("Secrets must be supplied through the environment")
+            flattened[key] = value
+        else:
+            raise ConfigError(f"Unknown YAML key: {key}")  # noqa: EM102
+
+    flattened = _interpolate(flattened)
+    base = path.parent
+    for field in ("chroma_persist_path", "upload_dir", "audit_log_path"):
+        if flattened.get(field):
+            flattened[field] = str(_resolve_path(str(flattened[field]), base))
+    if flattened.get("ingest_roots"):
+        flattened["ingest_roots"] = [
+            str(_resolve_path(str(root), base)) for root in flattened["ingest_roots"]
+        ]
+    return flattened
+
+
+def _resolve_path(value: str, base: Path) -> Path:
+    path = Path(value).expanduser()
+    return path if path.is_absolute() else (base / path).resolve()
 
 
 class Settings(BaseSettings):
@@ -90,6 +234,23 @@ class Settings(BaseSettings):
         case_sensitive=False,
         extra="ignore",
     )
+
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,
+        file_secret_settings: PydanticBaseSettingsSource,
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        return (
+            init_settings,
+            env_settings,
+            dotenv_settings,
+            _YamlSource(settings_cls),
+            file_secret_settings,
+        )
 
     ollama_base_url: str = "http://localhost:11434"
     ollama_embed_model: str = DEFAULT_OLLAMA_EMBED_MODEL
@@ -193,10 +354,74 @@ class Settings(BaseSettings):
     # (single-tenant deployments, the common case, pay zero extra cost).
     tenant_id: str = ""
 
+    eval_seed: int = 42
+
+    @model_validator(mode="after")
+    def validate_configuration(self) -> Settings:
+        if self.chunk_min_chars > self.chunk_max_chars:
+            raise ValueError("chunk_min_chars must be less than or equal to chunk_max_chars")
+        if self.retrieval_mode not in {"hybrid", "vector"}:
+            raise ValueError("retrieval_mode must be 'hybrid' or 'vector'")
+        if not 0 <= self.bm25_weight <= 1:
+            raise ValueError("bm25_weight must be between 0 and 1")
+        return self
+
+    def resolved_snapshot(self) -> dict[str, Any]:
+        """Return deterministic, non-secret configuration provenance."""
+        snapshot = self.model_dump(mode="json")
+        for field in _SECRET_FIELDS:
+            snapshot[field] = "<redacted>"
+        for field in _PATH_FIELDS:
+            if snapshot.get(field):
+                snapshot[field] = (
+                    "<path>" if field != "ingest_roots" else ["<path>"] * len(snapshot[field])
+                )
+        return snapshot
+
+
+@lru_cache(maxsize=32)
+def _cached_settings(config_path: str | None, overrides: tuple[tuple[str, Any], ...]) -> Settings:
+    token = _yaml_path.set(Path(config_path).expanduser().resolve() if config_path else None)
+    try:
+        return Settings(**dict(overrides))
+    finally:
+        _yaml_path.reset(token)
+
+
+def load_settings(
+    config_path: Path | str | None = None, cli_overrides: dict[str, Any] | None = None
+) -> Settings:
+    """Resolve one immutable settings object using all supported sources."""
+    path = Path(config_path).expanduser() if config_path is not None else None
+    overrides = tuple(sorted((cli_overrides or {}).items()))
+    unknown = set(dict(overrides)) - set(Settings.model_fields)
+    if unknown:
+        field = sorted(unknown)[0]
+        raise ConfigError(f"Unknown CLI override: {field}")  # noqa: EM102
+    return _cached_settings(str(path) if path else None, overrides)
+
 
 @lru_cache(maxsize=1)
+def _default_settings(config_path: str | None) -> Settings:
+    return load_settings(config_path)
+
+
 def get_settings() -> Settings:
-    return Settings()
+    """Return the process settings, loading ``LOCALRAG_CONFIG`` when selected."""
+    active = _active_settings.get()
+    if active is not None:
+        return active
+    return _default_settings(os.environ.get("LOCALRAG_CONFIG"))
+
+
+def set_current_settings(settings: Settings) -> None:
+    """Select settings for the current CLI/API execution context."""
+    _active_settings.set(settings)
+
+
+def clear_current_settings() -> None:
+    """Return resolution to the cached process settings."""
+    _active_settings.set(None)
 
 
 def is_path_allowed(candidate: Path, roots: list[str]) -> bool:
