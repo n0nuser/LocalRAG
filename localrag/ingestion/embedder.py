@@ -27,6 +27,7 @@ class OllamaEmbedder:
     timeout_seconds: float = 120.0
     provider_name: str = "ollama"
     dimension: int | None = None
+    model_revision: str = ""
 
     def embed(self, text: str, *, model: str | None = None) -> list[float]:
         rows = self.embed_batch([text], model=model)

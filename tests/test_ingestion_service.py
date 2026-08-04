@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
 
+from localrag.embedding.cache import EmbeddingCache
 from localrag.ingestion import service as service_module
 from localrag.ingestion.service import FailedSource, IngestionResult, IngestionService
 from localrag.settings import Settings
@@ -53,6 +55,23 @@ class StubVectorStore:
                 "metadatas": metadatas,
             }
         )
+
+
+@dataclass
+class CacheProvider:
+    provider_name: str = "test"
+    model: str = "test-v1"
+    model_revision: str = "digest"
+    dimension: int | None = 1
+    timeout_seconds: float = 1
+    calls: int = 0
+
+    def embed_batch(
+        self, texts: Sequence[str], *, batch_size: int | None = None, model: str | None = None
+    ) -> list[list[float]]:
+        _ = (batch_size, model)
+        self.calls += 1
+        return [[float(len(text))] for text in texts]
 
 
 def test_ingestion_service_ingest_paths_skips_not_allowed_and_empty_chunks(tmp_path: Path) -> None:
@@ -116,6 +135,28 @@ def test_ingestion_service_ingest_paths_skips_not_allowed_and_empty_chunks(tmp_p
     assert seen_batch_size == settings.embedding_batch_size
     assert seen_texts == chunks
     assert seen_model is None
+
+
+def test_ingestion_cache_hit_still_rebuilds_source_metadata_and_upserts(tmp_path: Path) -> None:
+    path = tmp_path / "a.md"
+    path.write_text("hello world", encoding="utf-8")
+    settings = Settings(ingest_roots=[str(tmp_path)], chunk_chars=100, chunk_overlap_chars=0)
+    embedder = CacheProvider()
+    vector_store = StubVectorStore(deleted_sources=[], added=[])
+    service = IngestionService(
+        settings=settings,
+        embedder=embedder,  # type: ignore[arg-type]
+        vector_store=vector_store,  # type: ignore[arg-type]
+        embedding_cache=EmbeddingCache(tmp_path / "cache", enabled=True),
+    )
+
+    service.ingest_file(path)
+    service.ingest_file(path)
+
+    assert embedder.calls == 1
+    assert vector_store.deleted_sources == [str(path.resolve()), str(path.resolve())]
+    assert len(vector_store.added) == 2
+    assert vector_store.added[1]["metadatas"][0]["source"] == str(path.resolve())  # type: ignore[index]
 
 
 def test_ingestion_service_recursive_chunks_have_stable_contract_metadata(tmp_path: Path) -> None:

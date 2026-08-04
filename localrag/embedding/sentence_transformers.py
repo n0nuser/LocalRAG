@@ -13,6 +13,7 @@ class SentenceTransformersProvider:
 
     provider_name = "sentence-transformers"
     timeout_seconds = 0.0
+    model_revision = ""
 
     def __init__(self, model: str) -> None:
         try:

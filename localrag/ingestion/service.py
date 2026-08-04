@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from localrag.embedding.base import EmbeddingProvider
+from localrag.embedding.cache import EmbeddingCache
 from localrag.ingestion.chunker import chunk_text
 from localrag.ingestion.contract import Chunk, stable_chunk_id
 from localrag.ingestion.loader import list_supported_files, parse_file
@@ -56,6 +57,7 @@ class IngestionService:
     embedder: EmbeddingProvider
     vector_store: VectorStore
     bm25_index: Bm25Index | None = None
+    embedding_cache: EmbeddingCache | None = None
 
     def ingest_file(self, path: Path, embed_model: str | None = None) -> IngestionResult:
         return self.ingest_paths([path], embed_model=embed_model)
@@ -219,19 +221,27 @@ class IngestionService:
         if ensure is not None:
             ensure(self.embedder, model=embed_model)
 
-        embed_batch = getattr(self.embedder, "embed_batch", None)
-        if embed_batch is not None:
-            embeddings = embed_batch(
+        if self.embedding_cache is not None:
+            embeddings = self.embedding_cache.embed_batch(
+                self.embedder,
                 chunks,
                 batch_size=self.settings.embedding_batch_size,
                 model=embed_model,
             )
         else:
-            # Keep third-party integrations written against the pre-provider seam working.
-            legacy_embedder: Any = self.embedder
-            embeddings = legacy_embedder.embed_texts(
-                chunks, self.settings.embedding_batch_size, model=embed_model
-            )
+            embed_batch = getattr(self.embedder, "embed_batch", None)
+            if embed_batch is not None:
+                embeddings = embed_batch(
+                    chunks,
+                    batch_size=self.settings.embedding_batch_size,
+                    model=embed_model,
+                )
+            else:
+                # Keep third-party integrations written against the pre-provider seam working.
+                legacy_embedder: Any = self.embedder
+                embeddings = legacy_embedder.embed_texts(
+                    chunks, self.settings.embedding_batch_size, model=embed_model
+                )
         record = getattr(self.vector_store, "record_embedding_compatibility", None)
         if record is not None:
             record(self.embedder, len(embeddings[0]), model=embed_model)

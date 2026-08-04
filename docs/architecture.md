@@ -18,6 +18,7 @@ flowchart LR
     L[loader + parsers]
     C[chunking contract: fixed / structural / recursive]
     E[EmbeddingProvider]
+    EC[(Optional ingestion embedding cache)]
     VS[(Chroma VectorStore)]
     B[BM25Index]
   end
@@ -32,6 +33,8 @@ flowchart LR
   CLI --> L
   API --> L
   L --> C --> E --> VS
+  E -. ingestion scope only .-> EC
+  EC -. cache hit/miss .-> E
   VS --> B
   API --> R
   CLI --> R
@@ -69,7 +72,8 @@ flowchart LR
 | CLI | `localrag/cli/app.py`, `localrag/cli/commands/*`, `docs/cli.md` | `localrag` Typer entry (`pyproject` `[project.scripts]`); `inspect` is read-only local diagnostics and `benchmark` delegates to `evals.matrix.run_matrix` |
 | Ingestion orchestration | `localrag/ingestion/service.py` | `IngestionService`: paths → parse → chunk → embed → upsert |
 | File formats | `localrag/ingestion/parsers/*` | pdf (Markdown extraction via pdf-inspector, with OCR fallback via pypdfium2 + pytesseract), docx, markdown, text, code |
-| Embedding | `localrag/embedding/`, `localrag/ingestion/embedder.py` | Provider protocol/factory, Ollama **`POST /api/embed`**, optional sentence-transformers backend, and collection identity checks |
+| Embedding | `localrag/embedding/`, `localrag/ingestion/embedder.py` | Provider protocol/factory, Ollama **`POST /api/embed`**, optional sentence-transformers backend, collection identity checks, and the disabled-by-default provider-aware ingestion vector cache |
+| Embedding cache | `localrag/embedding/cache.py` | Versioned hashed vector-only disk entries, atomic writes, process/thread locking, checksum validation, bounded LRU cleanup, and fail-open cache I/O |
 | Storage | `localrag/storage/vector_store.py` | Chroma client wrapper |
 | RAG | `localrag/rag/retriever.py`, `bm25_index.py`, `engine.py`, `prompt.py` | Hybrid retrieval (vector + BM25), freshness decay reranking, prompt build, LLM call |
 | Context compression | `localrag/rag/compressor.py` | Disabled-by-default deterministic extractive compression after parent expansion; preserves retrieval provenance and hard token/character budgets |
@@ -102,6 +106,8 @@ flowchart LR
 sentence-transformers backend. Ingestion and `Retriever` receive the same
 cached instance. Chroma metadata records provider, model, and vector dimension;
 an incompatible runtime fails before vector operations. See [ADR 019](adr/019-embedding-provider-contract.md).
+The optional `EmbeddingCache` is used only by ingestion and never stores source
+metadata or text. Its key and local storage contract are documented in [ADR 024](adr/024-embedding-cache-contract.md).
 
 ## Agent layer
 

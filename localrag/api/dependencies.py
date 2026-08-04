@@ -9,6 +9,7 @@ from fastapi.security import APIKeyHeader
 from localrag.api.jobs import JobRegistry
 from localrag.api.repository import ChromaCollectionRepository
 from localrag.embedding.base import EmbeddingProvider
+from localrag.embedding.cache import EmbeddingCache
 from localrag.embedding.factory import build_embedding_provider
 from localrag.ingestion.service import IngestionService
 from localrag.llm.factory import build_provider
@@ -82,6 +83,14 @@ def get_ingestion_service() -> IngestionService:
         embedder=get_embedder(),
         vector_store=get_vector_store(),
         bm25_index=get_bm25_index(),
+        embedding_cache=EmbeddingCache(
+            settings.embedding_cache_path,
+            enabled=settings.embedding_cache_enabled,
+            max_entries=settings.embedding_cache_max_entries,
+            max_bytes=settings.embedding_cache_max_bytes,
+            preprocessing_version=settings.embedding_cache_preprocessing_version,
+            task_prefix=settings.embedding_cache_task_prefix,
+        ),
     )
 
 

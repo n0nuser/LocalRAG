@@ -6,6 +6,22 @@ reference for what gets recorded, and what it explicitly does not promise.
 
 See [ADR 012](adr/012-reproducible-evaluation-metadata.md) for the architectural decision.
 
+## Embedding cache benchmark
+
+The cache has a separate manual benchmark because it measures provider calls and
+storage behavior, not answer quality:
+
+```bash
+uv run python benchmarks/embedding_cache_benchmark.py corpus/*.md \
+  --cache-path ./data/embedding-cache-benchmark --model nomic-embed-text
+```
+
+It clears the selected cache, runs the same sorted corpus once cold and once warm,
+and emits JSON containing provider/model/revision, Python/platform/CPU metadata,
+provider calls, hit/miss counts, wall time, p50/p95 per-input latency, and cache
+bytes. Measurements are descriptive; the workflow makes no universal speedup
+claim. The cache is ingestion-only and does not alter the manual RAGAS workflow.
+
 ## Reproducibility levels
 
 Two different things get called "reproducible" and conflating them leads to
