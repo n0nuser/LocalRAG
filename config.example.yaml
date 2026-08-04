@@ -3,6 +3,8 @@ embedding:
   provider: ollama
   model: "" # EMBEDDING_MODEL remains the legacy environment name.
   timeout_seconds: 120
+  cache_enabled: false
+  cache_path: ./data/embedding-cache
 
 retrieval:
   mode: hybrid

@@ -32,7 +32,13 @@ _active_settings: contextvars.ContextVar[Settings | None] = contextvars.ContextV
     "localrag_active_settings", default=None
 )
 _SECRET_FIELDS = {"api_key", "openai_api_key", "anthropic_api_key"}
-_PATH_FIELDS = {"chroma_persist_path", "upload_dir", "audit_log_path", "ingest_roots"}
+_PATH_FIELDS = {
+    "chroma_persist_path",
+    "upload_dir",
+    "audit_log_path",
+    "ingest_roots",
+    "embedding_cache_path",
+}
 _INTERPOLATION = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
 
@@ -82,6 +88,12 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
             "timeout_seconds": "embedding_timeout_seconds",
             "batch_size": "embedding_batch_size",
             "sentence_transformers_model": "sentence_transformers_model",
+            "cache_enabled": "embedding_cache_enabled",
+            "cache_path": "embedding_cache_path",
+            "cache_max_entries": "embedding_cache_max_entries",
+            "cache_max_bytes": "embedding_cache_max_bytes",
+            "cache_preprocessing_version": "embedding_cache_preprocessing_version",
+            "cache_task_prefix": "embedding_cache_task_prefix",
         },
         "retrieval": {
             "top_k": "rag_top_k",
@@ -170,7 +182,7 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
 
     flattened = _interpolate(flattened)
     base = path.parent
-    for field in ("chroma_persist_path", "upload_dir", "audit_log_path"):
+    for field in ("chroma_persist_path", "upload_dir", "audit_log_path", "embedding_cache_path"):
         if flattened.get(field):
             flattened[field] = str(_resolve_path(str(flattened[field]), base))
     if flattened.get("ingest_roots"):
@@ -303,6 +315,12 @@ class Settings(BaseSettings):
     embedding_provider: str = "ollama"
     embedding_timeout_seconds: float = 120.0
     sentence_transformers_model: str = "sentence-transformers/all-MiniLM-L6-v2"
+    embedding_cache_enabled: bool = False
+    embedding_cache_path: str = "./data/embedding-cache"
+    embedding_cache_max_entries: int = 10_000
+    embedding_cache_max_bytes: int = 1_000_000_000
+    embedding_cache_preprocessing_version: str = "1"
+    embedding_cache_task_prefix: str = ""
 
     ingest_recursive: bool = True
     ingest_roots: list[str] = []
@@ -448,6 +466,8 @@ class Settings(BaseSettings):
             raise ValueError("adaptive retrieval limits must be positive")
         if self.adaptive_max_provider_calls < 0:
             raise ValueError("adaptive provider call budget must not be negative")
+        if self.embedding_cache_max_entries < 1 or self.embedding_cache_max_bytes < 1:
+            raise ValueError("embedding cache limits must be positive")
         compression_values = (
             self.context_compression_candidate_count,
             self.context_compression_max_contexts,
