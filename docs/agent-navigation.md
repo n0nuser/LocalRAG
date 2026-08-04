@@ -66,6 +66,7 @@ Agents (and humans) move faster when they:
 | Benchmark leaderboard publication | `evals/leaderboard.py`, `localrag/cli/commands/leaderboard.py`, [benchmark-leaderboard.md](benchmark-leaderboard.md) |
 | Late-interaction feasibility spike | `evals/late_interaction.py`, `research/70-late-interaction-spike/`, [ADR 027](adr/027-late-interaction-feasibility-boundary.md) |
 | RAPTOR feasibility spike | `research/68-raptor-spike/`, `tests/test_raptor_spike.py`, [ADR 028](adr/028-raptor-feasibility-boundary.md); research-only, not default retrieval |
+| GraphRAG feasibility spike | `research/67-graphrag-spike/`, `tests/test_graphrag_spike.py`, [ADR 029](adr/029-graphrag-feasibility-boundary.md); research-only, not default retrieval |
 | Prompt / answer streaming | `localrag/rag/prompt.py`, `localrag/rag/engine.py` |
 | Human Ollama install (not Python) | [ollama.md](ollama.md) |
 | Human Tesseract install (not Python) | [ocr.md](ocr.md) |

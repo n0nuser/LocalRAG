@@ -1,0 +1,113 @@
+{
+  "artifact_id": "3ad6d73e0ef062e85b8db6724ed89bb9bb2859ca1567b59e7f7839e5f1a8653c",
+  "build_stats": {
+    "edges": 1,
+    "nodes": 3,
+    "quarantined": 0
+  },
+  "config": {
+    "context_max_chars": 2400,
+    "max_chars_per_chunk": 4000,
+    "max_hops": 2,
+    "max_neighbors": 20,
+    "prompt_version": "graph-extraction-v1"
+  },
+  "corpus_id": "bfead54d5580433b52bf831baaefad84bde5bb620ba0edd9a48bc6a7ea1dc65b",
+  "edges": {
+    "edge-21566f8f1998ccff78b8": {
+      "edge_id": "edge-21566f8f1998ccff78b8",
+      "normalized_predicate": "works_at",
+      "predicate": "works_at",
+      "provenance": {
+        "chunk_ids": [
+          "chunk-1",
+          "chunk-2"
+        ],
+        "citation_ids": [
+          "cite-1",
+          "cite-2"
+        ],
+        "confidence": 0.8,
+        "extractor": "fixture-structured-extractor-v1",
+        "prompt_version": "graph-extraction-v1",
+        "source_ids": [
+          "doc-a",
+          "doc-b"
+        ]
+      },
+      "source_id": "entity-21c7c4a725af56bf4851",
+      "target_id": "entity-24bd427d4f406ac0c750"
+    }
+  },
+  "extractor_identity": "fixture-structured-extractor-v1",
+  "nodes": {
+    "entity-21c7c4a725af56bf4851": {
+      "entity_type": "person",
+      "name": "Ada",
+      "node_id": "entity-21c7c4a725af56bf4851",
+      "normalized_name": "ada",
+      "provenance": {
+        "chunk_ids": [
+          "chunk-1",
+          "chunk-2"
+        ],
+        "citation_ids": [
+          "cite-1",
+          "cite-2"
+        ],
+        "confidence": 0.9,
+        "extractor": "fixture-structured-extractor-v1",
+        "prompt_version": "graph-extraction-v1",
+        "source_ids": [
+          "doc-a",
+          "doc-b"
+        ]
+      }
+    },
+    "entity-24bd427d4f406ac0c750": {
+      "entity_type": "organization",
+      "name": "Acme",
+      "node_id": "entity-24bd427d4f406ac0c750",
+      "normalized_name": "acme",
+      "provenance": {
+        "chunk_ids": [
+          "chunk-1",
+          "chunk-2"
+        ],
+        "citation_ids": [
+          "cite-1",
+          "cite-2"
+        ],
+        "confidence": 0.9,
+        "extractor": "fixture-structured-extractor-v1",
+        "prompt_version": "graph-extraction-v1",
+        "source_ids": [
+          "doc-a",
+          "doc-b"
+        ]
+      }
+    },
+    "entity-a36d1f981976d8dd2c12": {
+      "entity_type": "object",
+      "name": "satellite",
+      "node_id": "entity-a36d1f981976d8dd2c12",
+      "normalized_name": "satellite",
+      "provenance": {
+        "chunk_ids": [
+          "chunk-3"
+        ],
+        "citation_ids": [
+          "cite-3"
+        ],
+        "confidence": 0.8,
+        "extractor": "fixture-structured-extractor-v1",
+        "prompt_version": "graph-extraction-v1",
+        "source_ids": [
+          "doc-c"
+        ]
+      }
+    }
+  },
+  "quarantined": {},
+  "schema_version": 1
+}
