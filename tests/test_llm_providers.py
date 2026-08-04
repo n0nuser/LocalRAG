@@ -22,6 +22,14 @@ from localrag.settings import Settings
 class _ConcreteProvider(BaseLLMProvider):
     """Minimal concrete implementation to test the ABC contract."""
 
+    @property
+    def provider_name(self) -> str:
+        return "test"
+
+    @property
+    def default_model(self) -> str:
+        return "test-model"
+
     def generate(self, prompt: str, context: list[str], *, model: str | None = None) -> LLMResponse:
         return LLMResponse(
             answer="ok", model="test", tokens_used=1, latency_ms=0.0, estimated_cost_usd=0.0

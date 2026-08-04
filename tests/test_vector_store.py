@@ -263,6 +263,46 @@ def test_vector_store_get_chunks_by_heading_returns_sorted_pairs() -> None:
     assert pairs == [(0, "first"), (1, "second")]
 
 
+def test_vector_store_get_chunks_by_headings_filters_and_groups_in_one_lookup() -> None:
+    collection = FakeCollection(
+        upsert_calls=[],
+        delete_calls=[],
+        query_calls=[],
+        query_result={},
+        get_return={
+            "documents": ["other", "team-a second", "team-a first"],
+            "metadatas": [
+                {
+                    "source": "guide.md",
+                    "chunk_index": 0,
+                    "heading_path": "Setup",
+                    "tenant_id": "team-b",
+                },
+                {
+                    "source": "guide.md",
+                    "chunk_index": 2,
+                    "heading_path": "Setup",
+                    "tenant_id": "team-a",
+                },
+                {
+                    "source": "guide.md",
+                    "chunk_index": 1,
+                    "heading_path": "Setup",
+                    "tenant_id": "team-a",
+                },
+            ],
+        },
+    )
+    client = FakeClient(collections=[], deleted_collections=[])
+    store = VectorStore(client=client, collection=collection)  # type: ignore[arg-type]
+
+    sections = store.get_chunks_by_headings(
+        [("guide.md", "Setup"), ("guide.md", "Missing")], {"tenant_id": "team-a"}
+    )
+
+    assert sections == {("guide.md", "Setup"): [(1, "team-a first"), (2, "team-a second")]}
+
+
 def test_vector_store_create_initializes_persistent_client(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

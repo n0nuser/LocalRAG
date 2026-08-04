@@ -1,5 +1,6 @@
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
+# Constrained to one replica until Chroma and in-memory jobs are externalized.
 metadata:
   name: localrag-api
   namespace: default
@@ -9,7 +10,7 @@ spec:
     kind: Deployment
     name: localrag-api
   minReplicas: 1
-  maxReplicas: 5
+  maxReplicas: 1
   metrics:
     - type: Resource
       resource:

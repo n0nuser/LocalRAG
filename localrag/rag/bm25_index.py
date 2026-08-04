@@ -35,19 +35,20 @@ class Bm25Index:
 
     def refresh(self) -> None:
         chunks = self.vector_store.get_all_chunks()
-        self.corpus_ids = []
-        self.corpus_documents = []
-        self.corpus_metadatas = []
+        corpus_ids: list[str] = []
+        corpus_documents: list[str] = []
+        corpus_metadatas: list[dict[str, Any]] = []
         tokenized: list[list[str]] = []
         for chunk_id, document, metadata in chunks:
-            self.corpus_ids.append(chunk_id)
-            self.corpus_documents.append(document)
-            self.corpus_metadatas.append(metadata)
+            corpus_ids.append(chunk_id)
+            corpus_documents.append(document)
+            corpus_metadatas.append(metadata)
             tokenized.append(tokenize(document))
-        if tokenized:
-            self.bm25 = BM25Okapi(tokenized)
-            return
-        self.bm25 = None
+        bm25 = BM25Okapi(tokenized) if tokenized else None
+        self.corpus_ids = corpus_ids
+        self.corpus_documents = corpus_documents
+        self.corpus_metadatas = corpus_metadatas
+        self.bm25 = bm25
 
     def query(self, text: str, top_k: int) -> list[Bm25Hit]:
         if self.bm25 is None or top_k <= 0:

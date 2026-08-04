@@ -28,6 +28,14 @@ class AnthropicProvider(BaseLLMProvider):
         self._default_model = default_model
         self._system_prompt = system_prompt
 
+    @property
+    def provider_name(self) -> str:
+        return "anthropic"
+
+    @property
+    def default_model(self) -> str:
+        return self._default_model
+
     def generate(
         self,
         prompt: str,

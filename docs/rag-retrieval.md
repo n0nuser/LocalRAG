@@ -116,10 +116,11 @@ support for ranges, negation, or boolean combinators. Pairs naturally with the
 After ranking, fusion, and freshness decay, `Retriever._expand_to_parent_section`
 (`localrag/rag/retriever.py`) expands top retrieval hits that carry a non-empty
 `heading_path` chunk metadata value to the **full sibling-chunk section** they
-belong to, via `VectorStore.get_chunks_by_heading(source, heading_path)`
-(`localrag/storage/vector_store.py`), which fetches every chunk sharing that
-`source` + `heading_path` pair and returns them sorted by `chunk_index`. The
-merged section text is joined with `"\n\n"` and stored on the context dict as
+belong to, via one bulk `VectorStore.get_chunks_by_headings(...)` lookup
+(`localrag/storage/vector_store.py`). It fetches every chunk sharing a
+requested `source` + `heading_path` pair, applies the query metadata filter, and
+returns each section sorted by `chunk_index`. The merged section text is joined
+with `"\n\n"` and stored on the context dict as
 `expanded_text`, while the originally matched chunk's `text` (and
 `chunk_index`) are retained unchanged so citations (`SourceRef`) still point at
 the precise matched chunk. `localrag/rag/prompt.py::build_prompt` prefers
@@ -137,7 +138,7 @@ Disabled by default (`RERANK_ENABLED=false`). When enabled, `Retriever.retrieve`
 (`localrag/rag/retriever.py`) over-fetches `RERANK_FETCH_K` candidates from the
 vector/hybrid path instead of the default `top_k * 2`, and a local
 `cross-encoder/ms-marco-MiniLM-L-6-v2` model (`RERANK_MODEL`, served via
-`sentence-transformers` — install with `uv sync --extra rerank`) re-scores each
+`sentence-transformers` — install with `uv sync --locked --extra rerank`) re-scores each
 `(question, chunk_text)` pair through `CrossEncoderReranker.rerank`
 (`localrag/rag/reranker.py`) and trims the candidate list down to `top_k`,
 best-first, adding a `rerank_score` key to each context.

@@ -12,7 +12,7 @@ locally hosted server.
 ## Decision
 
 Use MLflow as the first and only tracking backend. It is available only through
-the `tracking` optional extra (`uv sync --extra tracking`). The default install
+the `tracking` optional extra (`uv sync --locked --extra tracking`). The default install
 does not import or require MLflow. `EVAL_TRACKING_ENABLED=false` is the default;
 when enabled, `EVAL_TRACKING_URI` may point at a local file store or server.
 

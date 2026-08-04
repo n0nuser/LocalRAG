@@ -12,14 +12,15 @@ def _headers(api_key: str) -> dict[str, str]:
     return {"X-API-Key": api_key}
 
 
-def test_health(base_url: str) -> None:
+def test_health_and_readiness(base_url: str) -> None:
     response = httpx.get(f"{base_url}/health", timeout=10.0)
     assert response.status_code == 200
-    body = response.json()
-    assert body["status"] == "ok"
-    assert "ollama_ok" in body
-    assert "chroma_path" in body
-    assert "collections" in body
+    assert response.json().get("status") == "ok"
+    assert "chroma_path" not in response.json()
+
+    readiness = httpx.get(f"{base_url}/ready", timeout=10.0)
+    assert readiness.status_code == 200
+    assert readiness.json() == {"status": "ok"}
 
 
 def test_metrics_endpoint(base_url: str) -> None:

@@ -38,6 +38,14 @@ class OllamaProvider(BaseLLMProvider):
         self._temperature = temperature
         self._seed = seed
 
+    @property
+    def provider_name(self) -> str:
+        return "ollama"
+
+    @property
+    def default_model(self) -> str:
+        return self._default_model
+
     def _options(self) -> OllamaChatOptions | None:
         """Sampling options for a chat request, or ``None`` to use Ollama's defaults."""
         if self._temperature is None and self._seed is None:

@@ -8,7 +8,7 @@ Agents (and humans) move faster when they:
 
 1. **Start from stable anchors** — README, `pyproject.toml`, `.env.example`, and [`architecture.md`](architecture.md) before opening random modules.
 2. **Route by symptom** — ingest bugs → `localrag/ingestion/`; HTTP contract → `localrag/api/routers/`; RAG quality → `localrag/rag/` and chunk/embed settings.
-3. **Respect the toolchain** — Python **3.13+**; dependencies and commands go through **uv** (`uv sync`, `uv run …`). See [README](../README.md) and [`.cursor/rules/project-setup.mdc`](../.cursor/rules/project-setup.mdc).
+3. **Respect the toolchain** — Python **3.13+**; dependencies and commands go through **uv** (`uv sync --locked`, `uv run …`). See [README](../README.md) and [`.cursor/rules/project-setup.mdc`](../.cursor/rules/project-setup.mdc).
 4. **Avoid duplicating rules** — Non-obvious coding constraints live in **`.cursor/rules/`** (critical rules, Python style, testing, Grug-style preferences). Read those when editing Python, not a second copy here.
 
 ## Read order (minimal)
@@ -18,6 +18,7 @@ Agents (and humans) move faster when they:
 3. [`pyproject.toml`](../pyproject.toml) — dependencies, script entry `localrag = localrag.cli.app:app`, Ruff/pytest config.
 4. [`.env.example`](../.env.example) — canonical env var names and defaults (mirrors `Settings` in `localrag/settings.py`); [`config.example.yaml`](../config.example.yaml) shows structured configuration.
 5. [architecture.md](architecture.md) — layers, data flow, extension points.
+6. [deployment.md](deployment.md) — Kubernetes persistence, dependency, probe, and security contract.
 6. The specific file(s) for your task (see table below).
 
 For contributor workflows, read [`Taskfile.yml`](../Taskfile.yml) and the
@@ -37,7 +38,8 @@ override unless `COMPOSE_OVERRIDE` is supplied.
 | API persistence boundary (Chroma collections) | `localrag/api/repository.py` |
 | API app factory (lifespan, middleware, error handlers) | `localrag/api/main.py` |
 | HTTP ingest path validation (`INGEST_ROOTS`, URL decode) | `localrag/api/service.py`, `localrag/settings.py` (`is_path_allowed`), `localrag/api/exceptions.py` + `main.py` handler |
-| HTTP multipart file upload ingest (`POST /ingest/upload`) | `localrag/api/routers/ingest.py` (`ingest_upload`, Swagger limitations in `_UPLOAD_DESCRIPTION`), `localrag/api/service.py` (`ingest_upload`, `_stream_upload_to_disk`), `UPLOAD_DIR` / `UPLOAD_MAX_BYTES` in `localrag/settings.py` |
+| HTTP multipart file upload ingest (`POST /ingest/upload`) | `localrag/api/routers/ingest.py` (`ingest_upload`, Swagger limitations in `_UPLOAD_DESCRIPTION`), `localrag/api/service.py` (`ingest_upload`, cleanup), upload lifecycle settings in `localrag/settings.py`, [data-lifecycle.md](data-lifecycle.md) |
+| Query audit lifecycle | `localrag/audit.py`, audit lifecycle settings in `localrag/settings.py`, [data-lifecycle.md](data-lifecycle.md) |
 | Background ingest jobs | `localrag/api/jobs.py`, `localrag/api/routers/ingest.py` (async routes), `localrag/api/service.py` (`ingest_directory_async`, `get_ingest_job`) |
 | DI / shared service instances | `localrag/api/dependencies.py` |
 | Log format, levels, request ID | `localrag/logging_config.py`, `localrag/api/middleware.py`, `LOG_LEVEL` in `localrag/settings.py` |
@@ -87,7 +89,7 @@ override unless `COMPOSE_OVERRIDE` is supplied.
 ## Commands (uv)
 
 ```bash
-uv sync
+uv sync --locked
 uv run localrag --help
 uv run pytest
 uv run ruff format .

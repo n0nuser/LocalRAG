@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import time
@@ -20,7 +21,6 @@ from localrag.api.schemas import (
     CollectionDeleteResponse,
     CollectionListResponse,
     FailedSourceRef,
-    HealthResponse,
     IngestDirectoryRequest,
     IngestDirectoryResponse,
     IngestFileRequest,
@@ -29,6 +29,7 @@ from localrag.api.schemas import (
     IngestJobStatusResponse,
     QueryRequest,
     QueryResponse,
+    ReadinessResponse,
     RebuildCollectionRequest,
     RebuildCollectionResponse,
     SourceRef,
@@ -52,7 +53,9 @@ def path_from_ingest_request(raw: str) -> Path:
     return Path(unquote(raw.strip()))
 
 
-def check_health(settings: Settings, collection_repo: ChromaCollectionRepository) -> HealthResponse:
+def check_readiness(
+    settings: Settings, collection_repo: ChromaCollectionRepository
+) -> ReadinessResponse:
     ollama_ok = False
     with httpx.Client(timeout=5.0) as client:
         try:
@@ -69,14 +72,16 @@ def check_health(settings: Settings, collection_repo: ChromaCollectionRepository
                 "health_ollama_tags_invalid url=%s error=%s", settings.ollama_base_url, exc
             )
 
-    logger.debug("health_check ollama_ok=%s", ollama_ok)
+    try:
+        collection_repo.list_collection_names()
+        chroma_ok = True
+    except Exception:
+        chroma_ok = False
+        logger.exception("health_chroma_unreachable")
 
-    return HealthResponse(
-        status="ok",
-        ollama_ok=ollama_ok,
-        chroma_path=settings.chroma_persist_path,
-        collections=collection_repo.list_collection_names(),
-    )
+    ready = ollama_ok and chroma_ok
+    logger.debug("readiness_check ollama_ok=%s chroma_ok=%s", ollama_ok, chroma_ok)
+    return ReadinessResponse(status="ok" if ready else "unavailable")
 
 
 def list_collections_response(
@@ -272,29 +277,45 @@ def ingest_upload(
 
     dest_dir = Path(settings.upload_dir)
     dest_dir.mkdir(parents=True, exist_ok=True)
-    dest_path = _unique_upload_destination(dest_dir, Path(file_name).name)
-    bytes_written = _stream_upload_to_disk(file_obj, dest_path, settings.upload_max_bytes)
+    _cleanup_uploads(dest_dir, settings)
+    temp_path = dest_dir / f".uploading-{uuid4().hex}"
+    dest_path: Path | None = None
+    try:
+        bytes_written, digest = _stream_upload_to_disk(
+            file_obj, temp_path, settings.upload_max_bytes
+        )
+        if bytes_written > settings.upload_quota_bytes:
+            raise IngestApiError(
+                HTTPStatus.INSUFFICIENT_STORAGE,
+                "Upload exceeds the configured upload quota.",
+            )
+        dest_path = dest_dir / f"{digest}{extension}"
+        if dest_path.exists():
+            temp_path.unlink(missing_ok=True)
+            app_metrics.upload_cleanup_total.labels(reason="deduplicated").inc()
+        else:
+            temp_path.replace(dest_path)
+        _cleanup_uploads(dest_dir, settings, protected=dest_path)
+        if not dest_path.exists():
+            raise IngestApiError(HTTPStatus.INSUFFICIENT_STORAGE, "Upload quota is exhausted.")
+        logger.info("ingest_upload_saved path=%s bytes=%s", dest_path, bytes_written)
+        result = ingestion_service.ingest_file(dest_path, embed_model=embed_model)
+        _raise_if_failed(result)
+        logger.info("ingest_upload_done path=%s chunks=%s", dest_path, result.total_chunks)
+        app_metrics.ingested_documents_total.inc(1)
+        source = result.processed_sources[0] if result.processed_sources else dest_path
+        return IngestFileResponse(status="ok", chunks_added=result.total_chunks, source=str(source))
+    finally:
+        temp_path.unlink(missing_ok=True)
+        if dest_path is not None and settings.upload_retention_seconds <= 0:
+            dest_path.unlink(missing_ok=True)
+            app_metrics.upload_cleanup_total.labels(reason="retention").inc()
 
-    logger.info("ingest_upload_saved path=%s bytes=%s", dest_path, bytes_written)
-    result = ingestion_service.ingest_file(dest_path, embed_model=embed_model)
-    _raise_if_failed(result)
-    logger.info(
-        "ingest_upload_done path=%s chunks=%s",
-        dest_path,
-        result.total_chunks,
-    )
-    app_metrics.ingested_documents_total.inc(1)
-    source = result.processed_sources[0] if result.processed_sources else dest_path
-    return IngestFileResponse(
-        status="ok",
-        chunks_added=result.total_chunks,
-        source=str(source),
-    )
 
-
-def _stream_upload_to_disk(file_obj: BinaryIO, dest_path: Path, max_bytes: int) -> int:
+def _stream_upload_to_disk(file_obj: BinaryIO, dest_path: Path, max_bytes: int) -> tuple[int, str]:
     chunk_size = 1024 * 1024
     bytes_written = 0
+    digest = hashlib.sha256()
     completed = False
     try:
         with dest_path.open("wb") as out:
@@ -309,19 +330,63 @@ def _stream_upload_to_disk(file_obj: BinaryIO, dest_path: Path, max_bytes: int) 
                         f"File exceeds the {max_bytes}-byte upload limit.",
                     )
                 out.write(chunk)
+                digest.update(chunk)
         completed = True
-        return bytes_written
+        return bytes_written, digest.hexdigest()
     finally:
         if not completed:
             dest_path.unlink(missing_ok=True)
 
 
-def _unique_upload_destination(directory: Path, file_name: str) -> Path:
-    candidate = directory / file_name
-    if not candidate.exists():
-        return candidate
-    stem, suffix = Path(file_name).stem, Path(file_name).suffix
-    return directory / f"{stem}-{uuid4().hex[:8]}{suffix}"
+def _cleanup_uploads(directory: Path, settings: Settings, protected: Path | None = None) -> None:
+    now = time.time()
+    files = []
+    for path in directory.iterdir():
+        if path.is_file() and not path.name.startswith(".uploading-"):
+            try:
+                stat = path.stat()
+            except OSError:
+                continue
+            if path != protected and (
+                settings.upload_retention_seconds <= 0
+                or now - stat.st_mtime > settings.upload_retention_seconds
+            ):
+                path.unlink(missing_ok=True)
+                app_metrics.upload_cleanup_total.labels(reason="retention").inc()
+                continue
+            files.append((stat.st_mtime, path, stat.st_size))
+    total = sum(size for _, _, size in files)
+    for _, path, size in sorted(files):
+        if total <= settings.upload_quota_bytes:
+            break
+        if path == protected:
+            continue
+        path.unlink(missing_ok=True)
+        total -= size
+        app_metrics.upload_cleanup_total.labels(reason="quota").inc()
+        logger.info("upload_cleanup_quota path=%s", path)
+
+
+def _corpus_revision(engine: RAGEngine) -> str:
+    """Read the vector collection revision without coupling the API to a plugin."""
+    store = getattr(engine.retriever, "vector_store", None)
+    collection = getattr(store, "collection", None)
+    metadata = getattr(collection, "metadata", None) or {}
+    return str(metadata.get("localrag:corpus_revision", "0"))
+
+
+def _provider_name(engine: RAGEngine) -> str:
+    return str(getattr(getattr(engine, "provider", None), "provider_name", "ollama"))
+
+
+def _default_model(engine: RAGEngine) -> str:
+    return str(
+        getattr(
+            getattr(engine, "provider", None),
+            "default_model",
+            engine.settings.ollama_llm_model,
+        )
+    )
 
 
 def query_json(
@@ -332,12 +397,21 @@ def query_json(
     cache_key: str | None = None
     if query_cache is not None:
         cache_key = make_cache_key(
-            request.question, request.model, request.n_results, engine.settings.retrieval_mode
+            request.question,
+            request.model,
+            request.n_results,
+            engine.settings.retrieval_mode,
+            metadata_filter=request.metadata_filter,
+            collection=engine.settings.chroma_collection_name,
+            provider=_provider_name(engine),
+            corpus_revision=_corpus_revision(engine),
         )
         cached = query_cache.get(cache_key)
         if cached is not None:
             logger.info("query_cache_hit")
+            app_metrics.cache_operations_total.labels(operation="hit").inc()
             return QueryResponse(**cached)
+        app_metrics.cache_operations_total.labels(operation="miss").inc()
 
     try:
         if engine.settings.adaptive_enabled:
@@ -350,7 +424,7 @@ def query_json(
                 answer=str(result["answer"]),
                 sources=[SourceRef(**dict(source)) for source in raw_sources],
                 latency_ms=(time.perf_counter() - t0) * 1000,
-                model=request.model or engine.settings.ollama_llm_model,
+                model=request.model or _default_model(engine),
                 low_confidence=not bool(raw_sources),
                 trace=cast("dict[str, object] | None", result.get("trace"))
                 if isinstance(result.get("trace"), dict)
@@ -366,12 +440,13 @@ def query_json(
                 metadata_filter=request.metadata_filter,
             )
     except RetrievalError as exc:
+        app_metrics.query_failures_total.inc()
         raise RagApiError(int(exc.status_code), exc.detail) from exc
 
     answer_chunks: list[str] = []
     low_confidence = False
     trace: dict[str, object] | None = None
-    with span(SpanName.GENERATION, {"model": request.model or engine.settings.ollama_llm_model}):
+    with span(SpanName.GENERATION, {"model": request.model or _default_model(engine)}):
         for event in engine.stream_chat_from_contexts(
             contexts=contexts,
             question=request.question,
@@ -384,7 +459,7 @@ def query_json(
                 trace = cast("dict[str, object] | None", event.get("trace"))
 
     latency_ms = (time.perf_counter() - t0) * 1000
-    used_model = request.model or engine.settings.ollama_llm_model
+    used_model = request.model or _default_model(engine)
     sources = [SourceRef(**s) for s in engine.extract_sources(contexts)]
 
     app_metrics.query_duration_seconds.observe(latency_ms / 1000)
@@ -413,6 +488,10 @@ def query_json(
         answer=response.answer,
         model=used_model,
         latency_ms=latency_ms,
+        max_bytes=engine.settings.audit_log_max_bytes,
+        retention_seconds=engine.settings.audit_log_retention_seconds,
+        metadata_only=engine.settings.audit_log_metadata_only,
+        redact_content=engine.settings.audit_log_redact_content,
     )
     if query_cache is not None and cache_key is not None:
         query_cache.set(cache_key, response.model_dump())
@@ -467,7 +546,11 @@ def iter_query_sse_events(
                 question=request.question,
                 sources=event["sources"],
                 answer="".join(answer_chunks).strip(),
-                model=request.model or engine.settings.ollama_llm_model,
+                model=request.model or _default_model(engine),
                 latency_ms=(time.perf_counter() - t0) * 1000,
+                max_bytes=engine.settings.audit_log_max_bytes,
+                retention_seconds=engine.settings.audit_log_retention_seconds,
+                metadata_only=engine.settings.audit_log_metadata_only,
+                redact_content=engine.settings.audit_log_redact_content,
             )
             yield {"event": "final", "data": json.dumps(payload)}

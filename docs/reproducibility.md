@@ -339,7 +339,7 @@ The canonical result and migration decision is [ADR 013](adr/013-versioned-bench
 MLflow is an optional best-effort mirror, not a replacement for local JSON:
 
 ```bash
-uv sync --extra tracking
+uv sync --locked --extra tracking
 EVAL_TRACKING_ENABLED=true uv run localrag benchmark --profile fixture
 ```
 
@@ -351,6 +351,16 @@ canonical JSON artifacts are selected deterministically. Secrets, paths,
 prompts, documents, contexts, questions, and answers are redacted unless the
 explicitly documented `EVAL_TRACKING_CAPTURE_CONTENT=true` opt-in is enabled.
 See [ADR 018](adr/018-optional-mlflow-experiment-tracking.md).
+
+## Dependency lock workflow
+
+`uv.lock` is committed and is the source of dependency versions for CI, Docker,
+and contributor installs. Use `uv lock` intentionally after changing
+`pyproject.toml` or updating dependency constraints, review the resulting lock
+diff, then verify it with `uv lock --check`. Normal installs must use
+`uv sync --locked`; this prevents uv from silently rewriting the lock file.
+
+The equivalent contributor checks are `task lock-check` and `task install`.
 
 Leaderboard publication is a separate, strict consumer of reviewed canonical
 artifacts. See [benchmark-leaderboard.md](benchmark-leaderboard.md): it rejects

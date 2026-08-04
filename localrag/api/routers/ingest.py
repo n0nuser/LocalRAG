@@ -7,6 +7,7 @@ from localrag.api.dependencies import (
     get_api_settings,
     get_ingestion_service,
     get_job_registry,
+    get_query_cache,
     require_api_key,
 )
 from localrag.api.jobs import JobRegistry
@@ -19,6 +20,7 @@ from localrag.api.schemas import (
     IngestJobStatusResponse,
 )
 from localrag.ingestion.service import IngestionService
+from localrag.rag.query_cache import QueryCache
 from localrag.settings import Settings
 
 router = APIRouter(prefix="", tags=["ingestion"], dependencies=[Depends(require_api_key)])
@@ -39,13 +41,10 @@ dialog), instead of a server-side path like `POST /ingest` requires.
 - **No malware/antivirus scanning.** Uploaded content is trusted the same way
   a server-side path would be; do not expose this endpoint to untrusted
   callers without a scanning layer in front of it.
-- **Persistent storage, not transient:** the file is saved under
-  `UPLOAD_DIR` (bypassing `INGEST_ROOTS`, since the server — not the
-  caller — chooses the destination) and stays there so
-  `POST /collections/rebuild` can re-embed it later. Deleting it from disk
-  breaks rebuild for that source.
-- **Filename collisions** are resolved by appending a random suffix; check
-  the returned `source` field for the actual stored path.
+ - **Temporary artifact:** uploads are content-addressed and deleted after a
+   successful or failed ingest by default. Set `UPLOAD_RETENTION_SECONDS` to a
+   positive value to retain them for rebuilds; `UPLOAD_QUOTA_BYTES` bounds the
+   retained directory.
 - **Single file per request** — no batch/zip upload.
 - **One automatic retry:** if parsing/embedding fails transiently, it's retried
   once before giving up. A failure that persists after the retry is returned
@@ -68,14 +67,17 @@ def ingest_upload(
     ),
     settings: Settings = Depends(get_api_settings),
     ingestion_service: IngestionService = Depends(get_ingestion_service),
+    query_cache: QueryCache = Depends(get_query_cache),
 ) -> IngestFileResponse:
-    return api_service.ingest_upload(
+    response = api_service.ingest_upload(
         file_name=file.filename or "upload",
         file_obj=file.file,
         embed_model=embed_model,
         settings=settings,
         ingestion_service=ingestion_service,
     )
+    query_cache.clear()
+    return response
 
 
 @router.post("/ingest", response_model=IngestFileResponse)
@@ -83,8 +85,11 @@ def ingest_file(
     request: IngestFileRequest,
     settings: Settings = Depends(get_api_settings),
     ingestion_service: IngestionService = Depends(get_ingestion_service),
+    query_cache: QueryCache = Depends(get_query_cache),
 ) -> IngestFileResponse:
-    return api_service.ingest_file(request, settings, ingestion_service)
+    response = api_service.ingest_file(request, settings, ingestion_service)
+    query_cache.clear()
+    return response
 
 
 @router.post("/ingest/directory", response_model=IngestDirectoryResponse)
@@ -92,8 +97,11 @@ def ingest_directory(
     request: IngestDirectoryRequest,
     settings: Settings = Depends(get_api_settings),
     ingestion_service: IngestionService = Depends(get_ingestion_service),
+    query_cache: QueryCache = Depends(get_query_cache),
 ) -> IngestDirectoryResponse:
-    return api_service.ingest_directory(request, settings, ingestion_service)
+    response = api_service.ingest_directory(request, settings, ingestion_service)
+    query_cache.clear()
+    return response
 
 
 @router.post(

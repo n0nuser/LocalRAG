@@ -3,12 +3,14 @@ from __future__ import annotations
 import hashlib
 import logging
 import subprocess
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from localrag import metrics as app_metrics
 from localrag.embedding.base import EmbeddingProvider
 from localrag.embedding.cache import EmbeddingCache
 from localrag.ingestion.chunker import chunk_text
@@ -59,6 +61,7 @@ class IngestionService:
     vector_store: VectorStore
     bm25_index: Bm25Index | None = None
     embedding_cache: EmbeddingCache | None = None
+    _write_lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
 
     def ingest_file(self, path: Path, embed_model: str | None = None) -> IngestionResult:
         return self.ingest_paths([path], embed_model=embed_model)
@@ -115,6 +118,12 @@ class IngestionService:
         return hashes
 
     def ingest_paths(self, paths: list[Path], embed_model: str | None = None) -> IngestionResult:
+        with self._write_lock:
+            return self._ingest_paths_locked(paths, embed_model)
+
+    def _ingest_paths_locked(
+        self, paths: list[Path], embed_model: str | None = None
+    ) -> IngestionResult:
         files_processed, total_chunks, processed_sources, retry_queue = self._ingest_batch(
             self._allowed_paths(paths),
             embed_model,
@@ -138,6 +147,7 @@ class IngestionService:
             failed_sources.extend(
                 FailedSource(source=str(path), error=error) for path, error in still_failed
             )
+            app_metrics.ingest_failures_total.inc(len(still_failed))
 
         # Rebuilding the BM25 corpus is O(total chunks); do it once per batch, not per file.
         if self.bm25_index is not None and files_processed > 0:
@@ -255,9 +265,6 @@ class IngestionService:
         record = getattr(self.vector_store, "record_embedding_compatibility", None)
         if record is not None:
             record(self.embedder, len(embeddings[0]), model=embed_model)
-        # Only drop the old vectors once the new embeddings are in hand, so a failed
-        # embed call leaves the previous (still valid) vectors for this source in place.
-        self.vector_store.delete_by_source(source)
         created_at = datetime.now(UTC).isoformat()
         content_hash = _file_content_hash(resolved_path)
         source_mtime = resolved_path.stat().st_mtime
@@ -279,7 +286,8 @@ class IngestionService:
             }
             for index, chunk in enumerate(structural_chunks)
         ]
-        self.vector_store.add_chunks(
+        replace_source = getattr(self.vector_store, "replace_source", self.vector_store.add_chunks)
+        replace_source(
             source=source,
             chunks=chunks,
             embeddings=embeddings,

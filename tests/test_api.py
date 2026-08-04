@@ -268,3 +268,43 @@ def test_ingest_upload_rejects_oversized_file(tmp_path: Path) -> None:
     assert response.status_code == 413
     assert list(tmp_path.iterdir()) == []
     app.dependency_overrides.clear()
+
+
+def test_ingest_upload_is_temporary_by_default(tmp_path: Path) -> None:
+    @dataclass
+    class Recording:
+        def ingest_file(self, path: Path, embed_model: str | None = None) -> IngestionResult:
+            return IngestionResult(files_processed=1, total_chunks=1, processed_sources=[str(path)])
+
+    recording = Recording()
+    app.dependency_overrides[get_api_settings] = lambda: Settings(upload_dir=str(tmp_path))
+    app.dependency_overrides[get_ingestion_service] = lambda: recording
+    response = TestClient(app).post(
+        "/ingest/upload", files={"file": ("notes.txt", b"same", "text/plain")}
+    )
+    assert response.status_code == 200
+    assert list(tmp_path.iterdir()) == []
+    app.dependency_overrides.clear()
+
+
+def test_ingest_upload_retention_quota_removes_oldest(tmp_path: Path) -> None:
+    @dataclass
+    class Recording:
+        def ingest_file(self, path: Path, embed_model: str | None = None) -> IngestionResult:
+            return IngestionResult(files_processed=1, total_chunks=1, processed_sources=[str(path)])
+
+    old = tmp_path / "old.txt"
+    old.write_bytes(b"old")
+    old.touch()
+    settings = Settings(
+        upload_dir=str(tmp_path), upload_retention_seconds=3600, upload_quota_bytes=3
+    )
+    app.dependency_overrides[get_api_settings] = lambda: settings
+    app.dependency_overrides[get_ingestion_service] = lambda: Recording()
+    response = TestClient(app).post(
+        "/ingest/upload", files={"file": ("notes.txt", b"new", "text/plain")}
+    )
+    assert response.status_code == 200
+    assert old.exists() is False
+    assert len(list(tmp_path.iterdir())) == 1
+    app.dependency_overrides.clear()

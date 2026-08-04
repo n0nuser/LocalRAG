@@ -50,7 +50,7 @@ flowchart TD
 2. **Install dependencies:**
 
 ```bash
-uv sync
+uv sync --locked
 ```
 
 3. **Start Ollama and pull models:**
@@ -84,6 +84,7 @@ then use `task --list` to discover workflows:
 
 ```bash
 task install
+task lock-check
 task lint
 task test
 task format
@@ -342,7 +343,7 @@ Edit `k8s/secret.yaml` to add your actual API keys before applying.
 ## Development
 
 ```bash
-uv sync
+uv sync --locked
 uv run pytest
 uv run ruff check .
 uv run ruff format .

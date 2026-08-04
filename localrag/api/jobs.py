@@ -18,6 +18,8 @@ from enum import StrEnum
 from typing import Any
 from uuid import uuid4
 
+from localrag import metrics as app_metrics
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,10 +79,12 @@ class JobRegistry:
             with self._lock:
                 self._jobs[job_id].status = JobStatus.FAILED
                 self._jobs[job_id].error = str(exc)
+            app_metrics.ingest_jobs_total.labels(status="failed").inc()
             return
         with self._lock:
             self._jobs[job_id].status = JobStatus.DONE
             self._jobs[job_id].result = result
+        app_metrics.ingest_jobs_total.labels(status="done").inc()
 
     def get(self, job_id: str) -> Job | None:
         with self._lock:

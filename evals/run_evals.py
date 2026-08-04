@@ -106,8 +106,14 @@ def _query_api(question: str, api_url: str, api_key: str) -> tuple[str, list[str
     resp.raise_for_status()
     body = resp.json()
     answer = body.get("answer", "")
-    sources = body.get("sources", [])
-    contexts = [s.get("source", "") for s in sources]
+    context_resp = httpx.post(
+        f"{api_url.rstrip('/')}/query/contexts",
+        json={"question": question},
+        headers=headers,
+        timeout=120,
+    )
+    context_resp.raise_for_status()
+    contexts = [item.get("text", "") for item in context_resp.json().get("contexts", [])]
     return answer, contexts
 
 
@@ -177,7 +183,16 @@ async def _build_rows_async(
                 response.raise_for_status()
                 body = response.json()
                 answer = body.get("answer", "")
-                contexts = [source.get("source", "") for source in body.get("sources", [])]
+                context_response = await client.post(
+                    f"{api_url.rstrip('/')}/query/contexts",
+                    json={"question": record.question},
+                    headers=headers,
+                )
+                context_response.raise_for_status()
+                contexts = [
+                    item.get("text", "")
+                    for item in context_response.json().get("contexts", [])
+                ]
                 contexts = contexts or record.offline_context_texts()
             return {
                 "record_id": record.record_id,

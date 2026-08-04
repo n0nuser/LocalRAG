@@ -12,6 +12,16 @@ from localrag.llm.types import LLMResponse
 class BaseLLMProvider(ABC):
     """Contract every LLM backend must fulfil."""
 
+    @property
+    def provider_name(self) -> str:
+        """Return the stable backend identity used in provenance."""
+        return self.__class__.__name__.removesuffix("Provider").lower()
+
+    @property
+    def default_model(self) -> str:
+        """Return the configured default model for this backend."""
+        return "unknown"
+
     @abstractmethod
     def generate(
         self,

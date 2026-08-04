@@ -70,11 +70,35 @@ class VectorStore:
             embeddings=embeddings,  # type: ignore[arg-type]
             metadatas=metadatas,  # type: ignore[arg-type]
         )
+        self._bump_revision()
         logger.debug(
             "vector_upsert source=%s chunk_count=%s",
             source,
             len(chunks),
         )
+
+    def replace_source(
+        self,
+        source: str,
+        chunks: list[str],
+        embeddings: list[list[float]],
+        metadatas: list[dict[str, Any]],
+    ) -> None:
+        """Upsert a replacement before deleting obsolete source vectors."""
+        old_ids = self._source_ids(source)
+        self.add_chunks(source, chunks, embeddings, metadatas)
+        ids = {
+            str(metadata.get("chunk_id") or self._chunk_id(source, index))
+            for index, metadata in enumerate(metadatas)
+        }
+        obsolete = old_ids - ids
+        if obsolete:
+            self.collection.delete(ids=sorted(obsolete))
+            self._bump_revision()
+
+    def _source_ids(self, source: str) -> set[str]:
+        raw = self.collection.get(where={"source": source}, include=[])
+        return {str(chunk_id) for chunk_id in raw.get("ids") or []}
 
     def ensure_embedding_compatibility(
         self, provider: EmbeddingProvider, dimension: int | None = None, model: str | None = None
@@ -137,7 +161,15 @@ class VectorStore:
 
     def delete_by_source(self, source: str) -> None:
         self.collection.delete(where={"source": source})
+        self._bump_revision()
         logger.debug("vector_delete_by_source source=%s", source)
+
+    def _bump_revision(self) -> None:
+        metadata = dict(getattr(self.collection, "metadata", None) or {})
+        metadata["localrag:corpus_revision"] = int(metadata.get("localrag:corpus_revision", 0)) + 1
+        modify = getattr(self.collection, "modify", None)
+        if modify is not None:
+            modify(metadata=metadata)
 
     def query(
         self, embedding: list[float], top_k: int, where: dict[str, Any] | None = None
@@ -150,23 +182,47 @@ class VectorStore:
             include=["documents", "metadatas", "distances"],
         )
 
-    def get_chunks_by_heading(self, source: str, heading_path: str) -> list[tuple[int, str]]:
-        raw = self.collection.get(
-            where={"$and": [{"source": source}, {"heading_path": heading_path}]},
-            include=["documents", "metadatas"],
-        )
+    def get_chunks_by_headings(
+        self,
+        headings: list[tuple[str, str]],
+        metadata_filter: dict[str, Any] | None = None,
+    ) -> dict[tuple[str, str], list[tuple[int, str]]]:
+        """Fetch sibling chunks for multiple sections in one collection lookup."""
+        if not headings:
+            return {}
+
+        clauses = [
+            {"$and": [{"source": source}, {"heading_path": heading_path}]}
+            for source, heading_path in headings
+        ]
+        where: dict[str, Any] = {"$or": clauses} if len(clauses) > 1 else clauses[0]
+        if metadata_filter:
+            where = {"$and": [where, *[{key: value} for key, value in metadata_filter.items()]]}
+        raw = self.collection.get(where=where, include=["documents", "metadatas"])
         documents = raw.get("documents") or []
         metadatas = raw.get("metadatas") or []
-        pairs: list[tuple[int, str]] = []
+        requested = set(headings)
+        grouped: dict[tuple[str, str], list[tuple[int, str]]] = {}
         for document, metadata in zip(documents, metadatas, strict=False):
             if not isinstance(document, str):
                 continue
             metadata_map = metadata if isinstance(metadata, dict) else {}
+            key = (str(metadata_map.get("source", "")), str(metadata_map.get("heading_path", "")))
+            if key not in requested or any(
+                metadata_map.get(filter_key) != filter_value
+                for filter_key, filter_value in (metadata_filter or {}).items()
+            ):
+                continue
             chunk_index = metadata_map.get("chunk_index")
             if isinstance(chunk_index, int):
-                pairs.append((chunk_index, document))
-        pairs.sort(key=lambda pair: pair[0])
-        return pairs
+                grouped.setdefault(key, []).append((chunk_index, document))
+        for pairs in grouped.values():
+            pairs.sort(key=lambda pair: pair[0])
+        return grouped
+
+    def get_chunks_by_heading(self, source: str, heading_path: str) -> list[tuple[int, str]]:
+        """Fetch sibling chunks for one section, preserving the legacy helper contract."""
+        return self.get_chunks_by_headings([(source, heading_path)]).get((source, heading_path), [])
 
     def list_distinct_sources(self) -> list[str]:
         raw = self.collection.get(include=["metadatas"])

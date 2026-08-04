@@ -62,6 +62,14 @@ class ResilientProvider(BaseLLMProvider):
         )
         self._max_attempts = max_attempts
 
+    @property
+    def provider_name(self) -> str:
+        return self._provider.provider_name
+
+    @property
+    def default_model(self) -> str:
+        return self._provider.default_model
+
     def _retrying(self, func: Callable[[], _T]) -> _T:
         wrapped = retry(
             retry=retry_if_exception(_should_retry),

@@ -6,6 +6,7 @@ from localrag.api import service as api_service
 from localrag.api.dependencies import (
     get_collection_repository,
     get_ingestion_service,
+    get_query_cache,
     require_api_key,
 )
 from localrag.api.repository import ChromaCollectionRepository
@@ -17,6 +18,7 @@ from localrag.api.schemas import (
     RebuildCollectionResponse,
 )
 from localrag.ingestion.service import IngestionService
+from localrag.rag.query_cache import QueryCache
 
 router = APIRouter(
     prefix="/collections",
@@ -36,13 +38,19 @@ def list_collections(
 def delete_collection(
     name: CollectionNamePath,
     collection_repo: ChromaCollectionRepository = Depends(get_collection_repository),
+    query_cache: QueryCache = Depends(get_query_cache),
 ) -> CollectionDeleteResponse:
-    return api_service.delete_collection_response(collection_repo, name)
+    response = api_service.delete_collection_response(collection_repo, name)
+    query_cache.clear()
+    return response
 
 
 @router.post("/rebuild", response_model=RebuildCollectionResponse)
 def rebuild_collection(
     request: RebuildCollectionRequest,
     ingestion_service: IngestionService = Depends(get_ingestion_service),
+    query_cache: QueryCache = Depends(get_query_cache),
 ) -> RebuildCollectionResponse:
-    return api_service.rebuild_collection_response(request, ingestion_service)
+    response = api_service.rebuild_collection_response(request, ingestion_service)
+    query_cache.clear()
+    return response
