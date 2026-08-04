@@ -45,6 +45,14 @@ cases is not passing. Thresholds are inclusive: higher-is-better metrics pass
 at `value >= threshold`, while lower-is-better metrics pass at
 `value <= threshold`.
 
+Failure analysis is a consumer of these per-case artifacts, not another metric.
+It classifies failed cases as `retrieval_miss`, `context_omission`,
+`unsupported_claim`, `wrong_citation`, `out_of_scope_refusal`,
+`evaluator_failure`, or `unclassified`. Labels are ordered primary-plus-
+secondary labels, and counts are per label while failed-case totals are
+deduplicated. Missing citation annotations remain unavailable and classify as
+unclassified; no citation score is invented. See [ADR 031](adr/031-failure-analysis-contract.md).
+
 The canonical JSON contract and migrations are in `evals/results/schema.py`.
 
 ## Parallel evaluation

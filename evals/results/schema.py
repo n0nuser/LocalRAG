@@ -104,6 +104,7 @@ class ResultFile(BaseModel):
     status: ResultStatus = "complete"
     cases: list[EvaluationCaseResult] = Field(default_factory=list)
     failure_counts: dict[str, int] = Field(default_factory=dict)
+    failure_analysis: dict[str, Any] | None = None
     exit_code: int = 0
 
     @field_validator("schema_version")

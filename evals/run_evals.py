@@ -63,6 +63,7 @@ from evals.dataset.errors import DatasetError, OfflineArtifactsMissingError
 from evals.dataset.registry import load_dataset
 from evals.dataset.schema import DatasetRecord
 from evals.environment import capture_run_metadata, resolve_seed
+from evals.failure_analysis import FailureCaseArtifact, classify_cases
 from evals.metrics import exact_match, f1, score_citation_accuracy
 from evals.results.schema import (
     EvaluationCaseResult,
@@ -136,6 +137,7 @@ def _build_rows(
                 "question": rec.question,
                 "answer": answer,
                 "contexts": contexts,
+                "retrieved_ids": [citation.citation_id for citation in rec.citations],
                 "ground_truth": rec.reference_answer,
                 "ground_truths": rec.reference_answers_or_default(),
                 "answer_citation_ids": rec.answer_citation_ids,
@@ -157,6 +159,7 @@ async def _build_rows_async(
     """Build rows concurrently while retaining dataset order and row failures."""
     headers = {"X-API-Key": api_key} if api_key else {}
     async with httpx.AsyncClient(timeout=timeout) as client:
+
         async def build(record: DatasetRecord) -> dict:
             if offline:
                 if record.offline_answer is None and not record.reference_answer:
@@ -181,6 +184,7 @@ async def _build_rows_async(
                 "question": record.question,
                 "answer": answer,
                 "contexts": contexts,
+                "retrieved_ids": [citation.citation_id for citation in record.citations],
                 "ground_truth": record.reference_answer,
                 "ground_truths": record.reference_answers_or_default(),
                 "answer_citation_ids": record.answer_citation_ids,
@@ -210,6 +214,7 @@ def _empty_row(record: DatasetRecord) -> dict[str, Any]:
         "question": record.question,
         "answer": "",
         "contexts": [],
+        "retrieved_ids": [],
         "ground_truth": record.reference_answer,
         "ground_truths": record.reference_answers_or_default(),
         "answer_citation_ids": record.answer_citation_ids,
@@ -247,6 +252,54 @@ def _mean_score(values: list[float]) -> float:
     """Average a metric's per-row scores, ignoring NaNs."""
     clean = [v for v in values if not math.isnan(v)]
     return statistics.fmean(clean) if clean else math.nan
+
+
+def _failure_analysis(
+    rows: list[dict[str, Any]],
+    per_metric: dict[str, list[float]],
+    execution: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Classify after retrieval and metric artifacts exist, without exporting their text."""
+    execution_by_case: dict[str, list[dict[str, Any]]] = {}
+    for item in execution:
+        execution_by_case.setdefault(item["record_id"], []).append(item)
+    artifacts: list[FailureCaseArtifact] = []
+    for index, row in enumerate(rows):
+        executions = execution_by_case.get(row["record_id"], [])
+        failed_execution = next(
+            (item for item in executions if item["status"] != "completed"), None
+        )
+        metrics = {
+            name: {
+                "value": value if math.isfinite(value) else None,
+                "status": (
+                    "complete"
+                    if math.isfinite(value)
+                    else ("unavailable" if name == "citation_accuracy" else "error")
+                ),
+                "threshold": PASS_THRESHOLDS[name],
+                "direction": "lower_is_better"
+                if name == "hallucination_rate"
+                else "higher_is_better",
+            }
+            for name, values in per_metric.items()
+            for value in [values[index]]
+        }
+        artifacts.append(
+            FailureCaseArtifact(
+                case_id=row["record_id"],
+                status="failed" if failed_execution else "completed",
+                answer=row.get("answer"),
+                ground_truth=row.get("ground_truth"),
+                retrieved_ids=row.get("retrieved_ids", []),
+                retrieved_text=row.get("contexts", []),
+                citation_ids=row.get("answer_citation_ids"),
+                relevant_citation_ids=row.get("relevant_citation_ids"),
+                metrics=metrics,
+                error=failed_execution.get("error") if failed_execution else None,
+            )
+        )
+    return classify_cases(artifacts).model_dump(mode="json")
 
 
 async def _score_rows(
@@ -314,19 +367,29 @@ async def _score_rows_parallel(
         result["citation_accuracy"] = citation.value if citation.value is not None else math.nan
 
         judge_results = await asyncio.gather(
-            judge_call(lambda: faithfulness.ascore(
-                user_input=user_input, response=response, retrieved_contexts=retrieved_contexts
-            )),
+            judge_call(
+                lambda: faithfulness.ascore(
+                    user_input=user_input, response=response, retrieved_contexts=retrieved_contexts
+                )
+            ),
             judge_call(
                 lambda: answer_relevancy.ascore(user_input=user_input, response=response),
                 embedding=True,
             ),
-            judge_call(lambda: context_precision.ascore(
-                user_input=user_input, reference=reference, retrieved_contexts=retrieved_contexts
-            )),
-            judge_call(lambda: context_recall.ascore(
-                user_input=user_input, retrieved_contexts=retrieved_contexts, reference=reference
-            )),
+            judge_call(
+                lambda: context_precision.ascore(
+                    user_input=user_input,
+                    reference=reference,
+                    retrieved_contexts=retrieved_contexts,
+                )
+            ),
+            judge_call(
+                lambda: context_recall.ascore(
+                    user_input=user_input,
+                    retrieved_contexts=retrieved_contexts,
+                    reference=reference,
+                )
+            ),
             return_exceptions=True,
         )
         judge_names = (
@@ -347,9 +410,7 @@ async def _score_rows_parallel(
                     result[name] = math.nan
                     errors.append(f"{name}: {type(exc).__name__}: {exc}")
         result["hallucination_rate"] = (
-            1.0 - result["faithfulness"]
-            if math.isfinite(result["faithfulness"])
-            else math.nan
+            1.0 - result["faithfulness"] if math.isfinite(result["faithfulness"]) else math.nan
         )
         if errors:
             result["_error"] = "; ".join(errors)
@@ -502,6 +563,7 @@ def main() -> None:
     execution.extend(metric_execution)
 
     scores: dict[str, float] = {name: _mean_score(values) for name, values in per_metric.items()}
+    failure_analysis = _failure_analysis(rows, per_metric, execution)
 
     metadata = capture_run_metadata(
         seed=seed,
@@ -514,6 +576,13 @@ def main() -> None:
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     out_path = RESULTS_DIR / f"{ts}.json"
+    failure_analysis["artifact_schema_version"] = 1
+    failure_analysis["run_id"] = ts
+    failure_analysis["dataset"] = {
+        "dataset_id": manifest.dataset_id,
+        "dataset_version": manifest.dataset_version,
+        "split": args.split,
+    }
     result = ResultFile.model_validate(
         {
             "run_id": ts,
@@ -605,9 +674,14 @@ def main() -> None:
             "cases": [EvaluationCaseResult.model_validate(item) for item in execution],
             "failure_counts": {
                 status: sum(item["status"] == status for item in execution)
-                for status in {item["status"] for item in execution if item["status"] != "completed"}
+                for status in {
+                    item["status"] for item in execution if item["status"] != "completed"
+                }
             },
-            "status": "failed" if any(item["status"] != "completed" for item in execution) else "complete",
+            "failure_analysis": failure_analysis,
+            "status": "failed"
+            if any(item["status"] != "completed" for item in execution)
+            else "complete",
             "exit_code": 1 if any(item["status"] != "completed" for item in execution) else 0,
         }
     )
@@ -623,7 +697,11 @@ def main() -> None:
         },
     )
     tracking.log_metrics(
-        {name: metric.value for name, metric in result.metric_map().items() if metric.value is not None}
+        {
+            name: metric.value
+            for name, metric in result.metric_map().items()
+            if metric.value is not None
+        }
     )
     tracking.log_artifacts([out_path])
     tracking.finish_parent(result.status)
