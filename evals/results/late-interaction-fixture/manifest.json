@@ -1,0 +1,47 @@
+{
+  "artifact_paths": {
+    "index": "evals/results/late-interaction-fixture/late-interaction-index.json",
+    "result": "evals/results/late-interaction-fixture/result.json"
+  },
+  "cases": [],
+  "code_dirty": false,
+  "code_revision": "26de35e20cb09119547aeb9f08e02350b90c6fd9c3291b7698062427663d4c30",
+  "corpus": {
+    "checksum": "sha256:late-interaction-fixture-v1",
+    "identity": "localrag-late-interaction-fixture"
+  },
+  "dataset": {
+    "checksum": "sha256:late-interaction-fixture-v1",
+    "dataset_id": "localrag-late-interaction-fixture",
+    "dataset_version": "1.0.0",
+    "split": "smoke"
+  },
+  "effective_config": {
+    "precision": "float64",
+    "seed": 42,
+    "top_k": 1
+  },
+  "exit_code": 0,
+  "finished_at": "2026-08-04T15:49:20.211354+00:00",
+  "matrix_id": "late-interaction-fixture",
+  "mode": "fixture-offline",
+  "model": {
+    "embedding": "deterministic-fixture",
+    "generation": "none",
+    "provider": "none"
+  },
+  "profile": "fixture",
+  "run_id": "late-interaction-fixture-v1",
+  "schema_version": 1,
+  "seed": 42,
+  "started_at": "2026-08-04T15:49:20.208030+00:00",
+  "status": "complete",
+  "supported_dimensions": {
+    "retrieval_mode": [
+      "dense",
+      "bm25",
+      "hybrid",
+      "late_interaction"
+    ]
+  }
+}

@@ -81,6 +81,7 @@ flowchart LR
 | LLM abstraction | `localrag/llm/` | `BaseLLMProvider`, Ollama/OpenAI/Anthropic providers, factory, cost estimator |
 | Agent | `localrag/agent/service.py`, `localrag/api/routers/agent.py` | Anthropic tool-use agent; `POST /agent/query` |
 | Eval | `evals/dataset/`, `evals/metrics.py`, `evals/concurrency.py`, `evals/run_evals.py`, `evals/matrix.py`, `evals/results/`, `evals/compare.py`, `evals/report.py`, `evals/leaderboard.py` | Dataset registry + deterministic/RAGAS metrics, bounded evaluation orchestration, canonical matrix runner, versioned result contract/comparison, offline HTML rendering, and strict leaderboard publication; `localrag eval`, `localrag benchmark`, `localrag eval-compare`, `localrag report`, and `localrag leaderboard` CLI commands |
+| Late-interaction research | `evals/late_interaction.py`, `research/70-late-interaction-spike/` | Dependency-free MaxSim/index correctness spike and fixture evidence; isolated from Chroma and the default retriever; see ADR 027 |
 | Audit log | `localrag/audit.py` | `write_audit_record` — durable local JSONL trail (question, sources, answer, model, latency); disabled by default via `AUDIT_LOG_PATH` |
 
 ## LLM abstraction
