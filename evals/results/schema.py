@@ -18,7 +18,7 @@ CURRENT_SCHEMA_VERSION = 1
 MetricDirection = Literal["higher_is_better", "lower_is_better"]
 MissingPolicy = Literal["missing", "not_applicable"]
 ResultStatus = Literal["complete", "partial", "failed"]
-CaseStatus = Literal["completed", "failed", "cancelled", "timed_out"]
+CaseStatus = Literal["completed", "unsupported", "failed", "cancelled", "timed_out"]
 
 
 class ResultError(ValueError):

@@ -84,6 +84,40 @@ The `hyde` profile is a four-arm smoke comparison (`baseline`, `rewrite`, `hyde`
 generation latency, and retrieval latency as separate reported fields; it is an
 experiment scaffold, not evidence of a universal improvement.
 
+### Long-context first slice
+
+The long-context profile is manually invoked and has two explicit semantics:
+
+```bash
+# Stored answers and contexts only; this is a fixture control, not retrieval.
+uv run localrag benchmark --profile fixture --mode fixture-offline
+
+# Live local Ollama generation with deterministic citation-corpus retrieval.
+uv run localrag benchmark --profile long-context --mode live-local
+```
+
+Live-local cases probe the selected Ollama model through `/api/show` before
+generation. The initial requested windows are 4096, 8192, and 32768 tokens for
+the exact configured `gemma3:4b` artifact. A cell larger than the advertised
+native limit is `unsupported`, never silently truncated or scored. A missing
+capability response is `unavailable`; a request or timeout is `failed`.
+
+Context is the dataset record's citation corpus. Chunks are deduplicated and
+ordered by score (then stable citation ID), with `fixed_top_k` (top five) as the
+baseline or `stuff` until the input budget is exhausted. The budget is
+`window - prompt overhead - reserved output`; whitespace token counting is
+recorded as `whitespace-v1`. Overflow drops later chunks and records
+`truncated=true`; an oversized first chunk fails the case rather than being
+silently clipped. Quality is currently deterministic EM/F1. Retrieval,
+generation, scoring, and total latency are separate. CPU RSS and GPU VRAM are
+explicitly unavailable in this first slice, and warm state is recorded as
+unknown rather than inferred.
+
+The bundled `localrag-core` fixture is a small general-purpose control. It is
+not a purpose-built long-context distractor or multi-hop dataset, so results
+must not be generalized beyond this limitation. 128K coverage is not claimed;
+it requires a model that advertises and accepts that window in a future matrix.
+
 Dry runs exit `0`. A configuration or validation error exits `2` before any case
 starts. Execution continues across independent cases; if one or more cases fail,
 the manifest is still written and the command exits `1`. The existing

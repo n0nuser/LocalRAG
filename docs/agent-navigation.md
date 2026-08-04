@@ -60,6 +60,7 @@ Agents (and humans) move faster when they:
 | Eval result versioning/comparison/baselines | `evals/results/`, `evals/compare.py`, `evals/baselines/`, `localrag/cli/commands/eval_compare.py` |
 | Eval dataset schema / registry / fixtures | `evals/dataset/schema.py`, `evals/dataset/registry.py`, `evals/dataset/fixtures/`, [eval-datasets.md](eval-datasets.md) |
 | Benchmark matrix contract / runner | `evals/matrix.py`, `localrag/cli/commands/benchmark.py`, [reproducibility.md](reproducibility.md) |
+| Long-context live-local benchmark | `evals/long_context.py`, `localrag/cli/commands/benchmark.py`, [ADR 026](adr/026-long-context-benchmark-boundary.md) |
 | Optional evaluation tracking | `evals/tracking.py`, `.env.example`, [ADR 018](adr/018-optional-mlflow-experiment-tracking.md) |
 | Offline HTML benchmark reports | `evals/report.py`, `localrag/cli/commands/report.py`, README report usage |
 | Benchmark leaderboard publication | `evals/leaderboard.py`, `localrag/cli/commands/leaderboard.py`, [benchmark-leaderboard.md](benchmark-leaderboard.md) |

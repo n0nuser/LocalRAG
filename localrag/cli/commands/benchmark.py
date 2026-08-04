@@ -10,6 +10,7 @@ import typer
 from evals.dataset.checksum import manifest_checksum
 from evals.dataset.errors import DatasetError
 from evals.dataset.registry import load_dataset
+from evals.long_context import make_live_executor
 from evals.matrix import (
     DatasetReference,
     MatrixConfig,
@@ -55,11 +56,30 @@ def _profile(name: str, dataset_id: str) -> MatrixConfig:
                 "retrieval_experiment_mode": ["baseline", "rewrite", "hyde", "rewrite+hyde"],
             },
         )
-    message = f"unknown profile {name!r}; use fixture, embedding-comparison, or hyde"
+    if name == "long-context":
+        dataset = load_dataset(dataset_id)
+        return MatrixConfig(
+            matrix_id="long-context",
+            profile=name,
+            dataset=DatasetReference(
+                dataset_id=dataset_id,
+                dataset_version=dataset.dataset_version,
+                split="smoke",
+                checksum=manifest_checksum(dataset),
+            ),
+            dimensions={
+                "generation_model": ["gemma3:4b"],
+                "context_window": [4096, 8192, 32768],
+                "context_strategy": ["fixed_top_k", "stuff"],
+                "top_k": [5],
+            },
+            mode="live-local",
+        )
+    message = f"unknown profile {name!r}; use fixture, embedding-comparison, hyde, or long-context"
     raise typer.BadParameter(message)
 
 
-def benchmark(
+def benchmark(  # noqa: C901
     dataset: str = typer.Option(
         "localrag-core", help="Registered dataset ID for a built-in profile."
     ),
@@ -79,6 +99,9 @@ def benchmark(
         True,  # noqa: FBT003
         help="Run in offline mode; never fall back to remote APIs.",
     ),
+    mode: str | None = typer.Option(
+        None, help="Execution semantics: fixture-offline (stored artifacts) or live-local (Ollama)."
+    ),
     dry_run: bool = typer.Option(
         default=False, help="Expand and validate without executing cases."
     ),
@@ -97,11 +120,29 @@ def benchmark(
         updates: dict[str, object] = {}
         if seed is not None:
             updates["seed"] = seed
-        if offline:
-            updates["mode"] = "offline"
+        if mode is not None:
+            updates["mode"] = mode
+        elif offline:
+            updates["mode"] = "fixture-offline"
         if updates:
             matrix_config = matrix_config.model_copy(update=updates)
-        manifest = run_matrix(matrix_config, result_output, dry_run=dry_run)
+        executor = None
+        if matrix_config.mode == "live-local" and not dry_run:
+            records = load_dataset(
+                matrix_config.dataset.dataset_id, matrix_config.dataset.dataset_version
+            ).split(matrix_config.dataset.split)
+            model = str(matrix_config.dimensions.get("generation_model", ["gemma3:4b"])[0])
+            executor = make_live_executor(
+                records,
+                base_url="http://localhost:11434",
+                model=model,
+                seed=matrix_config.seed,
+                timeout=120.0,
+            )
+        if executor is None:
+            manifest = run_matrix(matrix_config, result_output, dry_run=dry_run)
+        else:
+            manifest = run_matrix(matrix_config, result_output, dry_run=dry_run, executor=executor)
     except (DatasetError, OSError, json.JSONDecodeError, MatrixValidationError, ValueError) as exc:
         typer.echo(f"benchmark configuration failed: {exc}", err=True)
         raise typer.Exit(2) from exc
