@@ -289,6 +289,17 @@ retrieval change caused it — comparing two results with a mismatched
 Result comparison and CI regression gating are implemented by
 `evals/compare.py` and documented above.
 
+### Per-case failure analysis
+
+`evals/failure_analysis.py` consumes the canonical per-case inputs after
+retrieval and metric evaluation. It sorts cases by stable ID and applies
+deterministic heuristics before any optional local judge. The judge is disabled
+unless explicitly configured, bounded by timeout/retries, and must return
+structured allowed labels. Invalid or unavailable evidence produces
+`unclassified`; heuristic output is interpretation, not ground truth. Analysis
+is stored under `failure_analysis` in the canonical result and contains no raw
+answer, context, document, or source path by default. See [ADR 031](adr/031-failure-analysis-contract.md).
+
 The canonical result and migration decision is [ADR 013](adr/013-versioned-benchmark-results.md).
 
 ## Optional experiment tracking

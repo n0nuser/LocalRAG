@@ -23,6 +23,10 @@ pretend those scores are comparable. Malformed files are listed while valid file
 continue to render. Empty input produces a valid empty page. `--strict` changes
 input errors into exit code 1 after the report is written.
 
+Canonical evaluation results may also contain failure analysis. The report shows
+stable case IDs, primary/secondary labels, confidence, and deduplicated counts;
+it does not show raw answer, question, context, document, or source-path content.
+
 No CDN, remote font, image, JavaScript, or stylesheet is used. The file can be
 opened offline. Questions, answers, contexts, and source paths are omitted by
 default for privacy. Input metadata and failure messages are treated as untrusted
