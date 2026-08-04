@@ -37,6 +37,7 @@ from localrag.audit import write_audit_record
 from localrag.ingestion.loader import SUPPORTED_EXTENSIONS
 from localrag.ingestion.service import IngestionResult, IngestionService
 from localrag.logging_config import request_id_ctx
+from localrag.observability.tracing import SpanName, span
 from localrag.ollama.schemas import OllamaTagsResponse, parse_ollama_json
 from localrag.rag.engine import RAGEngine
 from localrag.rag.exceptions import RetrievalError
@@ -340,9 +341,10 @@ def query_json(
 
     try:
         if engine.settings.adaptive_enabled:
-            result = engine.answer(
-                request.question, request.model, request.n_results, request.metadata_filter
-            )
+            with span(SpanName.RETRIEVAL_ADAPTIVE, {"stage": "adaptive"}):
+                result = engine.answer(
+                    request.question, request.model, request.n_results, request.metadata_filter
+                )
             raw_sources = cast("list[dict[str, Any]]", result.get("sources") or [])
             response = QueryResponse(
                 answer=str(result["answer"]),
@@ -357,27 +359,29 @@ def query_json(
             if query_cache is not None and cache_key is not None:
                 query_cache.set(cache_key, response.model_dump())
             return response
-        contexts = engine.retriever.retrieve(
-            question=request.question,
-            n_results=request.n_results,
-            metadata_filter=request.metadata_filter,
-        )
+        with span(SpanName.RETRIEVAL, {"stage": "retrieve"}):
+            contexts = engine.retriever.retrieve(
+                question=request.question,
+                n_results=request.n_results,
+                metadata_filter=request.metadata_filter,
+            )
     except RetrievalError as exc:
         raise RagApiError(int(exc.status_code), exc.detail) from exc
 
     answer_chunks: list[str] = []
     low_confidence = False
     trace: dict[str, object] | None = None
-    for event in engine.stream_chat_from_contexts(
-        contexts=contexts,
-        question=request.question,
-        model=request.model,
-    ):
-        if event["type"] == "token":
-            answer_chunks.append(str(event["token"]))
-        if event["type"] == "final":
-            low_confidence = bool(event.get("low_confidence", False))
-            trace = cast("dict[str, object] | None", event.get("trace"))
+    with span(SpanName.GENERATION, {"model": request.model or engine.settings.ollama_llm_model}):
+        for event in engine.stream_chat_from_contexts(
+            contexts=contexts,
+            question=request.question,
+            model=request.model,
+        ):
+            if event["type"] == "token":
+                answer_chunks.append(str(event["token"]))
+            if event["type"] == "final":
+                low_confidence = bool(event.get("low_confidence", False))
+                trace = cast("dict[str, object] | None", event.get("trace"))
 
     latency_ms = (time.perf_counter() - t0) * 1000
     used_model = request.model or engine.settings.ollama_llm_model
@@ -418,11 +422,12 @@ def query_json(
 def get_query_contexts(request: QueryRequest, engine: RAGEngine) -> list[dict[str, Any]]:
     """Retrieve chunks synchronously so embedding / vector errors map to HTTP before SSE starts."""
     try:
-        return engine.retriever.retrieve(
-            question=request.question,
-            n_results=request.n_results,
-            metadata_filter=request.metadata_filter,
-        )
+        with span(SpanName.RETRIEVAL, {"stage": "retrieve"}):
+            return engine.retriever.retrieve(
+                question=request.question,
+                n_results=request.n_results,
+                metadata_filter=request.metadata_filter,
+            )
     except RetrievalError as exc:
         raise RagApiError(int(exc.status_code), exc.detail) from exc
 

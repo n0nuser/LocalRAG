@@ -156,6 +156,15 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
         },
         "dataset": {"roots": "ingest_roots", "recursive": "ingest_recursive"},
         "evaluation": {"seed": "eval_seed"},
+        "observability": {
+            "enabled": "otel_enabled",
+            "endpoint": "otel_exporter_endpoint",
+            "service_name": "otel_service_name",
+            "sample_rate": "otel_sample_rate",
+            "timeout_seconds": "otel_exporter_timeout_seconds",
+            "capture_content": "otel_capture_content",
+            "max_attribute_length": "otel_max_attribute_length",
+        },
     }
     fields = set(Settings.model_fields)
     flattened: dict[str, Any] = {}
@@ -460,8 +469,24 @@ class Settings(BaseSettings):
 
     eval_seed: int = 42
 
+    # OpenTelemetry is an optional, disabled-by-default integration. Content is
+    # never exported unless explicitly enabled for a local, trusted collector.
+    otel_enabled: bool = False
+    otel_exporter_endpoint: str = "http://localhost:4318"
+    otel_service_name: str = "localrag"
+    otel_sample_rate: float = 1.0
+    otel_exporter_timeout_seconds: float = 10.0
+    otel_exporter_retry_count: int = 3
+    otel_capture_content: bool = False
+    otel_max_attribute_length: int = 256
+    langfuse_enabled: bool = False
+
     @model_validator(mode="after")
     def validate_configuration(self) -> Settings:  # noqa: C901, PLR0912
+        if not 0 <= self.otel_sample_rate <= 1:
+            raise ValueError("otel_sample_rate must be between 0 and 1")
+        if self.otel_max_attribute_length < 1:
+            raise ValueError("otel_max_attribute_length must be at least 1")
         if self.chunk_min_chars > self.chunk_max_chars:
             raise ValueError("chunk_min_chars must be less than or equal to chunk_max_chars")
         if self.chunking_mode not in {"fixed", "structural", "recursive"}:

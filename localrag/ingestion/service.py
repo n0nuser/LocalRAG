@@ -16,6 +16,7 @@ from localrag.ingestion.contract import Chunk, stable_chunk_id
 from localrag.ingestion.loader import list_supported_files, parse_file
 from localrag.ingestion.recursive_chunker import chunk_document as recursive_chunk_document
 from localrag.ingestion.structural_chunker import chunk_document
+from localrag.observability.tracing import SpanName, span
 from localrag.rag.bm25_index import Bm25Index
 from localrag.settings import Settings, is_path_allowed
 from localrag.storage.vector_store import VectorStore
@@ -203,13 +204,19 @@ class IngestionService:
         return allowed
 
     def _ingest_one(self, resolved_path: Path, embed_model: str | None) -> int | None:
+        with span(SpanName.INGESTION, {"file_type": resolved_path.suffix.lower()}):
+            return self._ingest_one_stages(resolved_path, embed_model)
+
+    def _ingest_one_stages(self, resolved_path: Path, embed_model: str | None) -> int | None:
         """Parse, chunk, embed, and upsert one file. Returns chunks added, or None if skipped."""
         logger.debug("ingest_parse_start path=%s", resolved_path)
-        text = parse_file(resolved_path)
+        with span(SpanName.INGEST_PARSE, {"file_type": resolved_path.suffix.lower()}):
+            text = parse_file(resolved_path)
         source = str(resolved_path)
-        structural_chunks = self._build_chunks(
-            text=text, file_type=resolved_path.suffix.lower(), source=source
-        )
+        with span(SpanName.INGEST_CHUNK, {"file_type": resolved_path.suffix.lower()}):
+            structural_chunks = self._build_chunks(
+                text=text, file_type=resolved_path.suffix.lower(), source=source
+            )
         chunks = [chunk.text for chunk in structural_chunks]
         if not chunks:
             logger.warning("ingest_skipped_no_chunks path=%s", resolved_path)
@@ -221,27 +228,30 @@ class IngestionService:
         if ensure is not None:
             ensure(self.embedder, model=embed_model)
 
-        if self.embedding_cache is not None:
-            embeddings = self.embedding_cache.embed_batch(
-                self.embedder,
-                chunks,
-                batch_size=self.settings.embedding_batch_size,
-                model=embed_model,
-            )
-        else:
-            embed_batch = getattr(self.embedder, "embed_batch", None)
-            if embed_batch is not None:
-                embeddings = embed_batch(
+        with span(
+            SpanName.INGEST_EMBED, {"batch_size": len(chunks), "model": embed_model or "default"}
+        ):
+            if self.embedding_cache is not None:
+                embeddings = self.embedding_cache.embed_batch(
+                    self.embedder,
                     chunks,
                     batch_size=self.settings.embedding_batch_size,
                     model=embed_model,
                 )
             else:
-                # Keep third-party integrations written against the pre-provider seam working.
-                legacy_embedder: Any = self.embedder
-                embeddings = legacy_embedder.embed_texts(
-                    chunks, self.settings.embedding_batch_size, model=embed_model
-                )
+                embed_batch = getattr(self.embedder, "embed_batch", None)
+                if embed_batch is not None:
+                    embeddings = embed_batch(
+                        chunks,
+                        batch_size=self.settings.embedding_batch_size,
+                        model=embed_model,
+                    )
+                else:
+                    # Keep third-party integrations written against the pre-provider seam working.
+                    legacy_embedder: Any = self.embedder
+                    embeddings = legacy_embedder.embed_texts(
+                        chunks, self.settings.embedding_batch_size, model=embed_model
+                    )
         record = getattr(self.vector_store, "record_embedding_compatibility", None)
         if record is not None:
             record(self.embedder, len(embeddings[0]), model=embed_model)

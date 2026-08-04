@@ -17,6 +17,7 @@ from localrag.cli.commands.query import query
 from localrag.cli.commands.report import report
 from localrag.cli.commands.setup import setup
 from localrag.logging_config import configure_logging
+from localrag.observability.tracing import configure_tracing, shutdown_tracing
 from localrag.settings import ConfigError, get_settings, load_settings, set_current_settings
 
 app = typer.Typer(help="LocalRAG CLI")
@@ -46,6 +47,7 @@ def configure(
         values[field] = yaml.safe_load(raw_value)
     try:
         set_current_settings(load_settings(config, values))
+        configure_tracing(get_settings())
     except ConfigError as exc:
         raise typer.BadParameter(str(exc), param_hint="--config/--set") from exc
 
@@ -65,7 +67,10 @@ app.add_typer(collections_app, name="collections")
 
 def main() -> None:
     configure_logging(get_settings().log_level)
-    app()
+    try:
+        app()
+    finally:
+        shutdown_tracing()
 
 
 if __name__ == "__main__":
