@@ -179,6 +179,18 @@ def test_canonical_evaluation_result_and_cli_strict_mode(tmp_path: Path) -> None
     assert generated.run_count == 1
     assert "pass" in output.read_text(encoding="utf-8")
 
+    payload = json.loads(result_path.read_text(encoding="utf-8"))
+    payload["failure_analysis"] = {
+        "failed_count": 1,
+        "counts": {"retrieval_miss": 1},
+        "cases": [{"case_id": "case-1", "labels": ["retrieval_miss"], "confidence": 1.0}],
+    }
+    result_path.write_text(json.dumps(payload), encoding="utf-8")
+    generate_report([result_path], output)
+    html = output.read_text(encoding="utf-8")
+    assert "Failure analysis" in html
+    assert "retrieval_miss" in html
+
     bad = tmp_path / "bad.json"
     bad.write_text("bad", encoding="utf-8")
     cli_output = tmp_path / "cli.html"

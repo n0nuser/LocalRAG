@@ -26,9 +26,12 @@ class ReportResult:
 
 
 def _safe_json(value: Any) -> str:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).replace(
-        "<", "\\u003c"
-    ).replace(">", "\\u003e").replace("&", "\\u0026")
+    return (
+        json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        .replace("<", "\\u003c")
+        .replace(">", "\\u003e")
+        .replace("&", "\\u0026")
+    )
 
 
 def _finite(value: Any) -> Any:
@@ -110,9 +113,14 @@ def _result_view(result: ResultFile, source: Path) -> dict[str, Any]:
         "status": result.status,
         "dataset": result.dataset.model_dump(mode="json"),
         "config": result.provenance.get("settings_snapshot", {}),
-        "model": {key: result.provenance[key] for key in ("judge_model", "embedding_model") if key in result.provenance},
+        "model": {
+            key: result.provenance[key]
+            for key in ("judge_model", "embedding_model")
+            if key in result.provenance
+        },
         "metrics": metrics,
         "cases": [case.model_dump(mode="json") for case in result.cases],
+        "failure_analysis": result.failure_analysis,
     }
 
 
@@ -148,7 +156,7 @@ const data=JSON.parse(document.getElementById('report-data').textContent);const 
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const val=v=>v===null||v===undefined?'Unavailable':esc(v);const row=(a,b)=>`<tr><th>${esc(a)}</th><td>${b}</td></tr>`;
 function metricRows(run){return (run.metrics||[]).map(m=>`<tr><td>${esc(m.name)}</td><td>${val(m.value)}</td><td>${val(m.threshold)}</td><td>${esc(m.direction)}</td><td>${esc(m.outcome||m.status)}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">No metrics recorded</td></tr>'}
-function runBlock(run){let cases=(run.cases||[]).map(c=>`<tr><td>${esc(c.case_id||c.record_id)}</td><td class="${c.status==='failed'?'bad':''}">${esc(c.status)}</td><td>${Object.entries(c.metrics||{}).map(([k,v])=>esc(k)+': '+val(v)).join('<br>')||'Unavailable'}</td><td>${Object.entries(c.latency||{}).map(([k,v])=>esc(k)+': '+val(v)).join('<br>')||'Unavailable'}</td><td>${Object.entries(c.resources||{}).map(([k,v])=>esc(k)+': '+val(v)).join('<br>')||'Unavailable'}</td><td>${c.error?esc(c.error.message||c.error):''}</td></tr>`).join('');return `<section><h2>${esc(run.run_id)} <span class="pill">${esc(run.kind)}</span></h2>${row('Dataset',val(run.dataset?.dataset_id)+' '+val(run.dataset?.split))}${row('Status',esc(run.status))}${row('Configuration',`<code>${esc(JSON.stringify(run.config||{}))}</code>`)}<h3>Metrics</h3><table><tr><th>Metric</th><th>Score</th><th>Threshold</th><th>Direction</th><th>Availability</th></tr>${metricRows(run)}</table><h3>Cases and failures</h3><table><tr><th>Case</th><th>Status</th><th>Metrics</th><th>Latency</th><th>Resources</th><th>Failure</th></tr>${cases||'<tr><td colspan="6" class="muted">No cases recorded</td></tr>'}</table></section>`}
+ function runBlock(run){let cases=(run.cases||[]).map(c=>`<tr><td>${esc(c.case_id||c.record_id)}</td><td class="${c.status==='failed'?'bad':''}">${esc(c.status)}</td><td>${Object.entries(c.metrics||{}).map(([k,v])=>esc(k)+': '+val(v)).join('<br>')||'Unavailable'}</td><td>${Object.entries(c.latency||{}).map(([k,v])=>esc(k)+': '+val(v)).join('<br>')||'Unavailable'}</td><td>${Object.entries(c.resources||{}).map(([k,v])=>esc(k)+': '+val(v)).join('<br>')||'Unavailable'}</td><td>${c.error?esc(c.error.message||c.error):''}</td></tr>`).join('');let analysis=run.failure_analysis;if(analysis){analysis=`<h3>Failure analysis</h3><p>${esc(analysis.failed_count)} failed cases; counts: <code>${esc(JSON.stringify(analysis.counts||{}))}</code></p><table><tr><th>Case</th><th>Labels</th><th>Confidence</th></tr>${(analysis.cases||[]).map(c=>`<tr><td>${esc(c.case_id)}</td><td>${esc((c.labels||[]).join(', '))}</td><td>${val(c.confidence)}</td></tr>`).join('')}</table>`}else analysis='';return `<section><h2>${esc(run.run_id)} <span class="pill">${esc(run.kind)}</span></h2>${row('Dataset',val(run.dataset?.dataset_id)+' '+val(run.dataset?.split))}${row('Status',esc(run.status))}${row('Configuration',`<code>${esc(JSON.stringify(run.config||{}))}</code>`)}<h3>Metrics</h3><table><tr><th>Metric</th><th>Score</th><th>Threshold</th><th>Direction</th><th>Availability</th></tr>${metricRows(run)}</table>${analysis}<h3>Cases and failures</h3><table><tr><th>Case</th><th>Status</th><th>Metrics</th><th>Latency</th><th>Resources</th><th>Failure</th></tr>${cases||'<tr><td colspan="6" class="muted">No cases recorded</td></tr>'}</table></section>`}
 function configBlock(){const keys=[...new Set(data.runs.flatMap(r=>Object.keys(r.config||{})))].sort();if(!keys.length)return '';return `<section><h2>Configuration comparison</h2><table><tr><th>Setting</th>${data.runs.map(r=>`<th>${esc(r.run_id)}</th>`).join('')}</tr>${keys.map(k=>`<tr><th>${esc(k)}</th>${data.runs.map(r=>`<td>${val(r.config?.[k])}</td>`).join('')}</tr>`).join('')}</table></section>`}
 if(!data.runs.length)app.innerHTML='<section><h2>No benchmark runs</h2><p>No valid artifacts were supplied.</p></section>';else{if(data.errors.length)app.innerHTML+=`<section class="warning"><h2>Input errors</h2><ul>${data.errors.map(esc).map(e=>`<li>${e}</li>`).join('')}</ul></section>`;if(data.incompatible.length)app.innerHTML+=`<section class="warning"><h2>Incompatible runs</h2><p>Runs use different dataset identities; score comparisons are not shown.</p><p>${data.incompatible.map(esc).join(', ')}</p></section>`;app.innerHTML+=configBlock()+data.runs.map(runBlock).join('')}
 </script></body></html>"""
