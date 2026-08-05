@@ -111,7 +111,7 @@ class Retriever:
                 len(search_question),
             )
 
-        hyde_settings = self.settings.model_copy(update={"hyde_enabled": hyde_enabled})
+        hyde_settings = self.settings.with_overrides(hyde_enabled=hyde_enabled)
         hypothetical, self.last_hyde = generate_hypothetical(search_question, hyde_settings)
         lexical_question = question
         if self.settings.hyde_lexical_input == "rewritten" and rewritten is not None:

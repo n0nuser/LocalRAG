@@ -1,6 +1,15 @@
 # Configuration
 
 Every setting resolves into one immutable `Settings` object (`localrag/settings.py`).
+
+The **flat names in this document are the public contract** and are what you set in
+`.env`, the environment, or `--set`. Internally the fields are organised into grouped
+sub-models (`localrag/settings_groups.py`), mapped by `localrag/settings_map.py`, and
+readable either way — `settings.hyde_enabled` and `settings.retrieval.hyde.enabled`
+are the same value. See [ADR 037](adr/037-grouped-configuration-model.md).
+
+`localrag config-show` prints the **grouped** shape; `Settings.flat_snapshot()`
+returns the same values keyed by the flat names below.
 Environment variable names are the uppercased field names, so `rag_top_k` is
 `RAG_TOP_K`. [`.env.example`](../.env.example) is the canonical env list and
 [`config.example.yaml`](../config.example.yaml) shows the structured form.

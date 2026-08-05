@@ -1,12 +1,17 @@
 """Environment-backed settings (``.env`` + process env).
 
-Use :func:`get_settings` for a cached singleton. Variable names match
-:class:`Settings` fields (case-insensitive), e.g. ``OLLAMA_BASE_URL``.
+Use :func:`get_settings` for a cached singleton. The **flat**, documented
+variable names remain the public contract (case-insensitive), e.g.
+``OLLAMA_BASE_URL`` or ``HYDE_ENABLED``. Internally the fields are organised
+into the grouped sub-models in :mod:`localrag.settings_groups`, each owning its
+own validation; :mod:`localrag.settings_map` maps between the two. See
+`docs/adr/037-grouped-configuration-model.md`.
 """
 
 from __future__ import annotations
 
 import contextvars
+import json
 import os
 import re
 import warnings
@@ -20,10 +25,28 @@ from pydantic.fields import FieldInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic_settings.sources import PydanticBaseSettingsSource
 
-# Defaults for Ollama model tags (`ollama pull` / `ollama list`).
-# Keep in sync with docs and API examples.
-DEFAULT_OLLAMA_EMBED_MODEL = "nomic-embed-text"
-DEFAULT_OLLAMA_LLM_MODEL = "gemma3:4b"
+from localrag import settings_groups as _groups
+from localrag.settings_groups import (
+    ApiSettings,
+    AuditSettings,
+    ChromaSettings,
+    ChunkingSettings,
+    EmbeddingSettings,
+    IngestSettings,
+    LlmSettings,
+    ObservabilitySettings,
+    OcrSettings,
+    OllamaSettings,
+    QueryCacheSettings,
+    RetrievalSettings,
+    UploadSettings,
+)
+from localrag.settings_map import FLAT_TO_PATH, UNGROUPED_FIELDS
+
+# Public import site for the Ollama defaults (localrag.api.schemas imports these
+# from here). settings_groups defines the same values as its field defaults.
+DEFAULT_OLLAMA_EMBED_MODEL = _groups.DEFAULT_OLLAMA_EMBED_MODEL
+DEFAULT_OLLAMA_LLM_MODEL = _groups.DEFAULT_OLLAMA_LLM_MODEL
 
 _yaml_path: contextvars.ContextVar[Path | None] = contextvars.ContextVar(
     "localrag_yaml_path", default=None
@@ -64,6 +87,105 @@ def _warn_retired_flag(name: str) -> None:
 
 class ConfigError(ValueError):
     """Raised when an explicitly selected configuration file cannot be loaded."""
+
+
+def _redact_path(snapshot: dict[str, Any], path: str, placeholder: str) -> None:
+    """Replace a dotted path's value in a nested snapshot, if it is set."""
+    *sections, leaf = path.split(".")
+    cursor: Any = snapshot
+    for section in sections:
+        if not isinstance(cursor, dict) or section not in cursor:
+            return
+        cursor = cursor[section]
+    if not isinstance(cursor, dict) or not cursor.get(leaf):
+        return
+    value = cursor[leaf]
+    cursor[leaf] = [placeholder] * len(value) if isinstance(value, list) else placeholder
+
+
+def _nest(flat_values: dict[str, Any]) -> dict[str, Any]:
+    """Regroup flat field names onto the grouped sub-model paths.
+
+    Values for unmapped names (the ungrouped fields, or anything unknown) are
+    passed through untouched so pydantic reports them as it normally would.
+    """
+    nested: dict[str, Any] = {}
+    for name, value in flat_values.items():
+        path = FLAT_TO_PATH.get(name)
+        if path is None:
+            nested[name] = value
+            continue
+        *sections, leaf = path.split(".")
+        cursor = nested
+        for section in sections:
+            existing = cursor.get(section)
+            if not isinstance(existing, dict):
+                existing = {}
+                cursor[section] = existing
+            cursor = existing
+        cursor[leaf] = value
+    return nested
+
+
+class _FlatEnvSource(PydanticBaseSettingsSource):
+    """Map documented flat env names (``HYDE_ENABLED``) onto grouped paths.
+
+    Nested models are not otherwise reachable by their flat names — pydantic
+    would expect ``RETRIEVAL__HYDE__ENABLED`` — so without this source every
+    documented environment variable would silently stop working.
+    """
+
+    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
+        return None, field_name, False
+
+    def __call__(self) -> dict[str, Any]:
+        return _nest(_flat_from_mapping(os.environ))
+
+
+class _FlatDotenvSource(PydanticBaseSettingsSource):
+    """The same flat-name regrouping for ``.env``, which env vars still outrank."""
+
+    def get_field_value(self, field: FieldInfo, field_name: str) -> tuple[Any, str, bool]:
+        return None, field_name, False
+
+    def __call__(self) -> dict[str, Any]:
+        env_file = self.config.get("env_file")
+        if not env_file:
+            return {}
+        path = Path(str(env_file))
+        if not path.exists():
+            return {}
+        values: dict[str, str] = {}
+        for raw in path.read_text(encoding="utf-8").splitlines():
+            line = raw.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            values[key.strip()] = value.strip().strip("\"'")
+        return _nest(_flat_from_mapping(values))
+
+
+_COMPLEX_FLAT_FIELDS = frozenset({"ingest_roots"})
+
+
+def _flat_from_mapping(source: Any) -> dict[str, Any]:
+    """Pick the documented flat names out of an env-like mapping, case-insensitively."""
+    found: dict[str, Any] = {}
+    for flat in FLAT_TO_PATH:
+        for candidate in (flat.upper(), flat.lower()):
+            if candidate in source:
+                raw = source[candidate]
+                # Complex fields are JSON-encoded in the environment, matching
+                # pydantic-settings' own behavior for list/dict-valued settings.
+                if flat in _COMPLEX_FLAT_FIELDS and isinstance(raw, str):
+                    try:
+                        raw = json.loads(raw)
+                    except json.JSONDecodeError as exc:
+                        message = f"{candidate} must be valid JSON: {exc}"
+                        raise ConfigError(message) from exc
+                found[flat] = raw
+                break
+    return found
 
 
 class _YamlSource(PydanticBaseSettingsSource):
@@ -185,7 +307,7 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
             "max_attribute_length": "otel_max_attribute_length",
         },
     }
-    fields = set(Settings.model_fields)
+    fields = set(FLAT_TO_PATH) | UNGROUPED_FIELDS
     flattened: dict[str, Any] = {}
     for key, value in document.items():
         if key in sections:
@@ -232,7 +354,8 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
         flattened["ingest_roots"] = [
             str(_resolve_path(str(root), base)) for root in flattened["ingest_roots"]
         ]
-    return flattened
+    # YAML is authored in flat field names; the model is grouped.
+    return _nest(flattened)
 
 
 def _resolve_path(value: str, base: Path) -> Path:
@@ -326,296 +449,670 @@ class Settings(BaseSettings):
         cls,
         settings_cls: type[BaseSettings],
         init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,  # noqa: ARG003 — replaced by _FlatEnvSource
+        dotenv_settings: PydanticBaseSettingsSource,  # noqa: ARG003 — replaced by _FlatDotenvSource
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
+        # The flat sources replace pydantic's own env/dotenv handling: the public
+        # names are flat but the model is grouped, so they must be regrouped before
+        # validation. Precedence is unchanged: init, env, .env, YAML, file secrets.
         return (
             init_settings,
-            env_settings,
-            dotenv_settings,
+            _FlatEnvSource(settings_cls),
+            _FlatDotenvSource(settings_cls),
             _YamlSource(settings_cls),
             file_secret_settings,
         )
 
-    ollama_base_url: str = "http://localhost:11434"
-    ollama_embed_model: str = DEFAULT_OLLAMA_EMBED_MODEL
-    ollama_llm_model: str = DEFAULT_OLLAMA_LLM_MODEL
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_flat_values(cls, data: Any) -> Any:
+        """Allow ``Settings(hyde_enabled=True)`` alongside the grouped form.
 
-    # Generation sampling. Both default to unset so Ollama keeps its per-model
-    # defaults; set them (e.g. 0.0 / any int) to make answers reproducible.
-    llm_temperature: float | None = None
-    llm_seed: int | None = None
-    llm_timeout_seconds: float = 180.0
+        Direct construction with flat keyword arguments is the documented way to
+        build settings in tests and callers; regrouping here keeps that working
+        without every call site learning the group layout.
+        """
+        if not isinstance(data, dict):
+            return data
+        if any(key in FLAT_TO_PATH for key in data):
+            return _nest(data)
+        return data
 
-    chroma_persist_path: str = "./data/chroma"
-    chroma_collection_name: str = "localrag"
+    ollama: OllamaSettings = OllamaSettings()
+    chroma: ChromaSettings = ChromaSettings()
+    chunking: ChunkingSettings = ChunkingSettings()
+    embedding: EmbeddingSettings = EmbeddingSettings()
+    ingest: IngestSettings = IngestSettings()
+    upload: UploadSettings = UploadSettings()
+    audit: AuditSettings = AuditSettings()
+    ocr: OcrSettings = OcrSettings()
+    retrieval: RetrievalSettings = RetrievalSettings()
+    query_cache: QueryCacheSettings = QueryCacheSettings()
+    api: ApiSettings = ApiSettings()
+    llm: LlmSettings = LlmSettings()
+    observability: ObservabilitySettings = ObservabilitySettings()
 
-    chunk_chars: int = 512
-    chunk_overlap_chars: int = 150
-    chunking_mode: str = "structural"
-    chunk_max_chars: int = 1200
-    chunk_min_chars: int = 200
-    embedding_batch_size: int = 32
-    embedding_provider: str = "ollama"
-    embedding_timeout_seconds: float = 120.0
-    sentence_transformers_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    embedding_cache_path: str = "./data/embedding-cache"
-    embedding_cache_max_entries: int = 10_000
-    embedding_cache_max_bytes: int = 1_000_000_000
-    embedding_cache_preprocessing_version: str = "1"
-    embedding_cache_task_prefix: str = ""
+    # Ungrouped: these belong to no bounded feature.
+    log_level: str = "INFO"
+    # Written to every chunk's metadata and usable as a QueryRequest.metadata_filter
+    # key ({"tenant_id": "..."}). Empty = untagged (single-tenant, the common case).
+    tenant_id: str = ""
+    eval_seed: int = 42
 
-    ingest_recursive: bool = True
-    ingest_roots: list[str] = []
+    # --- Flat accessors -------------------------------------------------
+    # Every documented flat name stays readable as ``settings.<name>``, so
+    # grouping the model required no call-site changes. These are properties,
+    # not fields, which is what keeps ``resolved_snapshot`` grouped.
 
-    # Caps concurrently pending/running async ingest jobs; further submissions get 429.
-    max_pending_ingest_jobs: int = 10
+    @property
+    def ollama_base_url(self) -> str:
+        """Flat accessor for ``ollama.base_url``."""
+        return self.ollama.base_url
 
-    upload_dir: str = "./data/uploads"
-    upload_max_bytes: int = 100_000_000
-    # Uploads are temporary ingest artifacts by default. A positive retention
-    # keeps them for rebuilds; the quota is enforced before and after ingest.
-    upload_retention_seconds: float = 0.0
-    upload_quota_bytes: int = 1_000_000_000
+    @property
+    def ollama_embed_model(self) -> str:
+        """Flat accessor for ``ollama.embed_model``."""
+        return self.ollama.embed_model
 
-    audit_log_path: str = ""
-    audit_log_max_bytes: int = 10_000_000
-    audit_log_retention_seconds: float = 2_592_000.0
-    audit_log_metadata_only: bool = False
-    audit_log_redact_content: bool = False
+    @property
+    def ollama_llm_model(self) -> str:
+        """Flat accessor for ``ollama.llm_model``."""
+        return self.ollama.llm_model
 
-    ocr_enabled: bool = True
-    ocr_language: str = "eng"
-    ocr_min_chars_per_page: int = 20
+    @property
+    def llm_temperature(self) -> float | None:
+        """Flat accessor for ``llm.temperature``."""
+        return self.llm.temperature
 
-    rag_top_k: int = 5
-    retriever_plugin: str = "builtin"
-    rag_min_context_score: float = 0.0
-    retrieval_mode: str = "hybrid"
-    bm25_weight: float = 0.5
-    rrf_k: int = 60
-    freshness_half_life_days: float = 30.0
-    freshness_weight: float = 0.15
-    parent_expansion_enabled: bool = True
-    query_rewrite_enabled: bool = False
-    # Expansion is off by default. The implementation also enforces hard caps
-    # independent of configuration values to bound provider and retrieval work.
-    query_expansion_enabled: bool = False
-    query_expansion_max_variants: int = 4
-    query_expansion_max_query_chars: int = 500
-    query_expansion_candidate_budget: int = 40
-    # HyDE is an explicit experiment arm and is disabled by default.
-    retrieval_experiment_mode: str = "auto"
-    hyde_enabled: bool = False
-    hyde_model: str = ""
-    hyde_timeout_seconds: float = 30.0
-    hyde_input_max_chars: int = 2000
-    hyde_output_max_chars: int = 4000
-    hyde_output_max_tokens: int = 512
-    hyde_lexical_input: str = "original"
-    hyde_log_content: bool = False
-    rag_system_prompt: str = (
-        "You are a helpful assistant. Answer only based on the provided context."
-    )
+    @property
+    def llm_seed(self) -> int | None:
+        """Flat accessor for ``llm.seed``."""
+        return self.llm.seed
 
-    # Optional cross-encoder reranking (requires `uv sync --extra rerank`).
-    rerank_enabled: bool = False
-    rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    rerank_fetch_k: int = 20
+    @property
+    def llm_timeout_seconds(self) -> float:
+        """Flat accessor for ``llm.timeout_seconds``."""
+        return self.llm.timeout_seconds
 
-    # Always applied. The token counter is the documented whitespace-token
-    # approximation; total context tokens must fit inside this reserved window.
-    context_compression_candidate_count: int = 20
-    context_compression_max_contexts: int = 5
-    context_compression_per_context_tokens: int = 256
-    context_compression_total_tokens: int = 1024
-    context_compression_per_context_chars: int = 4000
-    context_compression_total_chars: int = 16000
-    context_compression_reserved_prompt_tokens: int = 512
-    context_compression_reserved_answer_tokens: int = 512
-    llm_context_window_tokens: int = 4096
+    @property
+    def llm_backend(self) -> str:
+        """Flat accessor for ``llm.backend``."""
+        return self.llm.backend
 
-    # Disabled by default. Thresholds are corpus-tuned evidence heuristics, not
-    # calibrated model confidence; hard caps prevent agent-like unbounded loops.
-    adaptive_enabled: bool = False
-    adaptive_initial_top_k: int = 3
-    adaptive_escalation_top_k: int = 8
-    adaptive_max_rounds: int = 3
-    adaptive_max_refinements: int = 1
-    adaptive_max_latency_ms: float = 10_000.0
-    adaptive_min_top_score: float = 0.35
-    adaptive_min_score_margin: float = 0.02
-    adaptive_min_source_diversity: int = 1
-    adaptive_min_query_coverage: float = 0.2
-    adaptive_refinement_max_chars: int = 500
-    adaptive_critique_enabled: bool = False
-    adaptive_max_provider_calls: int = 2
+    @property
+    def llm_fallback_backend(self) -> str:
+        """Flat accessor for ``llm.fallback_backend``."""
+        return self.llm.fallback_backend
 
-    # In-process TTL cache for repeated/near-identical queries (0 disables; no external cache).
-    query_cache_ttl_seconds: float = 0.0
-    query_cache_maxsize: int = 256
+    @property
+    def llm_retry_max_attempts(self) -> int:
+        """Flat accessor for ``llm.retry_max_attempts``."""
+        return self.llm.retry_max_attempts
 
-    api_host: str = "0.0.0.0"  # nosec B104 — configurable bind address, default intentional
-    api_port: int = 8000
+    @property
+    def llm_circuit_fail_max(self) -> int:
+        """Flat accessor for ``llm.circuit_fail_max``."""
+        return self.llm.circuit_fail_max
 
-    # Optional API key enforced on all non-health endpoints via X-API-Key header.
-    # Leave empty (default) to disable authentication.
-    api_key: str = ""
+    @property
+    def llm_circuit_reset_timeout_seconds(self) -> float:
+        """Flat accessor for ``llm.circuit_reset_timeout_seconds``."""
+        return self.llm.circuit_reset_timeout_seconds
 
-    # LLM backend selector: "ollama" | "openai" | "anthropic"
-    llm_backend: str = "ollama"
+    @property
+    def openai_api_key(self) -> str:
+        """Flat accessor for ``llm.openai_api_key``."""
+        return self.llm.openai_api_key
 
-    # Canonical embedding model alias (maps to ollama_embed_model when backend=ollama).
-    embedding_model: str = ""
+    @property
+    def openai_model(self) -> str:
+        """Flat accessor for ``llm.openai_model``."""
+        return self.llm.openai_model
+
+    @property
+    def anthropic_api_key(self) -> str:
+        """Flat accessor for ``llm.anthropic_api_key``."""
+        return self.llm.anthropic_api_key
+
+    @property
+    def anthropic_model(self) -> str:
+        """Flat accessor for ``llm.anthropic_model``."""
+        return self.llm.anthropic_model
+
+    @property
+    def agent_model(self) -> str:
+        """Flat accessor for ``llm.agent_model``."""
+        return self.llm.agent_model
+
+    @property
+    def chroma_persist_path(self) -> str:
+        """Flat accessor for ``chroma.persist_path``."""
+        return self.chroma.persist_path
+
+    @property
+    def chroma_collection_name(self) -> str:
+        """Flat accessor for ``chroma.collection_name``."""
+        return self.chroma.collection_name
+
+    @property
+    def chunk_chars(self) -> int:
+        """Flat accessor for ``chunking.chars``."""
+        return self.chunking.chars
+
+    @property
+    def chunk_overlap_chars(self) -> int:
+        """Flat accessor for ``chunking.overlap_chars``."""
+        return self.chunking.overlap_chars
+
+    @property
+    def chunking_mode(self) -> str:
+        """Flat accessor for ``chunking.mode``."""
+        return self.chunking.mode
+
+    @property
+    def chunk_max_chars(self) -> int:
+        """Flat accessor for ``chunking.max_chars``."""
+        return self.chunking.max_chars
+
+    @property
+    def chunk_min_chars(self) -> int:
+        """Flat accessor for ``chunking.min_chars``."""
+        return self.chunking.min_chars
+
+    @property
+    def embedding_batch_size(self) -> int:
+        """Flat accessor for ``embedding.batch_size``."""
+        return self.embedding.batch_size
+
+    @property
+    def embedding_provider(self) -> str:
+        """Flat accessor for ``embedding.provider``."""
+        return self.embedding.provider
+
+    @property
+    def embedding_timeout_seconds(self) -> float:
+        """Flat accessor for ``embedding.timeout_seconds``."""
+        return self.embedding.timeout_seconds
+
+    @property
+    def sentence_transformers_model(self) -> str:
+        """Flat accessor for ``embedding.sentence_transformers_model``."""
+        return self.embedding.sentence_transformers_model
+
+    @property
+    def embedding_model(self) -> str:
+        """Flat accessor for ``embedding.model``."""
+        return self.embedding.model
+
+    @property
+    def embedding_cache_path(self) -> str:
+        """Flat accessor for ``embedding.cache_path``."""
+        return self.embedding.cache_path
+
+    @property
+    def embedding_cache_max_entries(self) -> int:
+        """Flat accessor for ``embedding.cache_max_entries``."""
+        return self.embedding.cache_max_entries
+
+    @property
+    def embedding_cache_max_bytes(self) -> int:
+        """Flat accessor for ``embedding.cache_max_bytes``."""
+        return self.embedding.cache_max_bytes
+
+    @property
+    def embedding_cache_preprocessing_version(self) -> str:
+        """Flat accessor for ``embedding.cache_preprocessing_version``."""
+        return self.embedding.cache_preprocessing_version
+
+    @property
+    def embedding_cache_task_prefix(self) -> str:
+        """Flat accessor for ``embedding.cache_task_prefix``."""
+        return self.embedding.cache_task_prefix
+
+    @property
+    def ingest_recursive(self) -> bool:
+        """Flat accessor for ``ingest.recursive``."""
+        return self.ingest.recursive
+
+    @property
+    def ingest_roots(self) -> list[str]:
+        """Flat accessor for ``ingest.roots``."""
+        return self.ingest.roots
+
+    @property
+    def max_pending_ingest_jobs(self) -> int:
+        """Flat accessor for ``ingest.max_pending_jobs``."""
+        return self.ingest.max_pending_jobs
+
+    @property
+    def upload_dir(self) -> str:
+        """Flat accessor for ``upload.dir``."""
+        return self.upload.dir
+
+    @property
+    def upload_max_bytes(self) -> int:
+        """Flat accessor for ``upload.max_bytes``."""
+        return self.upload.max_bytes
+
+    @property
+    def upload_retention_seconds(self) -> float:
+        """Flat accessor for ``upload.retention_seconds``."""
+        return self.upload.retention_seconds
+
+    @property
+    def upload_quota_bytes(self) -> int:
+        """Flat accessor for ``upload.quota_bytes``."""
+        return self.upload.quota_bytes
+
+    @property
+    def audit_log_path(self) -> str:
+        """Flat accessor for ``audit.log_path``."""
+        return self.audit.log_path
+
+    @property
+    def audit_log_max_bytes(self) -> int:
+        """Flat accessor for ``audit.log_max_bytes``."""
+        return self.audit.log_max_bytes
+
+    @property
+    def audit_log_retention_seconds(self) -> float:
+        """Flat accessor for ``audit.log_retention_seconds``."""
+        return self.audit.log_retention_seconds
+
+    @property
+    def audit_log_metadata_only(self) -> bool:
+        """Flat accessor for ``audit.log_metadata_only``."""
+        return self.audit.log_metadata_only
+
+    @property
+    def audit_log_redact_content(self) -> bool:
+        """Flat accessor for ``audit.log_redact_content``."""
+        return self.audit.log_redact_content
+
+    @property
+    def ocr_enabled(self) -> bool:
+        """Flat accessor for ``ocr.enabled``."""
+        return self.ocr.enabled
+
+    @property
+    def ocr_language(self) -> str:
+        """Flat accessor for ``ocr.language``."""
+        return self.ocr.language
+
+    @property
+    def ocr_min_chars_per_page(self) -> int:
+        """Flat accessor for ``ocr.min_chars_per_page``."""
+        return self.ocr.min_chars_per_page
+
+    @property
+    def rag_top_k(self) -> int:
+        """Flat accessor for ``retrieval.top_k``."""
+        return self.retrieval.top_k
+
+    @property
+    def retriever_plugin(self) -> str:
+        """Flat accessor for ``retrieval.plugin``."""
+        return self.retrieval.plugin
+
+    @property
+    def rag_min_context_score(self) -> float:
+        """Flat accessor for ``retrieval.min_context_score``."""
+        return self.retrieval.min_context_score
+
+    @property
+    def retrieval_mode(self) -> str:
+        """Flat accessor for ``retrieval.mode``."""
+        return self.retrieval.mode
+
+    @property
+    def bm25_weight(self) -> float:
+        """Flat accessor for ``retrieval.bm25_weight``."""
+        return self.retrieval.bm25_weight
+
+    @property
+    def rrf_k(self) -> int:
+        """Flat accessor for ``retrieval.rrf_k``."""
+        return self.retrieval.rrf_k
+
+    @property
+    def freshness_half_life_days(self) -> float:
+        """Flat accessor for ``retrieval.freshness_half_life_days``."""
+        return self.retrieval.freshness_half_life_days
+
+    @property
+    def freshness_weight(self) -> float:
+        """Flat accessor for ``retrieval.freshness_weight``."""
+        return self.retrieval.freshness_weight
+
+    @property
+    def parent_expansion_enabled(self) -> bool:
+        """Flat accessor for ``retrieval.parent_expansion_enabled``."""
+        return self.retrieval.parent_expansion_enabled
+
+    @property
+    def query_rewrite_enabled(self) -> bool:
+        """Flat accessor for ``retrieval.query_rewrite_enabled``."""
+        return self.retrieval.query_rewrite_enabled
+
+    @property
+    def retrieval_experiment_mode(self) -> str:
+        """Flat accessor for ``retrieval.experiment_mode``."""
+        return self.retrieval.experiment_mode
+
+    @property
+    def rag_system_prompt(self) -> str:
+        """Flat accessor for ``retrieval.system_prompt``."""
+        return self.retrieval.system_prompt
+
+    @property
+    def query_expansion_enabled(self) -> bool:
+        """Flat accessor for ``retrieval.expansion.enabled``."""
+        return self.retrieval.expansion.enabled
+
+    @property
+    def query_expansion_max_variants(self) -> int:
+        """Flat accessor for ``retrieval.expansion.max_variants``."""
+        return self.retrieval.expansion.max_variants
+
+    @property
+    def query_expansion_max_query_chars(self) -> int:
+        """Flat accessor for ``retrieval.expansion.max_query_chars``."""
+        return self.retrieval.expansion.max_query_chars
+
+    @property
+    def query_expansion_candidate_budget(self) -> int:
+        """Flat accessor for ``retrieval.expansion.candidate_budget``."""
+        return self.retrieval.expansion.candidate_budget
+
+    @property
+    def hyde_enabled(self) -> bool:
+        """Flat accessor for ``retrieval.hyde.enabled``."""
+        return self.retrieval.hyde.enabled
+
+    @property
+    def hyde_model(self) -> str:
+        """Flat accessor for ``retrieval.hyde.model``."""
+        return self.retrieval.hyde.model
+
+    @property
+    def hyde_timeout_seconds(self) -> float:
+        """Flat accessor for ``retrieval.hyde.timeout_seconds``."""
+        return self.retrieval.hyde.timeout_seconds
+
+    @property
+    def hyde_input_max_chars(self) -> int:
+        """Flat accessor for ``retrieval.hyde.input_max_chars``."""
+        return self.retrieval.hyde.input_max_chars
+
+    @property
+    def hyde_output_max_chars(self) -> int:
+        """Flat accessor for ``retrieval.hyde.output_max_chars``."""
+        return self.retrieval.hyde.output_max_chars
+
+    @property
+    def hyde_output_max_tokens(self) -> int:
+        """Flat accessor for ``retrieval.hyde.output_max_tokens``."""
+        return self.retrieval.hyde.output_max_tokens
+
+    @property
+    def hyde_lexical_input(self) -> str:
+        """Flat accessor for ``retrieval.hyde.lexical_input``."""
+        return self.retrieval.hyde.lexical_input
+
+    @property
+    def hyde_log_content(self) -> bool:
+        """Flat accessor for ``retrieval.hyde.log_content``."""
+        return self.retrieval.hyde.log_content
+
+    @property
+    def rerank_enabled(self) -> bool:
+        """Flat accessor for ``retrieval.rerank.enabled``."""
+        return self.retrieval.rerank.enabled
+
+    @property
+    def rerank_model(self) -> str:
+        """Flat accessor for ``retrieval.rerank.model``."""
+        return self.retrieval.rerank.model
+
+    @property
+    def rerank_fetch_k(self) -> int:
+        """Flat accessor for ``retrieval.rerank.fetch_k``."""
+        return self.retrieval.rerank.fetch_k
+
+    @property
+    def context_compression_candidate_count(self) -> int:
+        """Flat accessor for ``retrieval.compression.candidate_count``."""
+        return self.retrieval.compression.candidate_count
+
+    @property
+    def context_compression_max_contexts(self) -> int:
+        """Flat accessor for ``retrieval.compression.max_contexts``."""
+        return self.retrieval.compression.max_contexts
+
+    @property
+    def context_compression_per_context_tokens(self) -> int:
+        """Flat accessor for ``retrieval.compression.per_context_tokens``."""
+        return self.retrieval.compression.per_context_tokens
+
+    @property
+    def context_compression_total_tokens(self) -> int:
+        """Flat accessor for ``retrieval.compression.total_tokens``."""
+        return self.retrieval.compression.total_tokens
+
+    @property
+    def context_compression_per_context_chars(self) -> int:
+        """Flat accessor for ``retrieval.compression.per_context_chars``."""
+        return self.retrieval.compression.per_context_chars
+
+    @property
+    def context_compression_total_chars(self) -> int:
+        """Flat accessor for ``retrieval.compression.total_chars``."""
+        return self.retrieval.compression.total_chars
+
+    @property
+    def context_compression_reserved_prompt_tokens(self) -> int:
+        """Flat accessor for ``retrieval.compression.reserved_prompt_tokens``."""
+        return self.retrieval.compression.reserved_prompt_tokens
+
+    @property
+    def context_compression_reserved_answer_tokens(self) -> int:
+        """Flat accessor for ``retrieval.compression.reserved_answer_tokens``."""
+        return self.retrieval.compression.reserved_answer_tokens
+
+    @property
+    def llm_context_window_tokens(self) -> int:
+        """Flat accessor for ``retrieval.compression.llm_context_window_tokens``."""
+        return self.retrieval.compression.llm_context_window_tokens
+
+    @property
+    def adaptive_enabled(self) -> bool:
+        """Flat accessor for ``retrieval.adaptive.enabled``."""
+        return self.retrieval.adaptive.enabled
+
+    @property
+    def adaptive_initial_top_k(self) -> int:
+        """Flat accessor for ``retrieval.adaptive.initial_top_k``."""
+        return self.retrieval.adaptive.initial_top_k
+
+    @property
+    def adaptive_escalation_top_k(self) -> int:
+        """Flat accessor for ``retrieval.adaptive.escalation_top_k``."""
+        return self.retrieval.adaptive.escalation_top_k
+
+    @property
+    def adaptive_max_rounds(self) -> int:
+        """Flat accessor for ``retrieval.adaptive.max_rounds``."""
+        return self.retrieval.adaptive.max_rounds
+
+    @property
+    def adaptive_max_refinements(self) -> int:
+        """Flat accessor for ``retrieval.adaptive.max_refinements``."""
+        return self.retrieval.adaptive.max_refinements
+
+    @property
+    def adaptive_max_latency_ms(self) -> float:
+        """Flat accessor for ``retrieval.adaptive.max_latency_ms``."""
+        return self.retrieval.adaptive.max_latency_ms
+
+    @property
+    def adaptive_min_top_score(self) -> float:
+        """Flat accessor for ``retrieval.adaptive.min_top_score``."""
+        return self.retrieval.adaptive.min_top_score
+
+    @property
+    def adaptive_min_score_margin(self) -> float:
+        """Flat accessor for ``retrieval.adaptive.min_score_margin``."""
+        return self.retrieval.adaptive.min_score_margin
+
+    @property
+    def adaptive_min_source_diversity(self) -> int:
+        """Flat accessor for ``retrieval.adaptive.min_source_diversity``."""
+        return self.retrieval.adaptive.min_source_diversity
+
+    @property
+    def adaptive_min_query_coverage(self) -> float:
+        """Flat accessor for ``retrieval.adaptive.min_query_coverage``."""
+        return self.retrieval.adaptive.min_query_coverage
+
+    @property
+    def adaptive_refinement_max_chars(self) -> int:
+        """Flat accessor for ``retrieval.adaptive.refinement_max_chars``."""
+        return self.retrieval.adaptive.refinement_max_chars
+
+    @property
+    def adaptive_critique_enabled(self) -> bool:
+        """Flat accessor for ``retrieval.adaptive.critique_enabled``."""
+        return self.retrieval.adaptive.critique_enabled
+
+    @property
+    def adaptive_max_provider_calls(self) -> int:
+        """Flat accessor for ``retrieval.adaptive.max_provider_calls``."""
+        return self.retrieval.adaptive.max_provider_calls
+
+    @property
+    def query_cache_ttl_seconds(self) -> float:
+        """Flat accessor for ``query_cache.ttl_seconds``."""
+        return self.query_cache.ttl_seconds
+
+    @property
+    def query_cache_maxsize(self) -> int:
+        """Flat accessor for ``query_cache.maxsize``."""
+        return self.query_cache.maxsize
+
+    @property
+    def api_host(self) -> str:
+        """Flat accessor for ``api.host``."""
+        return self.api.host
+
+    @property
+    def api_port(self) -> int:
+        """Flat accessor for ``api.port``."""
+        return self.api.port
+
+    @property
+    def api_key(self) -> str:
+        """Flat accessor for ``api.key``."""
+        return self.api.key
+
+    @property
+    def otel_enabled(self) -> bool:
+        """Flat accessor for ``observability.otel_enabled``."""
+        return self.observability.otel_enabled
+
+    @property
+    def otel_exporter_endpoint(self) -> str:
+        """Flat accessor for ``observability.exporter_endpoint``."""
+        return self.observability.exporter_endpoint
+
+    @property
+    def otel_service_name(self) -> str:
+        """Flat accessor for ``observability.service_name``."""
+        return self.observability.service_name
+
+    @property
+    def otel_sample_rate(self) -> float:
+        """Flat accessor for ``observability.sample_rate``."""
+        return self.observability.sample_rate
+
+    @property
+    def otel_exporter_timeout_seconds(self) -> float:
+        """Flat accessor for ``observability.exporter_timeout_seconds``."""
+        return self.observability.exporter_timeout_seconds
+
+    @property
+    def otel_exporter_retry_count(self) -> int:
+        """Flat accessor for ``observability.exporter_retry_count``."""
+        return self.observability.exporter_retry_count
+
+    @property
+    def otel_capture_content(self) -> bool:
+        """Flat accessor for ``observability.capture_content``."""
+        return self.observability.capture_content
+
+    @property
+    def otel_max_attribute_length(self) -> int:
+        """Flat accessor for ``observability.max_attribute_length``."""
+        return self.observability.max_attribute_length
+
+    @property
+    def langfuse_enabled(self) -> bool:
+        """Flat accessor for ``observability.langfuse_enabled``."""
+        return self.observability.langfuse_enabled
 
     @property
     def effective_embedding_model(self) -> str:
         """Resolve the new model name while preserving legacy Ollama deployments."""
-        return self.embedding_model.strip() or self.ollama_embed_model
+        return self.embedding.model.strip() or self.ollama.embed_model
 
-    # OpenAI provider settings
-    openai_api_key: str = ""
-    openai_model: str = "gpt-4o-mini"
+    def with_overrides(self, **flat_values: Any) -> Settings:
+        """Return a copy with flat field names applied to their grouped homes.
 
-    # Anthropic provider settings
-    anthropic_api_key: str = ""
-    anthropic_model: str = "claude-haiku-4-5"
-
-    # Agent settings (uses Anthropic tool-use)
-    agent_model: str = "claude-haiku-4-5"
-
-    # Optional automatic failover backend when the primary trips its circuit breaker
-    # ("ollama" | "openai" | "anthropic"); empty disables fallback.
-    llm_fallback_backend: str = ""
-    llm_retry_max_attempts: int = 3
-    llm_circuit_fail_max: int = 5
-    llm_circuit_reset_timeout_seconds: float = 30.0
-
-    log_level: str = "INFO"
-
-    # Optional tenant tag written to every chunk's metadata and usable as a
-    # QueryRequest.metadata_filter key ({"tenant_id": "..."}). Empty = untagged
-    # (single-tenant deployments, the common case, pay zero extra cost).
-    tenant_id: str = ""
-
-    eval_seed: int = 42
-
-    # OpenTelemetry is an optional, disabled-by-default integration. Content is
-    # never exported unless explicitly enabled for a local, trusted collector.
-    otel_enabled: bool = False
-    otel_exporter_endpoint: str = "http://localhost:4318"
-    otel_service_name: str = "localrag"
-    otel_sample_rate: float = 1.0
-    otel_exporter_timeout_seconds: float = 10.0
-    otel_exporter_retry_count: int = 3
-    otel_capture_content: bool = False
-    otel_max_attribute_length: int = 256
-    langfuse_enabled: bool = False
-
-    @model_validator(mode="after")
-    def validate_configuration(self) -> Settings:  # noqa: C901, PLR0912, PLR0915
-        supported_backends = {"ollama", "openai", "anthropic"}
-        if self.llm_backend not in supported_backends:
-            message = (
-                f"llm_backend must be one of {sorted(supported_backends)}, got {self.llm_backend!r}"
-            )
-            raise ValueError(message)
-        if self.llm_fallback_backend and self.llm_fallback_backend not in supported_backends:
-            message = (
-                "llm_fallback_backend must be empty or one of "
-                f"{sorted(supported_backends)}, got {self.llm_fallback_backend!r}"
-            )
-            raise ValueError(message)
-        if self.llm_fallback_backend == self.llm_backend:
-            raise ValueError("llm_fallback_backend must differ from llm_backend")
-        if not 0 <= self.otel_sample_rate <= 1:
-            raise ValueError("otel_sample_rate must be between 0 and 1")
-        if self.otel_max_attribute_length < 1:
-            raise ValueError("otel_max_attribute_length must be at least 1")
-        if self.chunk_min_chars > self.chunk_max_chars:
-            raise ValueError("chunk_min_chars must be less than or equal to chunk_max_chars")
-        if self.chunking_mode not in {"fixed", "structural", "recursive"}:
-            raise ValueError("chunking_mode must be 'fixed', 'structural', or 'recursive'")
-        if self.retrieval_mode not in {"hybrid", "vector"}:
-            raise ValueError("retrieval_mode must be 'hybrid' or 'vector'")
-        if not 0 <= self.bm25_weight <= 1:
-            raise ValueError("bm25_weight must be between 0 and 1")
-        if self.query_expansion_max_variants < 1:
-            raise ValueError("query_expansion_max_variants must be at least 1")
-        if self.query_expansion_max_query_chars < 1:
-            raise ValueError("query_expansion_max_query_chars must be at least 1")
-        if self.query_expansion_candidate_budget < 1:
-            raise ValueError("query_expansion_candidate_budget must be at least 1")
-        if self.retrieval_experiment_mode not in {
-            "auto",
-            "baseline",
-            "rewrite",
-            "hyde",
-            "rewrite+hyde",
-        }:
-            raise ValueError("retrieval_experiment_mode is invalid")
-        if self.hyde_lexical_input not in {"original", "rewritten"}:
-            raise ValueError("hyde_lexical_input must be 'original' or 'rewritten'")
-        hyde_limits = (
-            self.hyde_timeout_seconds,
-            self.hyde_input_max_chars,
-            self.hyde_output_max_chars,
-            self.hyde_output_max_tokens,
-        )
-        if min(hyde_limits) <= 0:
-            raise ValueError("HyDE limits must be positive")
-        if (
-            self.adaptive_initial_top_k < 1
-            or self.adaptive_escalation_top_k < self.adaptive_initial_top_k
-        ):
-            raise ValueError("adaptive retrieval k settings are invalid")
-        if self.adaptive_max_rounds < 1 or self.adaptive_max_refinements < 0:
-            raise ValueError("adaptive retrieval budgets are invalid")
-        if self.adaptive_max_latency_ms <= 0 or self.adaptive_refinement_max_chars < 1:
-            raise ValueError("adaptive retrieval limits must be positive")
-        if self.adaptive_max_provider_calls < 0:
-            raise ValueError("adaptive provider call budget must not be negative")
-        if self.embedding_cache_max_entries < 1 or self.embedding_cache_max_bytes < 1:
-            raise ValueError("embedding cache limits must be positive")
-        if self.upload_max_bytes < 1 or self.upload_quota_bytes < 1:
-            raise ValueError("upload limits must be positive")
-        if self.upload_retention_seconds < 0:
-            raise ValueError("upload_retention_seconds must not be negative")
-        if self.audit_log_max_bytes < 1 or self.audit_log_retention_seconds < 0:
-            raise ValueError("audit log limits are invalid")
-        compression_values = (
-            self.context_compression_candidate_count,
-            self.context_compression_max_contexts,
-            self.context_compression_per_context_tokens,
-            self.context_compression_total_tokens,
-            self.context_compression_per_context_chars,
-            self.context_compression_total_chars,
-            self.context_compression_reserved_prompt_tokens,
-            self.context_compression_reserved_answer_tokens,
-            self.llm_context_window_tokens,
-        )
-        if any(value < 1 for value in compression_values):
-            raise ValueError("context compression budgets must be positive")
-        if self.context_compression_total_tokens > (
-            self.llm_context_window_tokens
-            - self.context_compression_reserved_prompt_tokens
-            - self.context_compression_reserved_answer_tokens
-        ):
-            raise ValueError("context compression total token budget exceeds model context window")
-        return self
+        ``model_copy(update={"hyde_enabled": True})`` would silently do nothing,
+        because the flat names are properties rather than fields. Use this instead
+        wherever a derived settings object is needed.
+        """
+        merged = self.model_dump()
+        for name, value in flat_values.items():
+            path = FLAT_TO_PATH.get(name)
+            if path is None:
+                merged[name] = value
+                continue
+            *sections, leaf = path.split(".")
+            cursor: Any = merged
+            for section in sections:
+                cursor = cursor[section]
+            cursor[leaf] = value
+        return type(self).model_validate(merged)
 
     def resolved_snapshot(self) -> dict[str, Any]:
-        """Return deterministic, non-secret configuration provenance."""
+        """Return deterministic, non-secret configuration provenance.
+
+        The shape mirrors the grouped model (ADR 037). Consumers that want the
+        documented flat names should use :meth:`flat_snapshot`.
+        """
         snapshot = self.model_dump(mode="json")
         for field in _SECRET_FIELDS:
-            snapshot[field] = "<redacted>"
+            _redact_path(snapshot, FLAT_TO_PATH.get(field, field), "<redacted>")
         for field in _PATH_FIELDS:
-            if snapshot.get(field):
-                snapshot[field] = (
-                    "<path>" if field != "ingest_roots" else ["<path>"] * len(snapshot[field])
-                )
+            _redact_path(snapshot, FLAT_TO_PATH.get(field, field), "<path>")
         return snapshot
+
+    def flat_snapshot(self) -> dict[str, Any]:
+        """Return the same provenance keyed by the documented flat field names."""
+        nested = self.resolved_snapshot()
+        flat: dict[str, Any] = {}
+        for name, path in FLAT_TO_PATH.items():
+            cursor: Any = nested
+            for part in path.split("."):
+                if not isinstance(cursor, dict) or part not in cursor:
+                    cursor = None
+                    break
+                cursor = cursor[part]
+            flat[name] = cursor
+        for name in UNGROUPED_FIELDS:
+            flat[name] = nested.get(name)
+        return flat
 
 
 @lru_cache(maxsize=32)
@@ -637,7 +1134,7 @@ def load_settings(
         _warn_retired_flag(retired)
         supplied.pop(retired)
     overrides = tuple(sorted(supplied.items()))
-    unknown = set(supplied) - set(Settings.model_fields)
+    unknown = set(supplied) - set(FLAT_TO_PATH) - UNGROUPED_FIELDS - set(Settings.model_fields)
     if unknown:
         field = sorted(unknown)[0]
         raise ConfigError(f"Unknown CLI override: {field}")  # noqa: EM102

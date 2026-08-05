@@ -159,7 +159,7 @@ def test_round_budget_stops() -> None:
 
 def test_structured_critique_is_optional_observable_evidence() -> None:
     retriever, provider, controller = policy([[hit("a.md", 0, 0.9)]])
-    controller.settings.adaptive_critique_enabled = True
+    controller.settings = controller.settings.with_overrides(adaptive_critique_enabled=True)
     provider.answer = '{"supported_claims":["claim"],"missing_evidence":[]}'
 
     result = controller.run("python retrieval terms")
