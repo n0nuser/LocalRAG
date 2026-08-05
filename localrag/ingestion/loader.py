@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import importlib.util
 import logging
 from pathlib import Path
 
+from localrag.ingestion.parsers.anydoc import parse_anydoc
 from localrag.ingestion.parsers.code import parse_code
 from localrag.ingestion.parsers.docx import parse_docx
 from localrag.ingestion.parsers.markdown import parse_markdown
@@ -37,6 +39,30 @@ CODE_EXTENSIONS = {
     ".toml",
     ".sh",
 }
+ANYDOC_EXTENSIONS = {
+    ".csv",
+    ".doc",
+    ".docm",
+    ".docx",
+    ".epub",
+    ".ods",
+    ".odp",
+    ".odt",
+    ".pot",
+    ".pps",
+    ".ppsm",
+    ".ppsx",
+    ".ppt",
+    ".pptm",
+    ".pptx",
+    ".rtf",
+    ".xls",
+    ".xlsb",
+    ".xlsm",
+    ".xlsx",
+}
+_ANYDOC_AVAILABLE = importlib.util.find_spec("anydoc") is not None
+
 SUPPORTED_EXTENSIONS = (
     MARKDOWN_EXTENSIONS
     | TEXT_EXTENSIONS
@@ -45,6 +71,7 @@ SUPPORTED_EXTENSIONS = (
         ".pdf",
         ".docx",
     }
+    | (ANYDOC_EXTENSIONS if _ANYDOC_AVAILABLE else set())
 )
 
 logger = logging.getLogger(__name__)
@@ -70,6 +97,8 @@ def parse_file(path: Path) -> str:
     logger.debug("parse_file_dispatch path=%s extension=%s", path, extension)
     if extension == ".pdf":
         return parse_pdf(path)
+    if extension in ANYDOC_EXTENSIONS and _ANYDOC_AVAILABLE:
+        return parse_anydoc(path)
     if extension == ".docx":
         return parse_docx(path)
     if extension in MARKDOWN_EXTENSIONS:
