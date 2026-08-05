@@ -9,6 +9,7 @@ from starlette.middleware.base import BaseHTTPMiddleware, RequestResponseEndpoin
 from starlette.requests import Request
 from starlette.responses import Response
 
+from localrag import metrics as app_metrics
 from localrag.logging_config import request_id_ctx
 from localrag.observability.tracing import SpanName, span
 
@@ -38,6 +39,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         finally:
             elapsed_ms = (time.perf_counter() - start) * 1000
             status_code = response.status_code if response is not None else 500
+            if status_code >= 400:
+                app_metrics.http_failures_total.labels(status_class=f"{status_code // 100}xx").inc()
             _slog.info(
                 "http_request",
                 component="middleware",

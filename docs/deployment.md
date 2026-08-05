@@ -1,7 +1,28 @@
-# Kubernetes Deployment
+# Deployment
+
+## Compose security boundary
+
+The default `docker-compose.yml` is a local-trust deployment: every published
+port is bound to `127.0.0.1`, API access requires `API_KEY`, and Grafana requires
+`GRAFANA_ADMIN_PASSWORD`. The observability services are opt-in via
+`--profile observability`. Do not remove the secret interpolation or publish
+these ports through an untrusted host interface without adding an authenticated
+reverse proxy and network policy. The API container is non-root, read-only at
+the filesystem level, and writes only its data volume and `/tmp`.
+
+Set secrets in the environment or `.env` before starting:
+
+```bash
+API_KEY='change-me' GRAFANA_ADMIN_PASSWORD='change-me-too' docker compose up -d
+```
+
+Ollama runs without a default GPU reservation so the stack also works on CPU
+CI runners. Configure GPU scheduling separately for hosts that support it.
+
+## Kubernetes
 
 The checked-in manifests describe a single-node deployment. Apply `pvc.yaml`,
-`configmap.yaml`, `secret.yaml`, `deployment.yaml`, and `service.yaml` in that
+`configmap.yaml`, `secret.yaml`, `ollama-service.yaml`, `deployment.yaml`, and `service.yaml` in that
 order. Do not apply `hpa.yaml`: LocalRAG has an in-process job registry and an
 embedded, file-backed Chroma store, so more than one API replica would split
 jobs and diverge from the active vector-store state.
@@ -16,7 +37,7 @@ keep the Chroma data format compatible with the application image.
 
 ## Dependency endpoints and readiness
 
-The deployment expects Ollama to be provided separately at
+The deployment expects an Ollama workload selected by `ollama-service.yaml` at
 `http://ollama.default.svc.cluster.local:11434`, configured by
 `OLLAMA_BASE_URL`. Its service must expose port `11434` and its readiness
 should represent a responsive Ollama API plus any model-pull initialization.
@@ -44,6 +65,12 @@ shape and must be replaced with the registry-qualified release image.
 The pod runs as non-root with the RuntimeDefault seccomp profile, drops Linux
 capabilities, disallows privilege escalation, and uses a read-only root
 filesystem. Writable application data is limited to the PVC and `/tmp`.
+
+The Compose API uses the named `localrag_data` volume for the same reason: a
+host bind mount can be owned by a different UID and make the unprivileged API
+unable to write Chroma data. Use `docker volume inspect localrag_localrag_data`
+for the host-managed storage location, or use the CLI outside Compose when a
+specific host directory must be the source of truth.
 Requests and limits in `deployment.yaml` are intentionally conservative
 starting values; tune them from observed Ollama/model memory and CPU usage,
 without removing requests or limits.

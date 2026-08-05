@@ -74,8 +74,8 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
 
-      - name: Run unit and integration tests
-         run: uv run pytest -x -q --cov=localrag --cov-report=xml --cov-report=term-missing
+      - name: Run unit tests
+        run: uv run pytest -m "not integration" -x -q --cov=localrag --cov-report=xml --cov-report=term-missing
 
       - name: Upload coverage
         uses: actions/upload-artifact@v4
@@ -114,3 +114,82 @@ jobs:
       - name: Stop container
         if: always()
         run: docker stop localrag-ci || true
+
+  compose-integration:
+    name: Compose API integration
+    runs-on: ubuntu-latest
+    env:
+      API_KEY: ci-integration-secret
+      GRAFANA_ADMIN_PASSWORD: ci-grafana-secret
+      LOCALRAG_TEST_API_KEY: ci-integration-secret
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
+
+      - name: Install integration test dependencies
+        run: uv sync --locked --all-extras
+
+      - name: Build API image
+        run: docker compose build localrag-api
+
+      - name: Start dependency containers
+        run: docker compose up -d ollama chromadb
+
+      - name: Install the embedding model only
+        run: docker compose exec -T ollama ollama pull nomic-embed-text
+
+      - name: Install the generation model for query coverage
+        run: docker compose exec -T ollama ollama pull llama3.2:latest
+
+      - name: Start API without model-pulling init
+        run: >-
+          docker compose run --detach --no-deps --name localrag-ci-api
+          --publish 8000:8000
+          --env API_KEY=$API_KEY
+          --env LLM_BACKEND=ollama
+          --env OLLAMA_LLM_MODEL=llama3.2:latest
+          localrag-api
+
+      - name: Run required API integration tests
+        run: uv run pytest -q tests/integration --no-cov -ra
+
+      - name: Upload Compose logs
+        if: always()
+        run: |
+          mkdir -p artifacts/compose
+          docker compose logs --no-color > artifacts/compose/services.log || true
+          docker logs localrag-ci-api > artifacts/compose/api.log 2>&1 || true
+
+      - name: Upload Compose diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: compose-integration-${{ github.run_id }}
+          path: artifacts/compose/
+          if-no-files-found: error
+
+      - name: Tear down Compose stack
+        if: always()
+        run: docker compose down --volumes --remove-orphans
+
+  offline-eval:
+    name: Deterministic offline fixture evaluation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run offline fixture benchmark
+        run: |
+          mkdir -p evals/results/docker
+          docker compose -f docker-compose.benchmark.yml --profile smoke run --rm benchmark-smoke
+
+      - name: Upload offline evaluation artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-eval-${{ github.run_id }}
+          path: evals/results/docker/
+          if-no-files-found: error

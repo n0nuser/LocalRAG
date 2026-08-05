@@ -5,7 +5,12 @@ from sse_starlette import EventSourceResponse
 
 from localrag.api import service as api_service
 from localrag.api.dependencies import get_engine, get_query_cache, require_api_key
-from localrag.api.schemas import QueryContextsResponse, QueryRequest, QueryResponse
+from localrag.api.schemas import (
+    BenchmarkContext,
+    QueryContextsResponse,
+    QueryRequest,
+    QueryResponse,
+)
 from localrag.rag.engine import RAGEngine
 from localrag.rag.query_cache import QueryCache
 
@@ -29,16 +34,17 @@ def query_contexts(
 ) -> QueryContextsResponse:
     """Return raw contexts only for authenticated benchmark clients."""
     contexts = api_service.get_query_contexts(request, engine)
-    payload = []
+    payload: list[BenchmarkContext] = []
     for context in contexts:
         metadata = context.get("metadata") or {}
         payload.append(
-            {
-                "chunk_id": str(metadata.get("chunk_id", "")),
-                "text": str(context.get("expanded_text") or context.get("text", "")),
-                "source": str(context.get("source", "unknown")),
-                "chunk_index": int(context.get("chunk_index", -1)),
-            }
+            BenchmarkContext(
+                chunk_id=str(context.get("chunk_id") or metadata.get("chunk_id", "")),
+                # Keep each returned ID aligned with the exact text sent to the evaluator.
+                text=str(context.get("text", "")),
+                source=str(context.get("source", "unknown")),
+                chunk_index=int(context.get("chunk_index", -1)),
+            )
         )
     return QueryContextsResponse(contexts=payload)
 

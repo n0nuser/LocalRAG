@@ -162,6 +162,7 @@ class Retriever:
                         [
                             {
                                 "text": hit.text,
+                                "chunk_id": hit.chunk_id,
                                 "source": hit.metadata.get("source", "unknown"),
                                 "chunk_index": hit.metadata.get("chunk_index", -1),
                                 "score": hit.score,
@@ -215,17 +216,18 @@ class Retriever:
         contexts: list[dict[str, Any]] = []
         for document, metadata, distance in zip(documents, metadatas, distances, strict=False):
             metadata_map = metadata if isinstance(metadata, dict) else {}
-            contexts.append(
-                {
-                    "text": document,
-                    "source": metadata_map.get("source", "unknown"),
-                    "chunk_index": metadata_map.get("chunk_index", -1),
-                    "score": 1.0 / (1.0 + float(distance)),
-                    "distance": float(distance),
-                    "ingested_at": metadata_map.get("ingested_at"),
-                    "metadata": metadata_map,
-                }
-            )
+            context = {
+                "text": document,
+                "source": metadata_map.get("source", "unknown"),
+                "chunk_index": metadata_map.get("chunk_index", -1),
+                "score": 1.0 / (1.0 + float(distance)),
+                "distance": float(distance),
+                "ingested_at": metadata_map.get("ingested_at"),
+                "metadata": metadata_map,
+            }
+            if metadata_map.get("chunk_id"):
+                context["chunk_id"] = metadata_map["chunk_id"]
+            contexts.append(context)
         logger.debug("retrieve_vector_hits count=%s", len(contexts))
         return contexts
 

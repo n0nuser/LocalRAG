@@ -85,6 +85,38 @@ def test_query_json_returns_answer() -> None:
     app.dependency_overrides.clear()
 
 
+def test_benchmark_contexts_return_text_and_stable_id() -> None:
+    class BenchmarkRetriever(StubRetriever):
+        def retrieve(self, **_kwargs: object) -> list[dict[str, Any]]:
+            return [
+                {
+                    "source": "/private/doc.md",
+                    "chunk_index": 2,
+                    "chunk_id": "stable-chunk-id",
+                    "text": "actual retrieved passage",
+                    "metadata": {"chunk_id": "stable-chunk-id"},
+                }
+            ]
+
+    @dataclass
+    class BenchmarkEngine(StubEngine):
+        retriever: BenchmarkRetriever = field(default_factory=BenchmarkRetriever)
+
+    app.dependency_overrides[get_engine] = lambda: BenchmarkEngine()
+    response = TestClient(app).post("/query/contexts", json={"question": "Hi"})
+
+    assert response.status_code == 200
+    assert response.json()["contexts"] == [
+        {
+            "chunk_id": "stable-chunk-id",
+            "text": "actual retrieved passage",
+            "source": "/private/doc.md",
+            "chunk_index": 2,
+        }
+    ]
+    app.dependency_overrides.clear()
+
+
 def test_query_streams_events() -> None:
     app.dependency_overrides[get_engine] = lambda: StubEngine()
     client = TestClient(app)

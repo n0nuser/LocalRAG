@@ -63,9 +63,11 @@ class JobRegistry:
                 1 for j in self._jobs.values() if j.status in (JobStatus.PENDING, JobStatus.RUNNING)
             )
             if pending >= max_pending:
+                app_metrics.ingest_job_rejections_total.inc()
                 message = f"{pending} ingest jobs already pending/running (max {max_pending})."
                 raise TooManyPendingJobsError(message)
             self._jobs[job_id] = job
+            app_metrics.ingest_jobs_pending.set(pending + 1)
         self._executor.submit(copy_context().run, self._run, job_id, work)
         return job_id
 
@@ -79,11 +81,13 @@ class JobRegistry:
             with self._lock:
                 self._jobs[job_id].status = JobStatus.FAILED
                 self._jobs[job_id].error = str(exc)
+            app_metrics.ingest_jobs_pending.dec()
             app_metrics.ingest_jobs_total.labels(status="failed").inc()
             return
         with self._lock:
             self._jobs[job_id].status = JobStatus.DONE
             self._jobs[job_id].result = result
+        app_metrics.ingest_jobs_pending.dec()
         app_metrics.ingest_jobs_total.labels(status="done").inc()
 
     def get(self, job_id: str) -> Job | None:

@@ -92,8 +92,10 @@ PASS_THRESHOLDS = {
 }
 
 
-def _query_api(question: str, api_url: str, api_key: str) -> tuple[str, list[str]]:
-    """Call POST /query and return (answer, contexts)."""
+def _query_api(
+    question: str, api_url: str, api_key: str
+) -> tuple[str, list[str], list[str], str, str]:
+    """Call the public answer and protected context endpoints."""
     headers = {}
     if api_key:
         headers["X-API-Key"] = api_key
@@ -106,6 +108,8 @@ def _query_api(question: str, api_url: str, api_key: str) -> tuple[str, list[str
     resp.raise_for_status()
     body = resp.json()
     answer = body.get("answer", "")
+    provider = str(body.get("provider", "unknown"))
+    model = str(body.get("model", "unknown"))
     context_resp = httpx.post(
         f"{api_url.rstrip('/')}/query/contexts",
         json={"question": question},
@@ -113,8 +117,10 @@ def _query_api(question: str, api_url: str, api_key: str) -> tuple[str, list[str
         timeout=120,
     )
     context_resp.raise_for_status()
-    contexts = [item.get("text", "") for item in context_resp.json().get("contexts", [])]
-    return answer, contexts
+    context_items = context_resp.json().get("contexts", [])
+    contexts = [item.get("text", "") for item in context_items]
+    retrieved_ids = [item.get("chunk_id", "") for item in context_items]
+    return answer, contexts, retrieved_ids, provider, model
 
 
 def _build_rows(
@@ -134,8 +140,15 @@ def _build_rows(
                 raise OfflineArtifactsMissingError(rec.record_id, "contexts")
         else:
             print(f"  querying: {rec.question[:60]}...")
-            answer, live_contexts = _query_api(rec.question, api_url, api_key)
-            contexts = live_contexts or rec.offline_context_texts()
+            api_result = _query_api(rec.question, api_url, api_key)
+            answer, live_contexts, retrieved_ids = api_result[:3]
+            provider = str(api_result[3]) if len(api_result) > 3 else "unknown"
+            model = str(api_result[4]) if len(api_result) > 4 else "unknown"
+            if not live_contexts:
+                raise RuntimeError(
+                    f"live API returned no benchmark contexts for record {rec.record_id!r}"
+                )
+            contexts = live_contexts
 
         rows.append(
             {
@@ -143,7 +156,13 @@ def _build_rows(
                 "question": rec.question,
                 "answer": answer,
                 "contexts": contexts,
-                "retrieved_ids": [citation.citation_id for citation in rec.citations],
+                "retrieved_ids": (
+                    retrieved_ids
+                    if not offline
+                    else [citation.citation_id for citation in rec.citations]
+                ),
+                "answering_provider": provider if not offline else None,
+                "answering_model": model if not offline else None,
                 "ground_truth": rec.reference_answer,
                 "ground_truths": rec.reference_answers_or_default(),
                 "answer_citation_ids": rec.answer_citation_ids,
@@ -183,23 +202,33 @@ async def _build_rows_async(
                 response.raise_for_status()
                 body = response.json()
                 answer = body.get("answer", "")
+                provider = str(body.get("provider", "unknown"))
+                model = str(body.get("model", "unknown"))
                 context_response = await client.post(
                     f"{api_url.rstrip('/')}/query/contexts",
                     json={"question": record.question},
                     headers=headers,
                 )
                 context_response.raise_for_status()
-                contexts = [
-                    item.get("text", "")
-                    for item in context_response.json().get("contexts", [])
-                ]
-                contexts = contexts or record.offline_context_texts()
+                context_items = context_response.json().get("contexts", [])
+                contexts = [item.get("text", "") for item in context_items]
+                retrieved_ids = [item.get("chunk_id", "") for item in context_items]
+                if not contexts:
+                    raise RuntimeError(
+                        f"live API returned no benchmark contexts for record {record.record_id!r}"
+                    )
             return {
                 "record_id": record.record_id,
                 "question": record.question,
                 "answer": answer,
                 "contexts": contexts,
-                "retrieved_ids": [citation.citation_id for citation in record.citations],
+                "retrieved_ids": (
+                    retrieved_ids
+                    if not offline
+                    else [citation.citation_id for citation in record.citations]
+                ),
+                "answering_provider": provider if not offline else None,
+                "answering_model": model if not offline else None,
                 "ground_truth": record.reference_answer,
                 "ground_truths": record.reference_answers_or_default(),
                 "answer_citation_ids": record.answer_citation_ids,
@@ -672,6 +701,13 @@ def main() -> None:
             "provenance": {
                 **metadata.to_dict(),
                 "evaluation_mode": "fixture-offline" if args.offline else "live-api",
+                "answering_identities": sorted(
+                    {
+                        f"{row['answering_provider']}:{row['answering_model']}"
+                        for row in rows
+                        if row.get("answering_provider") and row.get("answering_model")
+                    }
+                ),
                 "metric_contract_version": "1.0",
                 "judge_prompt_version": "ragas-default-prompts@0.4.3",
                 "judge_seed": seed,

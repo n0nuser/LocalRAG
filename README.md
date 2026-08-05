@@ -164,6 +164,7 @@ Key settings:
 | --- | --- | --- |
 | `API_KEY` | _(empty)_ | Require `X-API-Key` header (leave empty to disable auth) |
 | `LLM_BACKEND` | `ollama` | LLM provider: `ollama`, `openai`, or `anthropic` |
+| `LLM_FALLBACK_BACKEND` | empty | Optional different provider used after the primary circuit opens |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
 | `OLLAMA_EMBED_MODEL` | `nomic-embed-text` | Embedding model |
 | `EMBEDDING_PROVIDER` | `ollama` | Embedding backend: `ollama` or optional `sentence-transformers` |
@@ -174,6 +175,11 @@ Key settings:
 | `OPENAI_MODEL` | `gpt-4o-mini` | OpenAI model tag |
 | `ANTHROPIC_API_KEY` | _(empty)_ | Anthropic key (required for `anthropic` backend or agent) |
 | `ANTHROPIC_MODEL` | `claude-haiku-4-5` | Anthropic model tag |
+
+Query responses, SSE final events, audit records, and evaluation settings
+snapshots include the effective provider and model. Unsupported primary or
+fallback names, and selecting the same fallback as the primary, fail during
+settings validation.
 | `CHROMA_PERSIST_PATH` | `./data/chroma` | Where ChromaDB stores vectors |
 | `CHROMA_COLLECTION_NAME` | `localrag` | ChromaDB collection name |
 | `CHUNKING_MODE` | `structural` | Ingestion chunking mode: `structural` or `fixed` |
@@ -328,17 +334,22 @@ live in [docs/rag-retrieval.md](docs/rag-retrieval.md).
 
 ## Kubernetes (k3s)
 
-Apply the manifests under `k8s/`:
+Apply the manifests under `k8s/` (the Ollama workload itself is managed
+separately, but must use the `app: ollama` selector):
 
 ```bash
 kubectl apply -f k8s/configmap.yaml
 kubectl apply -f k8s/secret.yaml
+kubectl apply -f k8s/ollama-service.yaml
 kubectl apply -f k8s/deployment.yaml
 kubectl apply -f k8s/service.yaml
-kubectl apply -f k8s/hpa.yaml
 ```
 
 Edit `k8s/secret.yaml` to add your actual API keys before applying.
+The deployment is intentionally single-replica with a `ReadWriteOnce` PVC;
+do not apply `k8s/hpa.yaml` until Chroma and in-memory jobs are externalized.
+See [docs/deployment.md](docs/deployment.md) for the Compose trust boundary and
+the Kubernetes persistence/readiness contract.
 
 ## Development
 

@@ -233,6 +233,7 @@ def ingest_directory_async(
         result = ingestion_service.ingest_directory(
             path, recursive=request.recursive, embed_model=request.embed_model
         )
+        app_metrics.ingested_documents_total.inc(result.files_processed)
         return {
             "status": "ok",
             "files_processed": result.files_processed,
@@ -285,6 +286,7 @@ def ingest_upload(
             file_obj, temp_path, settings.upload_max_bytes
         )
         if bytes_written > settings.upload_quota_bytes:
+            app_metrics.upload_quota_rejections_total.inc()
             raise IngestApiError(
                 HTTPStatus.INSUFFICIENT_STORAGE,
                 "Upload exceeds the configured upload quota.",
@@ -297,6 +299,7 @@ def ingest_upload(
             temp_path.replace(dest_path)
         _cleanup_uploads(dest_dir, settings, protected=dest_path)
         if not dest_path.exists():
+            app_metrics.upload_quota_rejections_total.inc()
             raise IngestApiError(HTTPStatus.INSUFFICIENT_STORAGE, "Upload quota is exhausted.")
         logger.info("ingest_upload_saved path=%s bytes=%s", dest_path, bytes_written)
         result = ingestion_service.ingest_file(dest_path, embed_model=embed_model)
@@ -351,7 +354,11 @@ def _cleanup_uploads(directory: Path, settings: Settings, protected: Path | None
                 settings.upload_retention_seconds <= 0
                 or now - stat.st_mtime > settings.upload_retention_seconds
             ):
-                path.unlink(missing_ok=True)
+                try:
+                    path.unlink(missing_ok=True)
+                except OSError:
+                    logger.warning("upload_cleanup_failed path=%s", path)
+                    continue
                 app_metrics.upload_cleanup_total.labels(reason="retention").inc()
                 continue
             files.append((stat.st_mtime, path, stat.st_size))
@@ -361,7 +368,11 @@ def _cleanup_uploads(directory: Path, settings: Settings, protected: Path | None
             break
         if path == protected:
             continue
-        path.unlink(missing_ok=True)
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            logger.warning("upload_cleanup_failed path=%s", path)
+            continue
         total -= size
         app_metrics.upload_cleanup_total.labels(reason="quota").inc()
         logger.info("upload_cleanup_quota path=%s", path)
@@ -389,7 +400,14 @@ def _default_model(engine: RAGEngine) -> str:
     )
 
 
-def query_json(
+def _effective_identity(engine: RAGEngine, requested_model: str | None = None) -> tuple[str, str]:
+    provider_obj = getattr(engine, "provider", None)
+    provider = getattr(provider_obj, "effective_provider", _provider_name(engine))
+    model = getattr(provider_obj, "effective_model", requested_model or _default_model(engine))
+    return str(provider), str(model)
+
+
+def query_json(  # noqa: C901, PLR0915
     request: QueryRequest, engine: RAGEngine, query_cache: QueryCache | None = None
 ) -> QueryResponse:
     """Blocking JSON query — retrieves context then generates a full answer."""
@@ -398,7 +416,7 @@ def query_json(
     if query_cache is not None:
         cache_key = make_cache_key(
             request.question,
-            request.model,
+            request.model or _default_model(engine),
             request.n_results,
             engine.settings.retrieval_mode,
             metadata_filter=request.metadata_filter,
@@ -415,23 +433,52 @@ def query_json(
 
     try:
         if engine.settings.adaptive_enabled:
-            with span(SpanName.RETRIEVAL_ADAPTIVE, {"stage": "adaptive"}):
-                result = engine.answer(
-                    request.question, request.model, request.n_results, request.metadata_filter
-                )
+            try:
+                with span(SpanName.RETRIEVAL_ADAPTIVE, {"stage": "adaptive"}):
+                    result = engine.answer(
+                        request.question, request.model, request.n_results, request.metadata_filter
+                    )
+            except Exception:
+                app_metrics.query_failures_total.inc()
+                app_metrics.query_requests_total.labels(transport="json", outcome="error").inc()
+                raise
             raw_sources = cast("list[dict[str, Any]]", result.get("sources") or [])
             response = QueryResponse(
                 answer=str(result["answer"]),
                 sources=[SourceRef(**dict(source)) for source in raw_sources],
                 latency_ms=(time.perf_counter() - t0) * 1000,
-                model=request.model or _default_model(engine),
+                model=_effective_identity(engine, request.model)[1],
+                provider=_effective_identity(engine, request.model)[0],
                 low_confidence=not bool(raw_sources),
                 trace=cast("dict[str, object] | None", result.get("trace"))
                 if isinstance(result.get("trace"), dict)
                 else None,
             )
+            app_metrics.query_duration_seconds.observe(response.latency_ms / 1000)
+            retrieved_chunks = result.get("retrieved_chunks", 0)
+            app_metrics.chunks_retrieved_total.inc(
+                int(retrieved_chunks) if isinstance(retrieved_chunks, (int, float)) else 0
+            )
+            app_metrics.tokens_used_total.labels(provider=response.provider).inc(
+                len(response.answer)
+            )
+            write_audit_record(
+                engine.settings.audit_log_path,
+                correlation_id=request_id_ctx.get(""),
+                question=request.question,
+                sources=[s.model_dump() for s in response.sources],
+                answer=response.answer,
+                model=response.model,
+                provider=response.provider,
+                latency_ms=response.latency_ms,
+                max_bytes=engine.settings.audit_log_max_bytes,
+                retention_seconds=engine.settings.audit_log_retention_seconds,
+                metadata_only=engine.settings.audit_log_metadata_only,
+                redact_content=engine.settings.audit_log_redact_content,
+            )
             if query_cache is not None and cache_key is not None:
                 query_cache.set(cache_key, response.model_dump())
+            app_metrics.query_requests_total.labels(transport="json", outcome="success").inc()
             return response
         with span(SpanName.RETRIEVAL, {"stage": "retrieve"}):
             contexts = engine.retriever.retrieve(
@@ -441,30 +488,36 @@ def query_json(
             )
     except RetrievalError as exc:
         app_metrics.query_failures_total.inc()
+        app_metrics.query_requests_total.labels(transport="json", outcome="error").inc()
         raise RagApiError(int(exc.status_code), exc.detail) from exc
 
     answer_chunks: list[str] = []
     low_confidence = False
     trace: dict[str, object] | None = None
-    with span(SpanName.GENERATION, {"model": request.model or _default_model(engine)}):
-        for event in engine.stream_chat_from_contexts(
-            contexts=contexts,
-            question=request.question,
-            model=request.model,
-        ):
-            if event["type"] == "token":
-                answer_chunks.append(str(event["token"]))
-            if event["type"] == "final":
-                low_confidence = bool(event.get("low_confidence", False))
-                trace = cast("dict[str, object] | None", event.get("trace"))
+    try:
+        with span(SpanName.GENERATION, {"model": request.model or _default_model(engine)}):
+            for event in engine.stream_chat_from_contexts(
+                contexts=contexts,
+                question=request.question,
+                model=request.model,
+            ):
+                if event["type"] == "token":
+                    answer_chunks.append(str(event["token"]))
+                if event["type"] == "final":
+                    low_confidence = bool(event.get("low_confidence", False))
+                    trace = cast("dict[str, object] | None", event.get("trace"))
+    except Exception:
+        app_metrics.query_failures_total.inc()
+        app_metrics.query_requests_total.labels(transport="json", outcome="error").inc()
+        raise RagApiError(HTTPStatus.BAD_GATEWAY, "LLM provider request failed.") from None
 
     latency_ms = (time.perf_counter() - t0) * 1000
-    used_model = request.model or _default_model(engine)
+    used_provider, used_model = _effective_identity(engine, request.model)
     sources = [SourceRef(**s) for s in engine.extract_sources(contexts)]
 
     app_metrics.query_duration_seconds.observe(latency_ms / 1000)
     app_metrics.chunks_retrieved_total.inc(len(contexts))
-    app_metrics.tokens_used_total.labels(model=used_model).inc(len(answer_chunks))
+    app_metrics.tokens_used_total.labels(provider=used_provider).inc(len(answer_chunks))
 
     logger.info(
         "query_json_done model=%s latency_ms=%.1f sources=%s",
@@ -477,6 +530,7 @@ def query_json(
         sources=sources,
         latency_ms=latency_ms,
         model=used_model,
+        provider=used_provider,
         low_confidence=low_confidence,
         trace=trace,
     )
@@ -487,6 +541,7 @@ def query_json(
         sources=[s.model_dump() for s in sources],
         answer=response.answer,
         model=used_model,
+        provider=used_provider,
         latency_ms=latency_ms,
         max_bytes=engine.settings.audit_log_max_bytes,
         retention_seconds=engine.settings.audit_log_retention_seconds,
@@ -495,6 +550,7 @@ def query_json(
     )
     if query_cache is not None and cache_key is not None:
         query_cache.set(cache_key, response.model_dump())
+    app_metrics.query_requests_total.labels(transport="json", outcome="success").inc()
     return response
 
 
@@ -523,34 +579,51 @@ def iter_query_sse_events(
         request.n_results,
         len(request.question),
     )
-    stream = engine.stream_chat_from_contexts(
-        contexts=contexts,
-        question=request.question,
-        model=request.model,
-    )
     answer_chunks: list[str] = []
-    for event in stream:
-        if event["type"] == "token":
-            token = str(event["token"])
-            answer_chunks.append(token)
-            yield {"event": "token", "data": token}
-        if event["type"] == "final":
-            payload = {
-                "sources": event["sources"],
-                "low_confidence": event.get("low_confidence", False),
-                "trace": event.get("trace"),
-            }
-            write_audit_record(
-                engine.settings.audit_log_path,
-                correlation_id=request_id_ctx.get(""),
-                question=request.question,
-                sources=event["sources"],
-                answer="".join(answer_chunks).strip(),
-                model=request.model or _default_model(engine),
-                latency_ms=(time.perf_counter() - t0) * 1000,
-                max_bytes=engine.settings.audit_log_max_bytes,
-                retention_seconds=engine.settings.audit_log_retention_seconds,
-                metadata_only=engine.settings.audit_log_metadata_only,
-                redact_content=engine.settings.audit_log_redact_content,
-            )
-            yield {"event": "final", "data": json.dumps(payload)}
+    try:
+        stream = engine.stream_chat_from_contexts(
+            contexts=contexts,
+            question=request.question,
+            model=request.model,
+        )
+        for event in stream:
+            if event["type"] == "token":
+                token = str(event["token"])
+                answer_chunks.append(token)
+                yield {"event": "token", "data": token}
+            if event["type"] == "final":
+                latency_ms = (time.perf_counter() - t0) * 1000
+                provider, model = _effective_identity(engine, request.model)
+                app_metrics.query_duration_seconds.observe(latency_ms / 1000)
+                app_metrics.chunks_retrieved_total.inc(len(contexts))
+                app_metrics.tokens_used_total.labels(provider=provider).inc(len(answer_chunks))
+                payload = {
+                    "sources": event["sources"],
+                    "low_confidence": event.get("low_confidence", False),
+                    "trace": event.get("trace"),
+                    "provider": provider,
+                    "model": model,
+                }
+                write_audit_record(
+                    engine.settings.audit_log_path,
+                    correlation_id=request_id_ctx.get(""),
+                    question=request.question,
+                    sources=event["sources"],
+                    answer="".join(answer_chunks).strip(),
+                    model=model,
+                    provider=provider,
+                    latency_ms=latency_ms,
+                    max_bytes=engine.settings.audit_log_max_bytes,
+                    retention_seconds=engine.settings.audit_log_retention_seconds,
+                    metadata_only=engine.settings.audit_log_metadata_only,
+                    redact_content=engine.settings.audit_log_redact_content,
+                )
+                yield {"event": "final", "data": json.dumps(payload)}
+                app_metrics.query_requests_total.labels(transport="sse", outcome="success").inc()
+    except Exception:
+        app_metrics.query_failures_total.inc()
+        app_metrics.query_requests_total.labels(transport="sse", outcome="error").inc()
+        yield {
+            "event": "error",
+            "data": json.dumps({"detail": "LLM provider request failed."}),
+        }
