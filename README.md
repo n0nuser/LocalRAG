@@ -21,7 +21,7 @@ If you're new to RAG, this section explains the key design choices and what they
 - **Provider abstraction, not lock-in:** the LLM layer is behind a provider interface (`ollama`, `openai`, `anthropic`), so changing model vendors is mostly configuration and limited wiring.
 - **Agent mode is explicit and bounded:** the agent endpoint uses a small tool set (`search_documents` or `answer_directly`) instead of a complex autonomous loop, keeping behavior understandable and debuggable.
 - **Evaluation is part of the product, not an afterthought:** there is a bundled eval dataset and repeatable RAGAS run path, so retrieval quality can be measured instead of guessed.
-- **Optional anydoc conversion:** install `uv sync --extra anydoc` to use the Rust-backed converter for office, EPUB, RTF, CSV, and spreadsheet formats; scanned PDF OCR remains handled by the existing Tesseract path.
+- **Unified document conversion:** anydoc is required for office, EPUB, RTF, CSV, and spreadsheet formats and detects their type from file content; scanned PDF OCR remains handled by the existing `pdf_inspector` and Tesseract path.
 
 ## Architecture
 
