@@ -1,13 +1,12 @@
 from __future__ import annotations
 
-import importlib.util
 from pathlib import Path
 
 import pytest
 from docx import Document
 
 from localrag.ingestion import loader as ingestion_loader
-from localrag.ingestion.loader import list_supported_files, parse_file
+from localrag.ingestion.loader import detect_file_type, list_supported_files, parse_file
 from localrag.ingestion.parsers.docx import parse_docx
 from localrag.ingestion.parsers.markdown import parse_markdown
 from localrag.ingestion.parsers.text import parse_text
@@ -85,13 +84,11 @@ def test_loader_parse_file_dispatches_extensions(tmp_path: Path) -> None:
     assert "p1" in parse_file(docx)
 
 
-def test_loader_uses_anydoc_for_csv_when_optional_extra_is_installed(tmp_path: Path) -> None:
+def test_loader_uses_anydoc_for_csv_and_detects_content_type(tmp_path: Path) -> None:
     csv_path = tmp_path / "rows.csv"
     csv_path.write_text("name,value\nalpha,1\n", encoding="utf-8")
 
-    if importlib.util.find_spec("anydoc") is None:
-        pytest.skip("anydoc extra is not installed")
-
+    assert detect_file_type(csv_path) == "csv"
     output = parse_file(csv_path)
 
     assert "alpha" in output

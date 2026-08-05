@@ -53,7 +53,7 @@ override unless `COMPOSE_OVERRIDE` is supplied.
 | Roadmap status and milestone selection | `ROADMAP.md`, GitHub issues and milestones, `scripts/validate_roadmap.py` |
 | CLI commands | `localrag/cli/app.py`, `localrag/cli/commands/*.py`, [cli.md](cli.md) |
 | Structured configuration | `localrag/settings.py`, `localrag/cli/app.py`, `localrag/api/main.py`, `config.example.yaml` |
-| Parsing a file type | `localrag/ingestion/parsers/`, `localrag/ingestion/loader.py`; optional anydoc formats use `localrag/ingestion/parsers/anydoc.py` and the `anydoc` extra |
+| Parsing a file type | `localrag/ingestion/parsers/`, `localrag/ingestion/loader.py`; anydoc handles content-detected office formats and `pdf_inspector` remains the PDF path |
 | PDF OCR (scanned/image-only pages) | `localrag/ingestion/parsers/pdf.py`, `OCR_*` in `localrag/settings.py`, [ocr.md](ocr.md) |
 | Chunking strategy and boundaries | `localrag/ingestion/contract.py`, `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/ingestion/recursive_chunker.py`, `localrag/settings.py`, `docs/adr/021-chunking-strategy-contract.md` |
 | Embeddings / provider contract and factory | `localrag/embedding/`, `localrag/ingestion/embedder.py` |

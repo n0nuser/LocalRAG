@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-import importlib.util
 import logging
 from pathlib import Path
 
-from localrag.ingestion.parsers.anydoc import parse_anydoc
+from localrag.ingestion.parsers.anydoc import detect_anydoc_format, parse_anydoc
 from localrag.ingestion.parsers.code import parse_code
 from localrag.ingestion.parsers.docx import parse_docx
 from localrag.ingestion.parsers.markdown import parse_markdown
@@ -61,8 +60,6 @@ ANYDOC_EXTENSIONS = {
     ".xlsm",
     ".xlsx",
 }
-_ANYDOC_AVAILABLE = importlib.util.find_spec("anydoc") is not None
-
 SUPPORTED_EXTENSIONS = (
     MARKDOWN_EXTENSIONS
     | TEXT_EXTENSIONS
@@ -71,14 +68,14 @@ SUPPORTED_EXTENSIONS = (
         ".pdf",
         ".docx",
     }
-    | (ANYDOC_EXTENSIONS if _ANYDOC_AVAILABLE else set())
+    | ANYDOC_EXTENSIONS
 )
 
 logger = logging.getLogger(__name__)
 
 
 def is_supported_file(path: Path) -> bool:
-    return path.suffix.lower() in SUPPORTED_EXTENSIONS
+    return path.suffix.lower() in SUPPORTED_EXTENSIONS or detect_anydoc_format(path) is not None
 
 
 def list_supported_files(path: Path, recursive: bool) -> list[Path]:
@@ -92,12 +89,26 @@ def list_supported_files(path: Path, recursive: bool) -> list[Path]:
     return [candidate for candidate in files if is_supported_file(candidate)]
 
 
+def detect_file_type(path: Path) -> str | None:
+    """Return the parser type, preserving the dedicated PDF processing path."""
+    detected_format = detect_anydoc_format(path)
+    if detected_format == "pdf" or path.suffix.lower() == ".pdf":
+        return "pdf"
+    return detected_format or path.suffix.lower().removeprefix(".") or None
+
+
 def parse_file(path: Path) -> str:
     extension = path.suffix.lower()
-    logger.debug("parse_file_dispatch path=%s extension=%s", path, extension)
-    if extension == ".pdf":
+    file_type = detect_file_type(path)
+    logger.debug(
+        "parse_file_dispatch path=%s extension=%s detected_format=%s",
+        path,
+        extension,
+        file_type,
+    )
+    if file_type == "pdf":
         return parse_pdf(path)
-    if extension in ANYDOC_EXTENSIONS and _ANYDOC_AVAILABLE:
+    if file_type in {suffix.removeprefix(".") for suffix in ANYDOC_EXTENSIONS}:
         return parse_anydoc(path)
     if extension == ".docx":
         return parse_docx(path)
