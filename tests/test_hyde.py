@@ -157,8 +157,12 @@ def test_experiment_mode_controls_rewrite_hyde_composition(monkeypatch: pytest.M
 
 def test_hyde_settings_snapshot_is_stable_and_redacted() -> None:
     settings = Settings(hyde_enabled=True, hyde_model="local-model")
-    assert settings.resolved_snapshot()["hyde_enabled"] is True
-    assert settings.resolved_snapshot()["hyde_model"] == "local-model"
+    hyde = settings.resolved_snapshot()["retrieval"]["hyde"]
+    assert hyde["enabled"] is True
+    assert hyde["model"] == "local-model"
+    # The documented flat names remain available for consumers that key on them.
+    assert settings.flat_snapshot()["hyde_enabled"] is True
+    assert settings.flat_snapshot()["hyde_model"] == "local-model"
 
 
 def test_cli_query_surfaces_bounded_trace(monkeypatch: pytest.MonkeyPatch) -> None:

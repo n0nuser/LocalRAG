@@ -84,9 +84,7 @@ def expand_query(
         return QueryExpansionResult(original, rewrite, (search_query,), (), "disabled")
 
     try:
-        provider = build_provider(
-            settings.model_copy(update={"rag_system_prompt": _EXPANSION_INSTRUCTION})
-        )
+        provider = build_provider(settings.with_overrides(rag_system_prompt=_EXPANSION_INSTRUCTION))
         response = provider.generate(search_query, context=[])
         raw_variants = _parse_expansion_output(response.answer.strip())
     except Exception as exc:
@@ -123,7 +121,7 @@ def rewrite_query(question: str, settings: Settings) -> str:
     answer prompt; rewriting is a retrieval-only concern.
     """
     rewrite_provider = build_provider(
-        settings.model_copy(update={"rag_system_prompt": _REWRITE_INSTRUCTION})
+        settings.with_overrides(rag_system_prompt=_REWRITE_INSTRUCTION)
     )
     try:
         response = rewrite_provider.generate(question, context=[])

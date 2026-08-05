@@ -31,7 +31,7 @@ override unless `COMPOSE_OVERRIDE` is supplied.
 
 | Task | Primary locations |
 | --- | --- |
-| Environment / defaults | `localrag/settings.py`, `.env.example`, `config.example.yaml`, [configuration.md](configuration.md), `docs/adr/020-structured-configuration.md` |
+| Environment / defaults | `localrag/settings.py`, `localrag/settings_groups.py` (grouped fields + validation), `localrag/settings_map.py` (flat↔grouped map — **add new settings in all three**), `.env.example`, `config.example.yaml`, [configuration.md](configuration.md), `docs/adr/020-structured-configuration.md`, `docs/adr/037-grouped-configuration-model.md` |
 | FastAPI routes (HTTP only) | `localrag/api/routers/*.py` |
 | API request/response OpenAPI models | `localrag/api/schemas.py` |
 | API use cases (health, ingest rules, query JSON + SSE, collections including rebuild) | `localrag/api/service.py` |

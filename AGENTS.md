@@ -93,6 +93,8 @@ Everything resolves into `Settings` (`localrag/settings.py`) via `load_settings`
 
 So YAML is a **base layer that env and CLI override**, not the other way around. [`.env.example`](.env.example) is the canonical env var list and must stay in sync with `Settings`. Contract: [ADR 020](docs/adr/020-structured-configuration.md).
 
+`Settings` is **grouped** into per-feature sub-models ([`localrag/settings_groups.py`](localrag/settings_groups.py)), each owning its own validation, while the documented **flat** names stay the public surface via [`localrag/settings_map.py`](localrag/settings_map.py) and generated properties. Adding a setting means touching all three: the group model, `FLAT_TO_PATH`, and a flat property — a totality test fails if you miss one. Use `settings.with_overrides(...)`, never `model_copy(update=...)`, for flat names. Contract: [ADR 037](docs/adr/037-grouped-configuration-model.md).
+
 ## Roadmap and ADRs
 
 - [`ROADMAP.md`](ROADMAP.md) is a **contributor-facing summary, not a second issue tracker** — GitHub owns live issue and milestone state. It is machine-checked by [`scripts/validate_roadmap.py`](scripts/validate_roadmap.py) against live GitHub data (or a JSON fixture), which requires every live milestone to be linked and headed exactly once. Run it after editing the roadmap.
