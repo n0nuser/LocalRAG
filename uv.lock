@@ -1977,6 +1977,7 @@ dependencies = [
     { name = "charset-normalizer" },
     { name = "chromadb" },
     { name = "fastapi" },
+    { name = "firecrawl-anydoc" },
     { name = "httpx" },
     { name = "langchain-community" },
     { name = "openai" },
@@ -2000,9 +2001,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-anydoc = [
-    { name = "firecrawl-anydoc" },
-]
 embedding = [
     { name = "sentence-transformers" },
 ]
@@ -2040,7 +2038,7 @@ requires-dist = [
     { name = "charset-normalizer", specifier = ">=3.4" },
     { name = "chromadb", specifier = ">=1.0" },
     { name = "fastapi", specifier = ">=0.115" },
-    { name = "firecrawl-anydoc", marker = "extra == 'anydoc'", specifier = "==0.1.3" },
+    { name = "firecrawl-anydoc", specifier = "==0.1.3" },
     { name = "httpx", specifier = ">=0.28" },
     { name = "langchain-community", specifier = "<0.4" },
     { name = "langfuse", marker = "extra == 'langfuse'", specifier = ">=3,<4" },
@@ -2069,7 +2067,7 @@ requires-dist = [
     { name = "typer", specifier = ">=0.15" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.34" },
 ]
-provides-extras = ["rerank", "embedding", "tracking", "observability", "langfuse", "anydoc"]
+provides-extras = ["rerank", "embedding", "tracking", "observability", "langfuse"]
 
 [package.metadata.requires-dev]
 dev = [
