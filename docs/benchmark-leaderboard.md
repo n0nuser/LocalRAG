@@ -1,5 +1,7 @@
 # Benchmark Leaderboard
 
+> Part of the [evaluation documentation](evaluation.md) — start there for the pipeline overview.
+
 The leaderboard is a publication layer, not a benchmark runner. It consumes
 reviewed canonical result artifacts produced by the matrix/evaluation flows
 (#73 and #84) and writes a deterministic Markdown table. It never calls a
