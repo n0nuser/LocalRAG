@@ -153,6 +153,17 @@ jobs:
           --env OLLAMA_LLM_MODEL=llama3.2:latest
           localrag-api
 
+      - name: Wait for API liveness
+        run: |
+          for i in $(seq 1 30); do
+            status=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8000/health || echo "000")
+            echo "Attempt $i — status: $status"
+            if [ "$status" = "200" ]; then exit 0; fi
+            sleep 2
+          done
+          docker logs localrag-ci-api || true
+          exit 1
+
       - name: Run required API integration tests
         run: uv run pytest -q tests/integration --no-cov -ra
 

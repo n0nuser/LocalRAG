@@ -63,7 +63,7 @@ tasks:
     desc: Run the unit and non-service test suite
     deps: [install]
     cmds:
-      - '{{.UV}} run pytest -x -q --cov=localrag --cov-report=term-missing {{.PYTEST_ARGS}}'
+      - '{{.UV}} run pytest -m "not integration" -x -q --cov=localrag --cov-report=term-missing {{.PYTEST_ARGS}}'
 
   test-integration:
     desc: Run integration tests against a healthy LocalRAG service
