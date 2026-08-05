@@ -33,14 +33,12 @@ class EmbeddingCache:
         max_bytes: int = 1_000_000_000,
         preprocessing_version: str = "1",
         task_prefix: str = "",
-        enabled: bool = False,
     ) -> None:
         self.path = Path(path).expanduser()
         self.max_entries = max_entries
         self.max_bytes = max_bytes
         self.preprocessing_version = preprocessing_version
         self.task_prefix = task_prefix
-        self.enabled = enabled
         self._thread_lock = threading.RLock()
         self.hits = 0
         self.misses = 0
@@ -57,8 +55,6 @@ class EmbeddingCache:
         """Read or compute vectors in input order, including duplicate input text."""
         if not texts:
             return []
-        if not self.enabled:
-            return self._provider_embed(provider, texts, batch_size=batch_size, model=model)
 
         with self._exclusive_lock():
             dimension = self._known_dimension(provider)
@@ -90,7 +86,7 @@ class EmbeddingCache:
 
     def clear(self) -> None:
         """Remove all cache entries without touching any vector-store metadata."""
-        if not self.enabled or not self.path.exists():
+        if not self.path.exists():
             return
         with self._exclusive_lock():
             for entry in self.path.glob("*.json"):
@@ -209,9 +205,6 @@ class EmbeddingCache:
 
     @contextmanager
     def _exclusive_lock(self) -> Iterator[None]:
-        if not self.enabled:
-            yield
-            return
         with self._thread_lock:
             try:
                 self.path.mkdir(parents=True, exist_ok=True)

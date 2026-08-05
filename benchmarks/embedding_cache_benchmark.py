@@ -53,10 +53,9 @@ def main() -> None:
     settings = Settings(
         embedding_provider=args.provider,
         embedding_model=args.model,
-        embedding_cache_enabled=True,
     )
     provider = CountingProvider(build_embedding_provider(settings))
-    cache = EmbeddingCache(args.cache_path, enabled=True)
+    cache = EmbeddingCache(args.cache_path)
     cache.clear()
     measurements: list[dict[str, object]] = []
     for label in ("cold", "warm"):

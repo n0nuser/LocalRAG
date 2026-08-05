@@ -20,6 +20,38 @@ def test_default_chunk_overlap_is_within_10_to_20_percent_of_max_chars() -> None
     assert 0.10 <= ratio <= 0.20
 
 
+def test_retired_feature_flags_are_no_longer_settings_fields() -> None:
+    """ADR 036 retired both flags; the features are unconditional."""
+    assert "embedding_cache_enabled" not in Settings.model_fields
+    assert "context_compression_enabled" not in Settings.model_fields
+
+
+def test_retired_yaml_flags_warn_instead_of_failing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Existing configs must keep loading: a retired key warns and is ignored."""
+    # Leave the repo root so its .env does not outrank the YAML under test.
+    monkeypatch.chdir(tmp_path)
+    config = tmp_path / "config.yaml"
+    config.write_text(
+        "embedding:\n  cache_enabled: true\nretrieval:\n"
+        "  context_compression_enabled: true\n  rrf_k: 77\n",
+        encoding="utf-8",
+    )
+    with pytest.warns(DeprecationWarning, match="retired"):
+        settings = load_settings(config)
+    # The surviving sibling key still applies, proving only the retired key was skipped.
+    assert settings.rrf_k == 77
+
+
+def test_retired_cli_override_warns_instead_of_failing(tmp_path: Path) -> None:
+    config = tmp_path / "empty.yaml"
+    config.write_text("{}\n", encoding="utf-8")
+    with pytest.warns(DeprecationWarning, match="retired"):
+        settings = load_settings(config, {"context_compression_enabled": True})
+    assert settings.rag_top_k == Settings().rag_top_k
+
+
 def test_configuration_precedence_is_defaults_yaml_dotenv_environment_cli(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

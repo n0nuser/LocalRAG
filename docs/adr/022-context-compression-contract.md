@@ -1,7 +1,12 @@
 # ADR 022: Extractive Context Compression Contract
 
-- Status: accepted
+- Status: accepted; opt-in trigger superseded by [ADR 036](036-retire-zero-cost-feature-flags.md)
 - Date: 2026-08-04
+
+> **Amendment (ADR 036):** `CONTEXT_COMPRESSION_ENABLED` is retired. Everything
+> below still describes the pipeline exactly, except that it now runs
+> unconditionally rather than when the flag is true; the `CONTEXT_COMPRESSION_*`
+> budgets alone bound it.
 
 ## Context
 

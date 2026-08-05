@@ -29,7 +29,7 @@ class CountingProvider:
 
 def test_cache_warm_hit_preserves_duplicates_and_metadata_is_not_stored(tmp_path: Path) -> None:
     provider = CountingProvider()
-    cache = EmbeddingCache(tmp_path, enabled=True)
+    cache = EmbeddingCache(tmp_path)
 
     assert cache.embed_batch(provider, ["same", "same"]) == [[4.0, 5.0], [4.0, 5.0]]
     assert cache.embed_batch(provider, ["same"]) == [[4.0, 5.0]]
@@ -41,7 +41,7 @@ def test_cache_identity_invalidates_model_revision_preprocessing_and_dimension(
     tmp_path: Path,
 ) -> None:
     provider = CountingProvider()
-    cache = EmbeddingCache(tmp_path, enabled=True, preprocessing_version="1")
+    cache = EmbeddingCache(tmp_path, preprocessing_version="1")
     cache.embed_batch(provider, ["text"])
 
     provider.model_revision = "digest-b"
@@ -53,7 +53,7 @@ def test_cache_identity_invalidates_model_revision_preprocessing_and_dimension(
 
 def test_corrupt_entry_is_deleted_and_recomputed(tmp_path: Path) -> None:
     provider = CountingProvider()
-    cache = EmbeddingCache(tmp_path, enabled=True)
+    cache = EmbeddingCache(tmp_path)
     cache.embed_batch(provider, ["text"])
     entry = next(tmp_path.glob("*.json"))
     entry.write_text("{not json", encoding="utf-8")
@@ -64,7 +64,7 @@ def test_corrupt_entry_is_deleted_and_recomputed(tmp_path: Path) -> None:
 
 def test_concurrent_threads_share_one_atomic_miss(tmp_path: Path) -> None:
     provider = CountingProvider()
-    cache = EmbeddingCache(tmp_path, enabled=True)
+    cache = EmbeddingCache(tmp_path)
     barrier = Barrier(2)
     results: list[list[list[float]]] = []
 
@@ -81,10 +81,12 @@ def test_concurrent_threads_share_one_atomic_miss(tmp_path: Path) -> None:
     assert provider.calls == 1
 
 
-def test_cache_disabled_never_creates_storage(tmp_path: Path) -> None:
+def test_cache_is_always_active(tmp_path: Path) -> None:
+    """Caching has no opt-out flag: a repeated text must not re-hit the provider."""
     provider = CountingProvider()
-    cache = EmbeddingCache(tmp_path, enabled=False)
-    cache.embed_batch(provider, ["text"])
-    cache.embed_batch(provider, ["text"])
-    assert provider.calls == 2
-    assert list(tmp_path.iterdir()) == []
+    cache = EmbeddingCache(tmp_path)
+    first = cache.embed_batch(provider, ["text"])
+    second = cache.embed_batch(provider, ["text"])
+    assert first == second
+    assert provider.calls == 1
+    assert list(tmp_path.glob("*.json"))

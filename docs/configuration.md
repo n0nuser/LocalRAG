@@ -78,8 +78,7 @@ evaluation snapshots all record the effective provider and model.
 | `SENTENCE_TRANSFORMERS_MODEL` | `all-MiniLM-L6-v2` | Model for the optional local provider |
 | `EMBEDDING_BATCH_SIZE` | `32` | Embeddings per request |
 | `EMBEDDING_TIMEOUT_SECONDS` | `120.0` | Embedding request timeout |
-| `EMBEDDING_CACHE_ENABLED` | `false` | Reuse embeddings across ingests |
-| `EMBEDDING_CACHE_PATH` | `./data/embedding-cache` | Cache location |
+| `EMBEDDING_CACHE_PATH` | `./data/embedding-cache` | Cache location (caching is always on, ADR 036) |
 | `EMBEDDING_CACHE_MAX_ENTRIES` / `_MAX_BYTES` | `10000` / `1000000000` | Cache bounds |
 
 Changing the embedding model requires rebuilding collections; compatibility is
@@ -125,7 +124,6 @@ destination. See [data-lifecycle.md](data-lifecycle.md) and [ocr.md](ocr.md).
 | `QUERY_REWRITE_ENABLED` | `false` | Bounded query rewriting |
 | `QUERY_EXPANSION_ENABLED` | `false` | Bounded query expansion |
 | `HYDE_ENABLED` | `false` | Hypothetical-document retrieval experiment |
-| `CONTEXT_COMPRESSION_ENABLED` | `false` | Deterministic context compression |
 | `ADAPTIVE_ENABLED` | `false` | Bounded adaptive retrieval policy |
 | `QUERY_CACHE_TTL_SECONDS` | `0.0` | Query cache TTL; `0` disables |
 | `LLM_CONTEXT_WINDOW_TOKENS` | `4096` | Budget used by compression planning |

@@ -40,6 +40,23 @@ def _matches_filter(metadata: dict[str, Any], metadata_filter: dict[str, Any] | 
     return all(metadata.get(key) == value for key, value in metadata_filter.items())
 
 
+@dataclass(frozen=True)
+class _QueryPlan:
+    """Resolved budgets and query set for a single retrieval, fixed before any I/O."""
+
+    top_k: int
+    per_variant_k: int
+    search_question: str
+    lexical_question: str
+    variants: tuple[str, ...]
+    hypothetical: str | None
+
+    @property
+    def dense_queries(self) -> tuple[str, ...]:
+        """A HyDE passage replaces the variants for dense search when present."""
+        return (self.hypothetical,) if self.hypothetical else self.variants
+
+
 @dataclass
 class Retriever:
     settings: Settings
@@ -49,26 +66,42 @@ class Retriever:
     reranker: CrossEncoderReranker | None = None
     last_hyde: HydeObservation | None = None
 
-    def retrieve(  # noqa: C901, PLR0912, PLR0915
+    def retrieve(
         self,
         question: str,
         n_results: int | None = None,
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
+        """Run the retrieval stages in order: plan, dense, fuse, rerank, post-process."""
+        plan = self._plan_query(question, n_results)
+        vector_lists = self._dense_retrieve(plan, metadata_filter)
+        candidates, fused = self._fuse_candidates(plan, vector_lists, metadata_filter)
+        candidates = self._rerank(question, candidates, plan.top_k)
+        # Hybrid fusion already accounts for recency as its own ranked list, so the
+        # multiplicative decay would double-count it. In vector-only mode scores
+        # spread widely enough for decay to act as the intended tiebreaker.
+        with span(SpanName.RETRIEVAL_FRESHNESS, {"count": len(candidates)}):
+            return self._expand_to_parent_section(
+                self.apply_freshness(candidates, rescore=not fused), metadata_filter
+            )
+
+    def _plan_query(self, question: str, n_results: int | None) -> _QueryPlan:
+        """Resolve budgets and the rewrite/HyDE/expansion query set for one retrieval."""
         top_k = n_results if n_results is not None else self.settings.rag_top_k
         fetch_k = (
             max(self.settings.rerank_fetch_k, top_k)
             if self.reranker is not None
             else max(top_k * 2, top_k)
         )
-        search_question = question
-        rewritten: str | None = None
         mode = self.settings.retrieval_experiment_mode
         rewrite_enabled = self.settings.query_rewrite_enabled
         hyde_enabled = self.settings.hyde_enabled
         if mode != "auto":
             rewrite_enabled = mode in {"rewrite", "rewrite+hyde"}
             hyde_enabled = mode in {"hyde", "rewrite+hyde"}
+
+        search_question = question
+        rewritten: str | None = None
         if rewrite_enabled:
             search_question = rewrite_query(question, self.settings)
             rewritten = search_question if search_question != question else None
@@ -77,14 +110,15 @@ class Retriever:
                 len(question),
                 len(search_question),
             )
+
         hyde_settings = self.settings.model_copy(update={"hyde_enabled": hyde_enabled})
         hypothetical, self.last_hyde = generate_hypothetical(search_question, hyde_settings)
         lexical_question = question
         if self.settings.hyde_lexical_input == "rewritten" and rewritten is not None:
             lexical_question = search_question
+
         expansion = expand_query(question, search_question, self.settings, rewrite=rewritten)
         variants = expansion.variants
-        dense_queries = (hypothetical,) if hypothetical else variants
         candidate_budget = (
             min(self.settings.query_expansion_candidate_budget, _HARD_MAX_CANDIDATES)
             if self.settings.query_expansion_enabled
@@ -98,42 +132,32 @@ class Retriever:
             len(variants),
             candidate_budget if self.settings.query_expansion_enabled else fetch_k,
         )
+        return _QueryPlan(
+            top_k=top_k,
+            per_variant_k=per_variant_k,
+            search_question=search_question,
+            lexical_question=lexical_question,
+            variants=variants,
+            hypothetical=hypothetical,
+        )
+
+    def _dense_retrieve(
+        self, plan: _QueryPlan, metadata_filter: dict[str, Any] | None
+    ) -> list[list[dict[str, Any]]]:
+        """Embed each dense query and collect one ranked list per variant."""
         vector_lists: list[list[dict[str, Any]]] = []
-        bm25_lists: list[list[dict[str, Any]]] = []
         try:
             ensure = getattr(self.vector_store, "ensure_embedding_compatibility", None)
             if ensure is not None:
                 ensure(self.embedder)
-            embed = getattr(self.embedder, "embed", None)
-            legacy_embedder: Any = self.embedder
-            for variant in dense_queries:
-                try:
-                    embedding = (
-                        embed(variant) if embed is not None else legacy_embedder.embed_text(variant)
-                    )
-                except (httpx.HTTPError, EmbeddingError):
-                    if hypothetical is None or variant != hypothetical:
-                        raise
-                    fallback_query = search_question
-                    embedding = (
-                        embed(fallback_query)
-                        if embed is not None
-                        else legacy_embedder.embed_text(fallback_query)
-                    )
-                    if self.last_hyde is not None:
-                        self.last_hyde = replace(
-                            self.last_hyde,
-                            mode="fallback",
-                            status="fallback",
-                            fallback_reason="embedding_failure",
-                        )
+            for variant in plan.dense_queries:
+                embedding = self._embed_variant(variant, plan)
                 if ensure is not None:
                     ensure(self.embedder, len(embedding))
-                with span(SpanName.RETRIEVAL_VECTOR, {"count": per_variant_k}):
-                    vector_hits = self._retrieve_vector_hits(
-                        embedding, per_variant_k, metadata_filter
+                with span(SpanName.RETRIEVAL_VECTOR, {"count": plan.per_variant_k}):
+                    vector_lists.append(
+                        self._retrieve_vector_hits(embedding, plan.per_variant_k, metadata_filter)
                     )
-                vector_lists.append(vector_hits)
         except (httpx.HTTPError, EmbeddingError) as exc:
             logger.error(
                 "retrieve_embed_provider_error provider=%s model=%s error=%s",
@@ -145,57 +169,92 @@ class Retriever:
                 HTTPStatus.BAD_GATEWAY,
                 "Embedding service unavailable.",
             ) from exc
+        return vector_lists
 
-        fused = False
+    def _embed_variant(self, variant: str, plan: _QueryPlan) -> list[float]:
+        """Embed one query, falling back off a failed hypothetical rather than failing."""
+        embed = getattr(self.embedder, "embed", None)
+        legacy_embedder: Any = self.embedder
+
+        def _run(text: str) -> list[float]:
+            return embed(text) if embed is not None else legacy_embedder.embed_text(text)
+
+        try:
+            return _run(variant)
+        except (httpx.HTTPError, EmbeddingError):
+            # Only a HyDE passage is recoverable: retry with the real query instead.
+            if plan.hypothetical is None or variant != plan.hypothetical:
+                raise
+            embedding = _run(plan.search_question)
+            if self.last_hyde is not None:
+                self.last_hyde = replace(
+                    self.last_hyde,
+                    mode="fallback",
+                    status="fallback",
+                    fallback_reason="embedding_failure",
+                )
+            return embedding
+
+    def _fuse_candidates(
+        self,
+        plan: _QueryPlan,
+        vector_lists: list[list[dict[str, Any]]],
+        metadata_filter: dict[str, Any] | None,
+    ) -> tuple[list[dict[str, Any]], bool]:
+        """Combine dense (and, in hybrid mode, lexical) lists into one ranked list."""
         if self.settings.retrieval_mode != "hybrid" or self.bm25_index is None:
             if len(vector_lists) == 1:
-                candidates = vector_lists[0]
-            else:
-                candidates = self._fuse_rank_lists(
-                    vector_lists, [1.0 / len(vector_lists)] * len(vector_lists), per_variant_k
-                )
-        else:
-            bm25_queries = variants if not hypothetical else (lexical_question,)
-            for variant in bm25_queries:
-                with span(SpanName.RETRIEVAL_BM25, {"count": per_variant_k}):
-                    bm25_lists.append(
-                        [
-                            {
-                                "text": hit.text,
-                                "chunk_id": hit.chunk_id,
-                                "source": hit.metadata.get("source", "unknown"),
-                                "chunk_index": hit.metadata.get("chunk_index", -1),
-                                "score": hit.score,
-                                "ingested_at": hit.metadata.get("ingested_at"),
-                                "metadata": hit.metadata,
-                            }
-                            for hit in self.bm25_index.query(variant, top_k=per_variant_k)
-                            if _matches_filter(hit.metadata, metadata_filter)
-                        ]
-                    )
-            lists = vector_lists + bm25_lists
-            dense_count = len(dense_queries)
-            bm25_count = len(bm25_queries)
-            weights = [(1.0 - self.settings.bm25_weight) / dense_count] * dense_count + [
-                self.settings.bm25_weight / bm25_count
-            ] * bm25_count
-            with span(SpanName.RETRIEVAL_RRF, {"count": len(lists)}):
-                candidates = self._fuse_rank_lists(lists, weights, per_variant_k)
-            fused = True
-
-        if self.reranker is not None:
-            with span(SpanName.RETRIEVAL_RERANK, {"count": len(candidates)}):
-                candidates = self.reranker.rerank(question, candidates, top_k=top_k)
-        else:
-            candidates = candidates[:top_k]
-
-        # Hybrid fusion already accounts for recency as its own ranked list, so the
-        # multiplicative decay would double-count it. In vector-only mode scores
-        # spread widely enough for decay to act as the intended tiebreaker.
-        with span(SpanName.RETRIEVAL_FRESHNESS, {"count": len(candidates)}):
-            return self._expand_to_parent_section(
-                self.apply_freshness(candidates, rescore=not fused), metadata_filter
+                return vector_lists[0], False
+            return (
+                self._fuse_rank_lists(
+                    vector_lists,
+                    [1.0 / len(vector_lists)] * len(vector_lists),
+                    plan.per_variant_k,
+                ),
+                False,
             )
+
+        bm25_queries = plan.variants if not plan.hypothetical else (plan.lexical_question,)
+        bm25_lists = [
+            self._bm25_hits(variant, plan.per_variant_k, metadata_filter)
+            for variant in bm25_queries
+        ]
+        lists = vector_lists + bm25_lists
+        dense_count = len(plan.dense_queries)
+        bm25_count = len(bm25_queries)
+        weights = [(1.0 - self.settings.bm25_weight) / dense_count] * dense_count + [
+            self.settings.bm25_weight / bm25_count
+        ] * bm25_count
+        with span(SpanName.RETRIEVAL_RRF, {"count": len(lists)}):
+            return self._fuse_rank_lists(lists, weights, plan.per_variant_k), True
+
+    def _bm25_hits(
+        self, variant: str, per_variant_k: int, metadata_filter: dict[str, Any] | None
+    ) -> list[dict[str, Any]]:
+        if self.bm25_index is None:
+            return []
+        with span(SpanName.RETRIEVAL_BM25, {"count": per_variant_k}):
+            return [
+                {
+                    "text": hit.text,
+                    "chunk_id": hit.chunk_id,
+                    "source": hit.metadata.get("source", "unknown"),
+                    "chunk_index": hit.metadata.get("chunk_index", -1),
+                    "score": hit.score,
+                    "ingested_at": hit.metadata.get("ingested_at"),
+                    "metadata": hit.metadata,
+                }
+                for hit in self.bm25_index.query(variant, top_k=per_variant_k)
+                if _matches_filter(hit.metadata, metadata_filter)
+            ]
+
+    def _rerank(
+        self, question: str, candidates: list[dict[str, Any]], top_k: int
+    ) -> list[dict[str, Any]]:
+        if self.reranker is None:
+            return candidates[:top_k]
+        with span(SpanName.RETRIEVAL_RERANK, {"count": len(candidates)}):
+            return self.reranker.rerank(question, candidates, top_k=top_k)
 
     def _retrieve_vector_hits(
         self, embedding: list[float], top_k: int, where: dict[str, Any] | None = None

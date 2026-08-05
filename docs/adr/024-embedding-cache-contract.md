@@ -2,7 +2,11 @@
 
 ## Status
 
-Accepted
+Accepted; opt-in trigger superseded by [ADR 036](036-retire-zero-cost-feature-flags.md).
+
+> **Amendment (ADR 036):** `EMBEDDING_CACHE_ENABLED` is retired and the cache is
+> always active. The contract below is otherwise unchanged; `EMBEDDING_CACHE_PATH`
+> and the entry/byte bounds still control it.
 
 ## Context
 

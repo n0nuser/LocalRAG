@@ -81,7 +81,6 @@ def get_ingestion_service() -> IngestionService:
         bm25_index=get_bm25_index(),
         embedding_cache=EmbeddingCache(
             settings.embedding_cache_path,
-            enabled=settings.embedding_cache_enabled,
             max_entries=settings.embedding_cache_max_entries,
             max_bytes=settings.embedding_cache_max_bytes,
             preprocessing_version=settings.embedding_cache_preprocessing_version,

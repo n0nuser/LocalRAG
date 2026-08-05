@@ -41,6 +41,26 @@ _PATH_FIELDS = {
 }
 _INTERPOLATION = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
 
+# Flags retired in ADR 036: both features are unconditional now. The names are
+# still accepted (and ignored) so existing configs keep loading; they only warn.
+# Values map "section.key" for YAML, bare names for flat fields.
+_RETIRED_FLAGS = {
+    "embedding.cache_enabled",
+    "retrieval.context_compression_enabled",
+    "embedding_cache_enabled",
+    "context_compression_enabled",
+}
+
+
+def _warn_retired_flag(name: str) -> None:
+    warnings.warn(
+        f"{name} is retired and ignored: embedding caching and context compression "
+        "are always applied. Remove it from your configuration; their budget and "
+        "path settings still control behavior.",
+        DeprecationWarning,
+        stacklevel=4,
+    )
+
 
 class ConfigError(ValueError):
     """Raised when an explicitly selected configuration file cannot be loaded."""
@@ -88,7 +108,6 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
             "timeout_seconds": "embedding_timeout_seconds",
             "batch_size": "embedding_batch_size",
             "sentence_transformers_model": "sentence_transformers_model",
-            "cache_enabled": "embedding_cache_enabled",
             "cache_path": "embedding_cache_path",
             "cache_max_entries": "embedding_cache_max_entries",
             "cache_max_bytes": "embedding_cache_max_bytes",
@@ -122,7 +141,6 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
             "rerank_enabled": "rerank_enabled",
             "rerank_model": "rerank_model",
             "rerank_fetch_k": "rerank_fetch_k",
-            "context_compression_enabled": "context_compression_enabled",
             "context_compression_candidate_count": "context_compression_candidate_count",
             "context_compression_max_contexts": "context_compression_max_contexts",
             "context_compression_per_context_tokens": "context_compression_per_context_tokens",
@@ -174,6 +192,9 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
             if not isinstance(value, dict):
                 raise ConfigError(f"YAML section {key} must be a mapping")  # noqa: EM102
             for nested_key, nested_value in value.items():
+                if f"{key}.{nested_key}" in _RETIRED_FLAGS:
+                    _warn_retired_flag(f"{key}.{nested_key}")
+                    continue
                 target = sections[key].get(nested_key)
                 if target is None:
                     raise ConfigError(f"Unknown YAML key: {key}.{nested_key}")  # noqa: EM102
@@ -193,6 +214,8 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
                 flattened["ollama_embed_model"] = value["embed_model"]
             if "base_url" in value:
                 flattened["ollama_base_url"] = value["base_url"]
+        elif key in _RETIRED_FLAGS:
+            _warn_retired_flag(key)
         elif key in fields:
             if key in _SECRET_FIELDS and value and not (isinstance(value, str) and "${" in value):
                 raise ConfigError("Secrets must be supplied through the environment")
@@ -337,7 +360,6 @@ class Settings(BaseSettings):
     embedding_provider: str = "ollama"
     embedding_timeout_seconds: float = 120.0
     sentence_transformers_model: str = "sentence-transformers/all-MiniLM-L6-v2"
-    embedding_cache_enabled: bool = False
     embedding_cache_path: str = "./data/embedding-cache"
     embedding_cache_max_entries: int = 10_000
     embedding_cache_max_bytes: int = 1_000_000_000
@@ -402,9 +424,8 @@ class Settings(BaseSettings):
     rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
     rerank_fetch_k: int = 20
 
-    # Disabled by default. The token counter is the documented whitespace-token
+    # Always applied. The token counter is the documented whitespace-token
     # approximation; total context tokens must fit inside this reserved window.
-    context_compression_enabled: bool = False
     context_compression_candidate_count: int = 20
     context_compression_max_contexts: int = 5
     context_compression_per_context_tokens: int = 256
@@ -611,8 +632,12 @@ def load_settings(
 ) -> Settings:
     """Resolve one immutable settings object using all supported sources."""
     path = Path(config_path).expanduser() if config_path is not None else None
-    overrides = tuple(sorted((cli_overrides or {}).items()))
-    unknown = set(dict(overrides)) - set(Settings.model_fields)
+    supplied = dict(cli_overrides or {})
+    for retired in sorted(set(supplied) & _RETIRED_FLAGS):
+        _warn_retired_flag(retired)
+        supplied.pop(retired)
+    overrides = tuple(sorted(supplied.items()))
+    unknown = set(supplied) - set(Settings.model_fields)
     if unknown:
         field = sorted(unknown)[0]
         raise ConfigError(f"Unknown CLI override: {field}")  # noqa: EM102
