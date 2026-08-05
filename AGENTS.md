@@ -98,7 +98,7 @@ So YAML is a **base layer that env and CLI override**, not the other way around.
 ## Roadmap and ADRs
 
 - [`ROADMAP.md`](ROADMAP.md) is a **contributor-facing summary, not a second issue tracker** — GitHub owns live issue and milestone state. It is machine-checked by [`scripts/validate_roadmap.py`](scripts/validate_roadmap.py) against live GitHub data (or a JSON fixture), which requires every live milestone to be linked and headed exactly once. Run it after editing the roadmap.
-- Record durable architectural decisions in [`docs/adr/`](docs/adr/). Per CONTRIBUTING, public extension or trust boundaries and behavior-changing defaults **require** an ADR. There are 35 today; new contracts continue the numbering. Boundary-setting research spikes (late interaction, RAPTOR, GraphRAG) are recorded as ADRs too, and stay research-only rather than becoming default retrieval.
+- Record durable architectural decisions in [`docs/adr/`](docs/adr/); [`docs/adr/README.md`](docs/adr/README.md) indexes every ADR by status (accepted / amended / research boundary). Per CONTRIBUTING, public extension or trust boundaries and behavior-changing defaults **require** an ADR. There are 37 today; new contracts continue the numbering. Boundary-setting research spikes (late interaction, RAPTOR, GraphRAG) are recorded as ADRs too, and stay research-only rather than becoming default retrieval.
 
 ## Claude Code skills for this repo
 
@@ -147,6 +147,7 @@ Do not rely on agents discovering structural changes from code alone; keep the m
 | [docs/data-lifecycle.md](docs/data-lifecycle.md) | Upload and query-audit retention | Upload/audit lifecycle settings or cleanup behavior change |
 | [docs/ocr.md](docs/ocr.md) | Tesseract install and PDF OCR fallback | `OCR_*` settings or `parsers/pdf.py` OCR behavior change |
 | [docs/ollama.md](docs/ollama.md) | Installing and running Ollama (host vs Docker), default models, links to upstream docs | Default models in `.env.example` / `Settings`, or Ollama-related workflows change |
+| [docs/evaluation.md](docs/evaluation.md) | Evaluation entry point: pipeline order, commands, and which detail page owns what | The evaluation pipeline gains or loses a stage, command, or contract |
 | [docs/reproducibility.md](docs/reproducibility.md) | Seeding, run metadata captured into `evals/results/*.json`, and known non-determinism limits | Eval seeding/sampling, `SNAPSHOT_SETTINGS_FIELDS`, generation sampling settings, or the results JSON shape change |
 | [docs/eval-datasets.md](docs/eval-datasets.md) | Dataset manifest schema, registry, fixture authoring, offline-artifact rules | `evals/dataset/schema.py` field meaning, registry behavior, or bundled fixtures change |
 | [docs/evaluation-metrics.md](docs/evaluation-metrics.md) | Metric contract and bounded RAGAS scoring | `evals/metrics.py` or the metric contract change |

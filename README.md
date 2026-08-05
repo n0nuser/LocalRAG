@@ -130,7 +130,7 @@ The bundled `localrag-core` dataset has 23 balanced in-scope and out-of-scope re
 | context_precision | ≥ 0.6 |
 | context_recall | ≥ 0.6 |
 
-Benchmark matrices, HTML reports, and the leaderboard are documented in [docs/evaluation-metrics.md](docs/evaluation-metrics.md), [docs/evaluation-reports.md](docs/evaluation-reports.md), and [docs/benchmark-leaderboard.md](docs/benchmark-leaderboard.md).
+Datasets, metrics, reproducibility, benchmark matrices, HTML reports, and the leaderboard all start from [docs/evaluation.md](docs/evaluation.md).
 
 ## Deployment
 
@@ -158,10 +158,9 @@ Setup, tests, quality gates, and the trunk-based Git workflow are in [CONTRIBUTI
 | [docs/data-lifecycle.md](docs/data-lifecycle.md) | Upload and query-audit retention |
 | [docs/deployment.md](docs/deployment.md) | Compose and Kubernetes contracts |
 | [docs/plugin-author-guide.md](docs/plugin-author-guide.md) | Writing a retriever plugin |
-| [docs/eval-datasets.md](docs/eval-datasets.md) | Dataset manifests and fixtures |
-| [docs/reproducibility.md](docs/reproducibility.md) | Seeding, run metadata, and its limits |
+| [docs/evaluation.md](docs/evaluation.md) | **Start here for evaluation** — datasets, metrics, reproducibility, reports, leaderboard |
 | [docs/agent-navigation.md](docs/agent-navigation.md) | Fast codebase orientation for agents |
-| [docs/adr/](docs/adr/) | Architecture Decision Records |
+| [docs/adr/README.md](docs/adr/README.md) | Architecture Decision Records, indexed by status |
 | [docs/research-pipeline-performance.md](docs/research-pipeline-performance.md) | Dated research: stage-by-stage pipeline audit against primary sources |
 | [docs/issues-and-fixes-reddit-rag.md](docs/issues-and-fixes-reddit-rag.md) | Dated research: common RAG failure modes mapped to LocalRAG's fixes |
 | [ROADMAP.md](ROADMAP.md) | Milestones and contributor guidance |

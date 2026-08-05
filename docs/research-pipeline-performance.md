@@ -1,5 +1,7 @@
 # Pipeline performance and quality research
 
+> **Dated research snapshot (2026-08-03).** This is a point-in-time investigation, not a maintained map of current behavior. Code, defaults, and measurements have moved on since it was written — verify against the current source and the [docs index](../README.md#documentation) before acting on it.
+
 Stage-by-stage audit of LocalRAG's ingestion and RAG pipeline (parse → chunk →
 embed → upsert → retrieve → rerank → generate), grounded in primary sources
 (official docs, upstream source, specs) and in measurements taken against this

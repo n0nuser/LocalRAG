@@ -1,5 +1,7 @@
 # Reproducible evaluation runs
 
+> Part of the [evaluation documentation](evaluation.md) — start there for the pipeline overview.
+
 Benchmark numbers are only useful if you can tell a real regression from
 noise. This page defines what LocalRAG guarantees about a run, the full field
 reference for what gets recorded, and what it explicitly does not promise.
