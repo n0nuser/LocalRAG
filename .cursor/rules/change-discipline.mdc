@@ -1,0 +1,111 @@
+---
+description: Mandatory — how to land a change without leaving debris. Verification, suppressions, dead paths, and scope.
+alwaysApply: true
+---
+
+# Change Discipline
+
+These rules exist because each failure below has actually happened in this
+repository. They apply to every contributor, human or agent.
+
+## Verify before you claim
+
+**Never report work as done, working, or passing without having run something
+that proves it.** "The tests should pass" is not a result. Run the command, read
+the output, and quote the decisive line.
+
+Verification means exercising the real path, not a proxy:
+
+- Moved a file? Run the tests **and** the entry point that loads it.
+- Changed a default? Print the resolved value; don't trust the source line.
+- Fixed a bug? Reproduce it first, then show the same reproduction now passing.
+- Edited a doc? Check the links resolve and the paths exist.
+
+Caching, memoization, and process-level state will lie to you. `load_settings`
+is `lru_cache`d, so mutating `os.environ` in the same process proves nothing —
+verify config behavior in a fresh process. When a result looks like it confirms
+what you expected, that is exactly when to check it a second way.
+
+If you could not verify something, say so plainly and name what is unverified.
+
+## Never suppress a diagnostic to make it quiet
+
+`# noqa`, `# type: ignore`, widening the Ruff ignore list in `pyproject.toml`,
+lowering `fail_under`, deleting an assertion, or marking a test `skip` are all
+ways of making a signal disappear without fixing the cause. Do not do it.
+
+Legitimate suppression is rare, narrow, and **explained on the same line**:
+
+```python
+# ✅ CORRECT — specific code, real reason, minimal scope
+from sentence_transformers import CrossEncoder  # noqa: PLC0415 — optional dependency, imported lazily
+
+# ❌ WRONG — blanket, unexplained, hides whatever else breaks
+from sentence_transformers import CrossEncoder  # noqa
+```
+
+Rules of thumb:
+
+- Suppress **one specific code**, never a bare `# noqa` or `# type: ignore`.
+- Add the reason inline. A suppression without a stated reason is a bug.
+- `# noqa: C901` / `PLR0912` / `PLR0915` means the function is genuinely too
+  complex. Prefer extracting a helper over silencing the warning. If you add one
+  of these, you owe an explanation of why splitting is worse.
+- If a suppression exists only because of a workaround you removed, **delete the
+  suppression too**. Stale ignores hide real problems later.
+- Never touch `fail_under` or the `[tool.ruff.lint] ignore` list to get green.
+
+## Delete workarounds when the reason is gone
+
+Shims, compatibility aliases, re-export modules, and dynamic loaders should exist
+only as long as the constraint that forced them. When you fix the root cause,
+remove the workaround **and** everything it dragged along: the import shim, the
+`type: ignore` it needed, the doc line describing it, and any path that only
+existed to route around it.
+
+Leaving both the fix and the workaround is worse than either alone — the next
+reader cannot tell which path is real.
+
+## Don't hardcode paths that depend on the working directory
+
+Scripts and fixture runners must locate their own files relative to themselves:
+
+```python
+# ✅ CORRECT — works from anywhere
+run(Path(__file__).with_name("fixture.json"), Path(__file__).with_name("artifacts"))
+
+# ❌ WRONG — silently writes to the wrong place unless run from the repo root
+run(Path(__file__).with_name("fixture.json"), Path("research/68-raptor-spike/artifacts"))
+```
+
+The wrong version does not crash. It creates a stray directory somewhere else,
+which is why this survives review.
+
+## Keep names and paths derivable
+
+Directory and module names must be valid Python identifiers when anything imports
+them. A directory named `67-graphrag-spike` cannot be imported, which is how this
+repo ended up with root-level shim modules whose only job was to work around the
+name. Name it `graphrag_spike` and the problem does not exist.
+
+Encode issue numbers in the ADR, the report, or the commit message — not in a
+path that code has to import.
+
+## Stay inside the scope you were given
+
+Fix the thing asked for. If you notice something else wrong, **say so** rather
+than silently fixing it in the same change: unrequested edits make review harder
+and bury the actual change. Two exceptions — do fix it inline when leaving it
+would make your own change incorrect, or when it is a one-line consequence of
+what you touched.
+
+Never narrow scope silently either. If part of the task is blocked, finish
+everything else and state explicitly what you left undone and why.
+
+## Regenerated artifacts are not free to overwrite
+
+Committed evidence (benchmark results, spike artifacts, fixtures) encodes a
+measurement. Re-running a generator and committing whatever comes out replaces
+recorded evidence with a fresh, unreviewed run. Before committing regenerated
+output, diff it: if only timestamps and timing noise changed, revert it and keep
+the reviewed version.

@@ -12,12 +12,12 @@ deduplication. It does not establish that RAPTOR improves LocalRAG quality.
 ## Reproduction
 
 ```bash
-uv run python research/68-raptor-spike/run_fixture.py
+uv run python research/raptor_spike/run_fixture.py
 uv run pytest tests/test_raptor_spike.py
 ```
 
 The runner writes `artifact.json`, `result.json`, and `manifest.json` under
-`research/68-raptor-spike/artifacts/`. The fixture checksum, exact deterministic
+`research/raptor_spike/artifacts/`. The fixture checksum, exact deterministic
 embedding/summarizer identifiers, resolved config, Python/platform, build and
 query timings, peak Python allocation, artifact size, and summary call count
 are recorded. The result/manifest follow the existing #84/#73 evidence shape;

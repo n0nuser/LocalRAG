@@ -9,9 +9,9 @@ The project uses **trunk-based development**: one long-lived branch, `main`, alw
 
 **Why no `develop`:** an extra long-lived integration branch delays integration, hides conflicts, and trains people to merge big batches. Trunk means integrate to `main` often in small slices; feature branches exist only for the lifetime of a PR (or a very short spike).
 
-* **Branch from** `main`, **open PRs to** `main` only. Do **not** use a long-lived `develop` (or similar) for day-to-day work. If you have local `develop` left over, delete it after its work is on `main` (or rescue unmerged commits yourself). For the routine “merged branch → new `feat/…` from `main`” steps, see [AGENTS.md](../AGENTS.md) and `.cursor/skills/trunk-feature-workflow/SKILL.md`.
+* **Branch from** `main`, **open PRs to** `main` only. Do **not** use a long-lived `develop` (or similar) for day-to-day work. If you have local `develop` left over, delete it after its work is on `main` (or rescue unmerged commits yourself). For the routine “merged branch → new `feat/…` from `main`” steps, see [AGENTS.md](AGENTS.md) and `.cursor/skills/trunk-feature-workflow/SKILL.md`.
 * Prefer **small, incremental changes** so `main` stays shippable and reviews stay small.
-* **No merge commits:** do **not** integrate `main` into your branch with `git merge`. Use **`git rebase origin/main`** (after `git fetch origin`) so history stays linear. On GitHub, maintainers must use **Rebase and merge** or **Squash and merge** only—never **Create a merge commit**. Merge commits are disabled in [`settings.yml`](settings.yml) unless you change that file. If you do not use the [Probot Settings](https://github.com/probot/settings) app, mirror the same options under **Settings → General → Pull Requests** in GitHub.
+* **No merge commits:** do **not** integrate `main` into your branch with `git merge`. Use **`git rebase origin/main`** (after `git fetch origin`) so history stays linear. On GitHub, maintainers must use **Rebase and merge** or **Squash and merge** only—never **Create a merge commit**. Merge commits are disabled in [`settings.yml`](.github/settings.yml) unless you change that file. If you do not use the [Probot Settings](https://github.com/probot/settings) app, mirror the same options under **Settings → General → Pull Requests** in GitHub.
 * **Releases:** tag or release from `main` when you cut a version; follow [Semantic Versioning](https://semver.org/) for version numbers.
 
 Also, the project uses pre-commit hooks to ensure the code quality. Install them with:
@@ -40,12 +40,30 @@ named volumes, while `task docker-clean` explicitly removes them. The default
 Compose file does not load the host-specific WSL2 override; pass
 `COMPOSE_OVERRIDE` only after configuring a portable path.
 
-Variables such as `UV`, `PYTHON`, `COMPOSE`, `PROJECT`, `DATA_DIR`, `CONFIG`,
-`API_URL`, `OLLAMA_URL`, `COLLECTION`, `SAMPLE_SIZE`, `MODEL`, `DATASET`,
-`REPORT_OUTPUT`, and `PYTEST_ARGS` can be set as `task NAME=value`. Tasks delegate to `uv`, the
-`localrag` CLI, pytest, Ruff, mypy, Bandit, and Compose. Failures propagate
-nonzero; `task format` modifies files, evaluation and reporting tasks may write
-artifacts, and `task inspect` is read-only.
+Ollama is needed for live ingest/query/evaluation and live benchmarks; the
+offline eval and fixture benchmark do not need it. Docker uses the host's
+available CPU/GPU support: the Compose file requests an NVIDIA GPU for Ollama
+when Docker supports it, so CPU-only hosts may need to adjust that existing
+Compose setting before starting the stack.
+
+Every Task variable is overridable on the command line or through the
+environment: `UV`, `PYTHON`, `COMPOSE`, `PROJECT`, `COMPOSE_FILE`,
+`COMPOSE_OVERRIDE`, `DATA_DIR`, `CONFIG`, `API_URL`, `OLLAMA_URL`, `COLLECTION`,
+`SAMPLE_SIZE`, `MODEL`, `DATASET`, `SPLIT`, `RESULTS_DIR`, `REPORT_INPUT`,
+`REPORT_OUTPUT`, `PROFILE`, `QUESTION`, `EVAL_ARGS`, `ARGS`, and `PYTEST_ARGS`:
+
+```bash
+task ingest DATA_DIR=./documents
+task query QUESTION="What changed?" MODEL=gemma3:4b
+task inspect COLLECTION=localrag SAMPLE_SIZE=20
+task benchmark PROFILE=fixture ARGS=--dry-run
+```
+
+Tasks delegate to `uv`, the `localrag` CLI, pytest, Ruff, mypy, Bandit, and
+Compose. Tasks stop on the first failed command and propagate its exit code.
+`task format` modifies Python files, ingest/eval/benchmark/report can write
+application artifacts, `task inspect` is read-only, and Docker tasks change
+container state.
 
 CI runs a non-service Task smoke job covering `task --list`, install, lint,
 lock validation, tests, and help. Docker health checks and live RAGAS evaluation remain manual;
@@ -54,6 +72,74 @@ RAGAS is not triggered automatically.
 `uv.lock` is committed. After changing dependency declarations, update it with
 `uv lock`, review the lock diff, and run `uv lock --check`; routine installs use
 `uv sync --locked` and must not rewrite the lock file.
+
+## Development without Task
+
+Task is a convenience wrapper. The underlying commands work directly:
+
+```bash
+uv sync --locked
+uv run pytest -m "not integration"
+uv run ruff check .
+uv run ruff format .
+uv run mypy localrag/ --ignore-missing-imports --no-strict-optional
+uv run bandit -r localrag/ -ll
+```
+
+Integration tests are marked `integration` and excluded from the default run;
+they expect a healthy stack and do not start one.
+
+### Quality gates
+
+[`.pre-commit-config.yaml`](.pre-commit-config.yaml) enforces Ruff (lint and
+format), Bandit, mypy, and the unit test suite on commit; integration tests run
+on **pre-push** via `scripts/run_integration_tests.py` (needs Docker), and
+Conventional Commits are checked on `commit-msg`.
+
+Coverage must stay at or above `fail_under = 80` over `localrag/`. CLI modules
+are omitted deliberately — they are thin wrappers exercised through service and
+API tests. Ruff runs with `select = ["ALL"]` and an explicit ignore list in
+`pyproject.toml`; do not widen that list to silence a finding you should fix.
+
+### Code conventions
+
+Non-obvious constraints live in [`.cursor/rules/`](.cursor/rules/) and apply to
+human and agent contributors alike. Read them before writing Python here.
+[`AGENTS.md`](AGENTS.md) maps the repository for coding agents and summarizes the
+same gates.
+
+Two rules are mandatory for **every** change:
+
+- [`documentation-maintenance.mdc`](.cursor/rules/documentation-maintenance.mdc) —
+  a change that makes a document wrong is not finished until that document is
+  fixed, in the same commit. Docs are a living map; a map that lies is worse than
+  no map.
+- [`change-discipline.mdc`](.cursor/rules/change-discipline.mdc) — verify before
+  claiming something works, never suppress a diagnostic to make it quiet, delete
+  workarounds when their cause is gone, and keep paths independent of the working
+  directory.
+
+The rest are scoped: `critical-rules.mdc` (no logic in `__init__`, imports at top
+level only, no `__all__` outside `__init__.py`), `python-conventions.mdc`,
+`testing.mdc`, `code-review.mdc`, and `grug.mdc`.
+
+## Documentation is part of the change
+
+Every document in `docs/` is a map of the current codebase, not a changelog. If
+your change moves a path, adds a setting, changes a command, or alters a
+contract, update the matching document in the same commit — the trigger table is
+in [`AGENTS.md`](AGENTS.md) and the full rule is in
+[`documentation-maintenance.mdc`](.cursor/rules/documentation-maintenance.mdc).
+
+Public contracts, trust boundaries, and behavior-changing defaults additionally
+require an ADR in [`docs/adr/`](docs/adr/).
+
+### Research spikes
+
+Feasibility prototypes live in `research/<topic>_spike/` and are deliberately
+isolated from the application: they are not wired into ingestion, the API, or
+default retrieval. Each is recorded as an ADR with an explicit feasibility
+boundary rather than being promoted silently.
 
 ## Commits
 
@@ -64,7 +150,7 @@ Each commit message should be conceptually unique and should be able to be under
 ## Retriever Plugins
 
 Retriever extensions use only the documented `localrag.retrievers` Python
-package entry-point group. Read [the plugin author guide](../docs/plugin-author-guide.md)
+package entry-point group. Read [the plugin author guide](docs/plugin-author-guide.md)
 before publishing a plugin. Plugin code is trusted in-process code; explicitly
 install and pin plugin distributions, keep optional dependencies in those
 distributions, and do not add arbitrary module-path or network discovery.
@@ -93,14 +179,14 @@ You can use GitHub Projects to manage the project's tasks.
 
 ## Roadmap and ADRs
 
-Use [`ROADMAP.md`](../ROADMAP.md) to choose work thematically, but use the
+Use [`ROADMAP.md`](ROADMAP.md) to choose work thematically, but use the
 linked GitHub issue and milestone for live status, scope, and dependencies. The
 roadmap is refreshed when milestone or issue membership changes and at least
 once per release. Validate references with `uv run python
 scripts/validate_roadmap.py`; this check does not run live RAGAS or model
 benchmarks.
 
-Record durable architectural decisions in [`docs/adr/`](../docs/adr/): public
+Record durable architectural decisions in [`docs/adr/`](docs/adr/): public
 contracts, persistence or schema boundaries, compatibility/migration policy,
 extension or trust boundaries, and behavior-changing defaults require an ADR.
 Pure experiments need a documented feasibility boundary instead; update

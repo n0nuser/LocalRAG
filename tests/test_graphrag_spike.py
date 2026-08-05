@@ -5,10 +5,10 @@ from pathlib import Path
 
 import pytest
 
-from research_67_graphrag import graphrag
+from research.graphrag_spike import graphrag
 
 
-def chunks() -> list[graphrag.SourceChunk]:  # type: ignore[name-defined]
+def chunks() -> list[graphrag.SourceChunk]:
     return [
         graphrag.SourceChunk("doc-a", "chunk-1", "Ada works at Acme.", "cite-1"),
         graphrag.SourceChunk("doc-b", "chunk-2", "ACME employs Ada.", "cite-2"),
@@ -16,7 +16,7 @@ def chunks() -> list[graphrag.SourceChunk]:  # type: ignore[name-defined]
     ]
 
 
-def extraction(chunk_id: str, *, duplicate: bool = False) -> graphrag.Extraction:  # type: ignore[name-defined]
+def extraction(chunk_id: str, *, duplicate: bool = False) -> graphrag.Extraction:
     entities = [
         {"name": "Ada", "entity_type": "Person", "confidence": 0.9, "citation_ids": []},
         {"name": "Acme", "entity_type": "Org", "confidence": 0.8, "citation_ids": []},
@@ -68,7 +68,7 @@ def test_empty_and_disconnected_graphs_are_safe() -> None:
 def test_malformed_provider_output_is_quarantined_and_retried() -> None:
     calls = 0
 
-    def provider(items: list[graphrag.SourceChunk]) -> dict[str, str]:  # type: ignore[name-defined]
+    def provider(items: list[graphrag.SourceChunk]) -> dict[str, str]:
         nonlocal calls
         calls += 1
         return {items[0].chunk_id: "not json"}

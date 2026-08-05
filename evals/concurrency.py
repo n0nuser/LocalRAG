@@ -79,8 +79,9 @@ async def run_cases[T, R](
                 error=f"{type(exc).__name__}: {exc}",
                 elapsed_seconds=time.monotonic() - started,
             )
-        return CaseOutcome(index, "completed", value=value,
-                           elapsed_seconds=time.monotonic() - started)
+        return CaseOutcome(
+            index, "completed", value=value, elapsed_seconds=time.monotonic() - started
+        )
 
     tasks = [asyncio.create_task(execute(index, item)) for index, item in enumerate(items)]
     try:

@@ -27,7 +27,7 @@ measured explicitly; a GPU is an optimization, not an assumption.
 
 ## Evidence boundary
 
-`research/70-late-interaction-spike/fixture.json` is a deterministic four-query,
+`research/late_interaction_spike/fixture.json` is a deterministic four-query,
 four-chunk smoke fixture with explicit vectors. The runner emits the existing
 #84 `ResultFile` shape and #73 matrix-manifest shape. It proves MaxSim,
 masking, persistence, deterministic ordering, and measurement plumbing only.
