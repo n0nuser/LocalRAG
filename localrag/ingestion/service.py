@@ -15,7 +15,7 @@ from localrag.embedding.base import EmbeddingProvider
 from localrag.embedding.cache import EmbeddingCache
 from localrag.ingestion.chunker import chunk_text
 from localrag.ingestion.contract import Chunk, stable_chunk_id
-from localrag.ingestion.loader import list_supported_files, parse_file
+from localrag.ingestion.loader import detect_file_type, list_supported_files, parse_file
 from localrag.ingestion.recursive_chunker import chunk_document as recursive_chunk_document
 from localrag.ingestion.structural_chunker import chunk_document
 from localrag.observability.tracing import SpanName, span
@@ -215,18 +215,27 @@ class IngestionService:
         return allowed
 
     def _ingest_one(self, resolved_path: Path, embed_model: str | None) -> int | None:
-        with span(SpanName.INGESTION, {"file_type": resolved_path.suffix.lower()}):
-            return self._ingest_one_stages(resolved_path, embed_model)
+        file_type = self._detected_file_type(resolved_path)
+        with span(SpanName.INGESTION, {"file_type": file_type}):
+            return self._ingest_one_stages(resolved_path, embed_model, file_type)
 
-    def _ingest_one_stages(self, resolved_path: Path, embed_model: str | None) -> int | None:
+    @staticmethod
+    def _detected_file_type(path: Path) -> str:
+        detected = detect_file_type(path)
+        return f".{detected}" if detected else path.suffix.lower()
+
+    def _ingest_one_stages(
+        self, resolved_path: Path, embed_model: str | None, file_type: str | None = None
+    ) -> int | None:
         """Parse, chunk, embed, and upsert one file. Returns chunks added, or None if skipped."""
+        detected_file_type = file_type or self._detected_file_type(resolved_path)
         logger.debug("ingest_parse_start path=%s", resolved_path)
-        with span(SpanName.INGEST_PARSE, {"file_type": resolved_path.suffix.lower()}):
+        with span(SpanName.INGEST_PARSE, {"file_type": detected_file_type}):
             text = parse_file(resolved_path)
         source = str(resolved_path)
-        with span(SpanName.INGEST_CHUNK, {"file_type": resolved_path.suffix.lower()}):
+        with span(SpanName.INGEST_CHUNK, {"file_type": detected_file_type}):
             structural_chunks = self._build_chunks(
-                text=text, file_type=resolved_path.suffix.lower(), source=source
+                text=text, file_type=detected_file_type, source=source
             )
         chunks = [chunk.text for chunk in structural_chunks]
         if not chunks:
@@ -274,7 +283,7 @@ class IngestionService:
             {
                 **chunk.metadata,
                 "source": source,
-                "file_type": resolved_path.suffix.lower(),
+                "file_type": detected_file_type,
                 "chunk_index": chunk.chunk_index,
                 "chunk_id": chunk.chunk_id or "",
                 "heading_path": chunk.heading_path,

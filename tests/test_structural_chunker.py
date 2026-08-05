@@ -110,6 +110,16 @@ def test_chunk_document_non_markdown_packs_paragraphs() -> None:
     assert chunks[0].heading_path == ""
 
 
+def test_chunk_document_anydoc_output_follows_markdown_headings() -> None:
+    anydoc_markdown = "# Sheet summary\n\n| Name | Value |\n| --- | --- |\n| A | 1 |"
+    settings = Settings(chunk_max_chars=1200, chunk_min_chars=1)
+
+    chunks = chunk_document(anydoc_markdown, ".xlsx", settings)
+
+    assert chunks[0].heading_path == "Sheet summary"
+    assert chunks[0].chunk_type == "markdown_table"
+
+
 def test_chunk_document_pdf_follows_markdown_headings() -> None:
     """The PDF parser emits Markdown, so PDFs must chunk by heading structure.
 
