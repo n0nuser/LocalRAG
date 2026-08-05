@@ -18,9 +18,7 @@ _CONTENT_KEYS = re.compile(
     r"(?:prompt|question|answer|context|document|source|completion|response)", re.IGNORECASE
 )
 _PATH_KEYS = re.compile(r"(?:path|file|directory|url|endpoint|work|artifact)", re.IGNORECASE)
-_CREDENTIAL_URL = re.compile(
-    r"^[a-z][a-z0-9+.-]*://[^/@:]+(?::[^/@]*)?@", re.IGNORECASE
-)
+_CREDENTIAL_URL = re.compile(r"^[a-z][a-z0-9+.-]*://[^/@:]+(?::[^/@]*)?@", re.IGNORECASE)
 
 
 class TrackingBackend(Protocol):
@@ -65,11 +63,15 @@ def redact(value: Any, *, capture_content: bool = False) -> Any:
         result: dict[str, Any] = {}
         for key in sorted(value, key=str):
             name = str(key)
-            result[name] = "[REDACTED]" if (
-                _SECRET_KEYS.search(name)
-                or _PATH_KEYS.search(name)
-                or (_CONTENT_KEYS.search(name) and not capture_content)
-            ) else redact(value[key], capture_content=capture_content)
+            result[name] = (
+                "[REDACTED]"
+                if (
+                    _SECRET_KEYS.search(name)
+                    or _PATH_KEYS.search(name)
+                    or (_CONTENT_KEYS.search(name) and not capture_content)
+                )
+                else redact(value[key], capture_content=capture_content)
+            )
         return result
     if isinstance(value, (list, tuple)):
         return [redact(item, capture_content=capture_content) for item in value]

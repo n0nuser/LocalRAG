@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from research_68_raptor import raptor
+from research.raptor_spike import raptor
 
 
 def run(fixture_path: Path, output_dir: Path) -> dict[str, Any]:
@@ -104,4 +104,4 @@ def run(fixture_path: Path, output_dir: Path) -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    run(Path(__file__).with_name("fixture.json"), Path("research/68-raptor-spike/artifacts"))
+    run(Path(__file__).with_name("fixture.json"), Path(__file__).with_name("artifacts"))

@@ -145,9 +145,8 @@ def _build_rows(
             provider = str(api_result[3]) if len(api_result) > 3 else "unknown"
             model = str(api_result[4]) if len(api_result) > 4 else "unknown"
             if not live_contexts:
-                raise RuntimeError(
-                    f"live API returned no benchmark contexts for record {rec.record_id!r}"
-                )
+                message = f"live API returned no benchmark contexts for record {rec.record_id!r}"
+                raise RuntimeError(message)
             contexts = live_contexts
 
         rows.append(
@@ -214,9 +213,10 @@ async def _build_rows_async(
                 contexts = [item.get("text", "") for item in context_items]
                 retrieved_ids = [item.get("chunk_id", "") for item in context_items]
                 if not contexts:
-                    raise RuntimeError(
+                    message = (
                         f"live API returned no benchmark contexts for record {record.record_id!r}"
                     )
+                    raise RuntimeError(message)
             return {
                 "record_id": record.record_id,
                 "question": record.question,
@@ -497,7 +497,7 @@ def _print_summary(scores: dict[str, float]) -> bool:
     return all_pass
 
 
-def main() -> None:
+def main() -> None:  # noqa: PLR0915 — length is flat argparse flag declarations, not branching
     parser = argparse.ArgumentParser(description="Run RAGAS evals against the LocalRAG API.")
     parser.add_argument("--api-url", default="http://localhost:8000")
     parser.add_argument("--api-key", default="")

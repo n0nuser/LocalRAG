@@ -1,7 +1,7 @@
 {
   "artifact_paths": {
-    "artifact": "research/68-raptor-spike/artifacts/artifact.json",
-    "result": "research/68-raptor-spike/artifacts/result.json"
+    "artifact": "research/raptor_spike/artifacts/artifact.json",
+    "result": "research/raptor_spike/artifacts/result.json"
   },
   "dataset": {
     "dataset_id": "localrag-raptor-fixture",

@@ -13,12 +13,12 @@ benefit, or acceptable real-model cost.
 ## Reproduction
 
 ```bash
-uv run python research/67-graphrag-spike/run_fixture.py
+uv run python research/graphrag_spike/run_fixture.py
 uv run pytest tests/test_graphrag_spike.py
 ```
 
 The runner writes `artifact.json`, `result.json`, and `manifest.json` below
-`research/67-graphrag-spike/artifacts/`. The files are local run output, not
+`research/graphrag_spike/artifacts/`. The files are local run output, not
 production Chroma data. The fixture uses `localrag-graphrag-fixture` version
 `1.0.0`, `fixture-structured-extractor-v1`, and
 `fixture-hash-embedding-v1`; the report must not be read as a live Ollama result.

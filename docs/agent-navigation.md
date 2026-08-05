@@ -22,7 +22,7 @@ Agents (and humans) move faster when they:
 7. The specific file(s) for your task (see table below).
 
 For contributor workflows, read [`Taskfile.yml`](../Taskfile.yml) and the
-Taskfile section in [CONTRIBUTING](../.github/CONTRIBUTING.md). It is the thin
+Taskfile section in [CONTRIBUTING](../CONTRIBUTING.md). It is the thin
 wrapper contract for `uv`, CLI, test, lint, benchmark, report, and Compose
 commands; its Docker tasks intentionally do not load the host-specific WSL2
 override unless `COMPOSE_OVERRIDE` is supplied.
@@ -31,7 +31,7 @@ override unless `COMPOSE_OVERRIDE` is supplied.
 
 | Task | Primary locations |
 | --- | --- |
-| Environment / defaults | `localrag/settings.py`, `.env.example`, `config.example.yaml`, `docs/adr/020-structured-configuration.md` |
+| Environment / defaults | `localrag/settings.py`, `.env.example`, `config.example.yaml`, [configuration.md](configuration.md), `docs/adr/020-structured-configuration.md` |
 | FastAPI routes (HTTP only) | `localrag/api/routers/*.py` |
 | API request/response OpenAPI models | `localrag/api/schemas.py` |
 | API use cases (health, ingest rules, query JSON + SSE, collections including rebuild) | `localrag/api/service.py` |
@@ -53,7 +53,7 @@ override unless `COMPOSE_OVERRIDE` is supplied.
 | Roadmap status and milestone selection | `ROADMAP.md`, GitHub issues and milestones, `scripts/validate_roadmap.py` |
 | CLI commands | `localrag/cli/app.py`, `localrag/cli/commands/*.py`, [cli.md](cli.md) |
 | Structured configuration | `localrag/settings.py`, `localrag/cli/app.py`, `localrag/api/main.py`, `config.example.yaml` |
-| Parsing a file type | `localrag/ingestion/parsers/`, `localrag/ingestion/loader.py`; anydoc handles content-detected office formats and `pdf_inspector` remains the PDF path |
+| Parsing a file type | `localrag/ingestion/parsers/`, `localrag/ingestion/loader.py`, [document-formats.md](document-formats.md); anydoc handles content-detected office formats and `pdf_inspector` remains the PDF path |
 | PDF OCR (scanned/image-only pages) | `localrag/ingestion/parsers/pdf.py`, `OCR_*` in `localrag/settings.py`, [ocr.md](ocr.md) |
 | Chunking strategy and boundaries | `localrag/ingestion/contract.py`, `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/ingestion/recursive_chunker.py`, `localrag/settings.py`, `docs/adr/021-chunking-strategy-contract.md` |
 | Embeddings / provider contract and factory | `localrag/embedding/`, `localrag/ingestion/embedder.py` |
@@ -78,13 +78,13 @@ override unless `COMPOSE_OVERRIDE` is supplied.
 | Dockerized benchmark integration | `docker-compose.benchmark.yml`, `Dockerfile`, `scripts/docker_benchmark.py`, `docker/models.lock.json`, [ADR 033](adr/033-dockerized-benchmark-boundary.md) |
 | Offline HTML benchmark reports | `evals/report.py`, `localrag/cli/commands/report.py`, README report usage |
 | Benchmark leaderboard publication | `evals/leaderboard.py`, `localrag/cli/commands/leaderboard.py`, [benchmark-leaderboard.md](benchmark-leaderboard.md) |
-| Late-interaction feasibility spike | `evals/late_interaction.py`, `research/70-late-interaction-spike/`, [ADR 027](adr/027-late-interaction-feasibility-boundary.md) |
-| RAPTOR feasibility spike | `research/68-raptor-spike/`, `tests/test_raptor_spike.py`, [ADR 028](adr/028-raptor-feasibility-boundary.md); research-only, not default retrieval |
-| GraphRAG feasibility spike | `research/67-graphrag-spike/`, `tests/test_graphrag_spike.py`, [ADR 029](adr/029-graphrag-feasibility-boundary.md); research-only, not default retrieval |
+| Late-interaction feasibility spike | `evals/late_interaction.py`, `research/late_interaction_spike/`, [ADR 027](adr/027-late-interaction-feasibility-boundary.md) |
+| RAPTOR feasibility spike | `research/raptor_spike/`, `tests/test_raptor_spike.py`, [ADR 028](adr/028-raptor-feasibility-boundary.md); research-only, not default retrieval |
+| GraphRAG feasibility spike | `research/graphrag_spike/`, `tests/test_graphrag_spike.py`, [ADR 029](adr/029-graphrag-feasibility-boundary.md); research-only, not default retrieval |
 | Prompt / answer streaming | `localrag/rag/prompt.py`, `localrag/rag/engine.py` |
 | Human Ollama install (not Python) | [ollama.md](ollama.md) |
 | Human Tesseract install (not Python) | [ocr.md](ocr.md) |
-| Contributor workflow wrappers | `Taskfile.yml`, [CONTRIBUTING](../.github/CONTRIBUTING.md) |
+| Contributor workflow wrappers | `Taskfile.yml`, [CONTRIBUTING](../CONTRIBUTING.md) |
 
 ## Commands (uv)
 
@@ -96,7 +96,7 @@ uv run ruff format .
 uv run ruff check .
 ```
 
-Pre-commit and contribution workflow: [`.github/CONTRIBUTING.md`](../.github/CONTRIBUTING.md).
+Pre-commit and contribution workflow: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 For portable task commands and their variable contract, use [`Taskfile.yml`](../Taskfile.yml).
 
 ## External dependencies

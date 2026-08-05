@@ -1,0 +1,80 @@
+---
+description: Mandatory — docs are part of the change, not a follow-up. Update the maps in the same commit as the code.
+alwaysApply: true
+---
+
+# Documentation Maintenance
+
+Documentation in this repo is a **living map of the codebase**, not a historical
+record. A map that lies is worse than no map, because the next reader (human or
+agent) trusts it and acts on it.
+
+**The rule: a change that makes a document wrong is not finished until that
+document is fixed, in the same commit.** Not a follow-up commit, not a TODO, not
+"I'll note it in the PR description."
+
+## Why this is mandatory
+
+Agents load documentation to decide which files to open. When `agent-navigation.md`
+points at a path that moved, the next agent either wastes context rediscovering
+the tree or — worse — edits the wrong thing confidently. Doc drift compounds
+silently: nothing fails, no test goes red, and the map degrades until it is
+abandoned. The cost is paid by everyone after you.
+
+## What to update
+
+Before you finish, ask: **"did I make any sentence in `docs/` false?"** Then check
+these specific triggers.
+
+| If you changed… | You must update |
+| --- | --- |
+| A path, module, or package boundary | [`docs/agent-navigation.md`](../../docs/agent-navigation.md) |
+| Layers, data flow, DI wiring, extension points | [`docs/architecture.md`](../../docs/architecture.md) |
+| A `Settings` field, default, or the YAML schema | [`docs/configuration.md`](../../docs/configuration.md) **and** `.env.example` |
+| Parser routing or supported extensions | [`docs/document-formats.md`](../../docs/document-formats.md) |
+| A CLI command, flag, or exit code | [`docs/cli.md`](../../docs/cli.md) |
+| Retrieval behavior, ranking, chunking | [`docs/rag-retrieval.md`](../../docs/rag-retrieval.md) |
+| Eval metrics, datasets, reports, leaderboard | The matching `docs/eval*` / `docs/benchmark*` page |
+| Compose, k8s, probes, trust boundaries | [`docs/deployment.md`](../../docs/deployment.md) |
+| Retention, uploads, audit logs | [`docs/data-lifecycle.md`](../../docs/data-lifecycle.md) |
+| Logging, metrics, tracing | [`docs/observability.md`](../../docs/observability.md) |
+| The retriever plugin contract | [`docs/plugin-author-guide.md`](../../docs/plugin-author-guide.md) |
+| A public contract, trust boundary, or default | A **new ADR** in [`docs/adr/`](../../docs/adr/) |
+
+The authoritative, fuller version of this table lives in
+[`AGENTS.md`](../../AGENTS.md) under "Documentation maintenance for agents".
+
+## Rules for writing docs here
+
+- **Reference, don't duplicate.** State a fact in exactly one document and link
+  to it from everywhere else. Two copies of a fact means one of them is already
+  wrong; you just don't know which yet.
+- **If you move content, it must get equal or more detail** at the destination.
+  Relocating is fine; quietly shrinking is data loss.
+- **Never hand-maintain what a tool generates.** API endpoints come from the
+  FastAPI OpenAPI page at `/docs`; do not transcribe route tables into Markdown,
+  because they drift the moment someone adds a route.
+- **Verify paths and names before you write them.** Every file path, setting
+  name, and command in a doc must exist. Check, don't recall.
+- **One sentence per line** in Markdown prose. It keeps diffs readable and
+  reviewable; there is no line-length limit to satisfy in Markdown.
+- **Delete docs that describe removed behavior.** A stale page is a liability,
+  not an archive — Git already keeps the history.
+
+## Self-check before finishing
+
+1. Did I move, rename, or delete a file? → grep the repo for its old path.
+2. Did I add or change a `Settings` field? → `docs/configuration.md` + `.env.example`.
+3. Did I add a command, route, format, or flag? → its reference doc.
+4. Did I set or move a contract or default? → write the ADR.
+5. Do all links I touched still resolve?
+
+The last one is mechanical, so just run it:
+
+```bash
+grep -oE '\]\(([^)#][^)]*)\)' FILE.md | sed -E 's/^\]\(//; s/\)$//' |
+  sed 's/#.*//' | while read -r p; do
+    case "$p" in http*|"") continue;; esac
+    [ -e "$(dirname FILE.md)/$p" ] || echo "BROKEN: $p"
+  done
+```

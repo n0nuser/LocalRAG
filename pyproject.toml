@@ -67,10 +67,14 @@ dev = [
     "mypy>=1.20.2",
 ]
 
+# `localrag.cli` imports `evals` (benchmark, report, leaderboard commands), so the
+# evaluation harness must ship in the wheel or the installed CLI fails at import.
+[tool.hatch.build.targets.wheel]
+packages = ["localrag", "evals"]
+
 [tool.ruff]
 target-version = "py313"
 line-length = 100
-exclude = ["evals/"]
 
 [tool.ruff.lint]
 select = ["ALL"]
@@ -113,6 +117,15 @@ ignore = [
     "S104",
     "TRY003",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# The evaluation harness ships in the wheel, so it is linted like the rest of the
+# package. These exemptions are inherent to what it is, not deferred cleanup:
+# it is a report-printing CLI runner (T201) that talks to HTTP APIs with explicit
+# per-call timeouts (ASYNC109) and defers optional-extra imports (PLC0415).
+"evals/run_evals.py" = ["T201", "ASYNC109"]
+"evals/concurrency.py" = ["ASYNC109"]
+"evals/tracking.py" = ["PLC0415"]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

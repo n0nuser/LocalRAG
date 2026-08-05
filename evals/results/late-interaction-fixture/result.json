@@ -47,7 +47,7 @@
     "batch_size": 1,
     "cold_start": "not measured: dependency-free process startup dominates this toy fixture",
     "experiment": "issue-70-late-interaction-fixture",
-    "fixture": "/home/pablo/dev/LocalRAG/research/70-late-interaction-spike/fixture.json",
+    "fixture": "/home/pablo/dev/LocalRAG/research/late_interaction_spike/fixture.json",
     "hardware": {
       "platform": "Linux-5.15.167.4-microsoft-standard-WSL2-x86_64-with-glibc2.39",
       "python": "3.13.13"

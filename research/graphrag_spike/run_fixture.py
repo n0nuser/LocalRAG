@@ -12,10 +12,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from research_67_graphrag import graphrag
+from research.graphrag_spike import graphrag
 
 
-def fixture_provider(items: list[graphrag.SourceChunk]) -> dict[str, dict[str, object]]:  # type: ignore[name-defined]
+def fixture_provider(items: list[graphrag.SourceChunk]) -> dict[str, dict[str, object]]:
     records: dict[str, dict[str, object]] = {}
     for item in items:
         entities = (
@@ -131,7 +131,7 @@ def run(fixture_path: Path, output_dir: Path) -> dict[str, Any]:
     return result
 
 
-def asdict_config(config: graphrag.GraphConfig) -> dict[str, object]:  # type: ignore[name-defined]
+def asdict_config(config: graphrag.GraphConfig) -> dict[str, object]:
     return {
         "max_chars_per_chunk": config.max_chars_per_chunk,
         "max_neighbors": config.max_neighbors,
@@ -142,4 +142,4 @@ def asdict_config(config: graphrag.GraphConfig) -> dict[str, object]:  # type: i
 
 
 if __name__ == "__main__":
-    run(Path(__file__).with_name("fixture.json"), Path("research/67-graphrag-spike/artifacts"))
+    run(Path(__file__).with_name("fixture.json"), Path(__file__).with_name("artifacts"))
