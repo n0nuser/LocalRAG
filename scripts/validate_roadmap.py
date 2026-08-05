@@ -34,15 +34,15 @@ def validate(data: dict[str, Any], roadmap: str) -> list[str]:  # noqa: C901
     errors: list[str] = []
     milestones = {item["number"]: item for item in data["milestones"]}
     issues = {item["number"]: item for item in data["issues"]}
-    expected = set(range(1, 10))
+    expected = set(milestones)
     linked_milestones = [int(number) for number in MILESTONE_LINK.findall(roadmap)]
     if set(linked_milestones) != expected or len(linked_milestones) != len(expected):
-        errors.append("ROADMAP.md must link each milestone 1 through 9 exactly once")
+        errors.append("ROADMAP.md must link each live milestone exactly once")
 
     headings = list(MILESTONE_HEADING.finditer(roadmap))
     heading_numbers = [int(match.group(2)) for match in headings]
     if set(heading_numbers) != expected or len(heading_numbers) != len(expected):
-        errors.append("ROADMAP.md must contain one heading for each milestone 1 through 9")
+        errors.append("ROADMAP.md must contain one heading for each live milestone")
 
     for match in headings:
         number = int(match.group(2))

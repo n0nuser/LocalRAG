@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from research_68_raptor import raptor
+from research.raptor_spike import raptor
 
 
 def leaves(count: int = 6) -> list[raptor.LeafChunk]:

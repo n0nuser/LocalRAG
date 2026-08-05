@@ -1,7 +1,7 @@
 {
   "artifact_paths": {
-    "artifact": "research/67-graphrag-spike/artifacts/artifact.json",
-    "result": "research/67-graphrag-spike/artifacts/result.json"
+    "artifact": "research/graphrag_spike/artifacts/artifact.json",
+    "result": "research/graphrag_spike/artifacts/result.json"
   },
   "dataset": {
     "dataset_id": "localrag-graphrag-fixture",

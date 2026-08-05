@@ -9,7 +9,7 @@ API integration are not part of issue #67.
 
 ## Decision
 
-Keep the dependency-free prototype in `research/67-graphrag-spike/`. It is not
+Keep the dependency-free prototype in `research/graphrag_spike/`. It is not
 wired into ingestion, Chroma, API dependency injection, RAGAS, or the default
 retriever. Graph mode is explicit and falls back to classic hits when graph
 evidence is empty.

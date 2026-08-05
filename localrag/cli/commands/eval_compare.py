@@ -8,7 +8,9 @@ from pathlib import Path
 
 import typer
 
-_COMPARER = Path(__file__).parent.parent.parent.parent / "evals" / "compare.py"
+# Invoked as a module, not a file path: `evals` ships in the wheel, so resolving
+# it relative to __file__ would break for an installed package.
+_COMPARER_MODULE = "evals.compare"
 
 
 def eval_compare(
@@ -21,7 +23,7 @@ def eval_compare(
     """Compare a result against an explicit file or named reviewed baseline."""
     if (baseline is None) == (baseline_name is None):
         raise typer.BadParameter("provide exactly one of --baseline or --baseline-name")
-    cmd = [sys.executable, str(_COMPARER), str(candidate)]
+    cmd = [sys.executable, "-m", _COMPARER_MODULE, str(candidate)]
     cmd += ["--baseline", str(baseline)] if baseline else ["--baseline-name", baseline_name or ""]
     for expression in threshold or []:
         cmd += ["--threshold", expression]

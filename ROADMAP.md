@@ -23,11 +23,11 @@ before another phase can start.
 
 ## Phase Map
 
-These phases group all nine actual GitHub milestones exactly once.
+These phases group all ten actual GitHub milestones exactly once.
 
 | Phase | Thematic purpose | GitHub milestones |
 | --- | --- | --- |
-| 1. Foundation and contributor workflow | Configuration, CLI, contributor tooling, and extension boundaries | Configuration, CLI, Developer Experience, Architecture & Extensibility |
+| 1. Foundation and contributor workflow | Configuration, CLI, contributor tooling, extension boundaries, and deployment safety | Configuration, CLI, Developer Experience, Architecture & Extensibility, Production Readiness |
 | 2. Retrieval quality | Retrieval behavior and quality improvements | Retrieval Improvements |
 | 3. Evaluation contract and benchmarking | Dataset, metrics, reproducibility, comparison, reports, and benchmark environments | Evaluation |
 | 4. Performance and efficiency | Runtime and evaluation efficiency | Performance |
@@ -64,9 +64,9 @@ dependency statements below are the authority for blocking relationships.
 
 ### [Developer Experience](https://github.com/n0nuser/LocalRAG/milestone/6)
 
-- **GitHub status:** `open`; **roadmap intent:** completed milestone, with no
-  currently open issue assigned.
-- **Issues:** [#64](https://github.com/n0nuser/LocalRAG/issues/64) (closed).
+- **GitHub status:** `open`; **roadmap intent:** active.
+- **Issues:** [#64](https://github.com/n0nuser/LocalRAG/issues/64) (closed) and
+  [#130](https://github.com/n0nuser/LocalRAG/issues/130) (open).
 - **Hard dependencies:** none remaining for the contributor command wrapper.
 - **Exit outcome:** common install, format, lint, test, and local workflow
   commands have a portable Taskfile contract.
@@ -77,13 +77,17 @@ dependency statements below are the authority for blocking relationships.
 
 - **GitHub status:** `open`; **roadmap intent:** active.
 - **Issues:** [#80](https://github.com/n0nuser/LocalRAG/issues/80) (closed),
-  [#85](https://github.com/n0nuser/LocalRAG/issues/85) (closed), and
-  [#81](https://github.com/n0nuser/LocalRAG/issues/81) (open).
+  [#85](https://github.com/n0nuser/LocalRAG/issues/85) (closed),
+  [#81](https://github.com/n0nuser/LocalRAG/issues/81),
+  [#127](https://github.com/n0nuser/LocalRAG/issues/127),
+  [#131](https://github.com/n0nuser/LocalRAG/issues/131), and
+  [#132](https://github.com/n0nuser/LocalRAG/issues/132) (open).
 - **Hard dependencies:** #81 consumes the stable embedding/provider boundary
   from #80; it must not redefine that contract. #85 is independent of #81.
 - **Exit outcome:** stable, explicitly bounded extension seams exist without
   making optional integrations or untrusted plugin code part of the default
-  install. The milestone remains open while #81 is open.
+  install, with consistent provider identity, operational metrics, and safe
+  persistence boundaries. The milestone remains open while assigned issues are open.
 - **Exit signal:** #80 and #85 delivered provider and observability contracts;
   #81 exits when its selected retriever plugin contract, discovery, trust model,
   lifecycle, compatibility tests, and author documentation meet its issue
@@ -119,7 +123,9 @@ dependency statements below are the authority for blocking relationships.
   [#83](https://github.com/n0nuser/LocalRAG/issues/83),
   [#84](https://github.com/n0nuser/LocalRAG/issues/84),
   [#86](https://github.com/n0nuser/LocalRAG/issues/86), and
-  [#87](https://github.com/n0nuser/LocalRAG/issues/87) (all closed).
+  [#87](https://github.com/n0nuser/LocalRAG/issues/87) (closed),
+  [#126](https://github.com/n0nuser/LocalRAG/issues/126), and
+  [#128](https://github.com/n0nuser/LocalRAG/issues/128) (open).
 - **Hard dependencies:** #82 established dataset identity and registry; #83
   established reproducibility metadata; #84 owns the versioned result and
   comparison contract. #74, #73, #78, #76, #86, and #87 consume those contracts
@@ -139,11 +145,12 @@ dependency statements below are the authority for blocking relationships.
 
 ### [Performance](https://github.com/n0nuser/LocalRAG/milestone/3)
 
-- **GitHub status:** `open`; **roadmap intent:** completed current scope, with no
-  currently open issue assigned.
+- **GitHub status:** `open`; **roadmap intent:** active.
 - **Issues:** [#77](https://github.com/n0nuser/LocalRAG/issues/77),
   [#78](https://github.com/n0nuser/LocalRAG/issues/78), and
-  [#79](https://github.com/n0nuser/LocalRAG/issues/79) (all closed).
+  [#79](https://github.com/n0nuser/LocalRAG/issues/79) (closed),
+  [#124](https://github.com/n0nuser/LocalRAG/issues/124), and
+  [#129](https://github.com/n0nuser/LocalRAG/issues/129) (open).
 - **Hard dependencies:** #77 required #80 and could consume #73's benchmark
   manifest; #78 required the evaluation contracts. Those dependencies are now
   closed.
@@ -189,11 +196,36 @@ dependency statements below are the authority for blocking relationships.
   refresh procedure, and reference validation. The milestone is then available
   for future documentation work rather than being declared complete by prose.
 
+### [Production Readiness](https://github.com/n0nuser/LocalRAG/milestone/10)
+
+- **GitHub status:** `open`; **roadmap intent:** planned.
+- **Issues:** [#125](https://github.com/n0nuser/LocalRAG/issues/125),
+  [#133](https://github.com/n0nuser/LocalRAG/issues/133), and
+  [#134](https://github.com/n0nuser/LocalRAG/issues/134) (open).
+- **Hard dependencies:** deployment persistence and readiness semantics should be
+  settled before enabling multi-replica scaling; security defaults and data
+  retention can proceed independently.
+- **Exit outcome:** local and containerized deployments have explicit trust,
+  persistence, readiness, identity, and data-lifecycle contracts suitable for
+  supported production-like operation.
+- **Exit signal:** all three issues close with deployment validation, secure
+  defaults, and documented retention behavior.
+
 ## Current Open Work
 
-At the snapshot date, the only milestone-assigned open issue is
-[#81](https://github.com/n0nuser/LocalRAG/issues/81), the retriever plugin
-architecture. Unmilestoned issue
+At the snapshot date, milestone-assigned open work includes
+[#81](https://github.com/n0nuser/LocalRAG/issues/81),
+[#124](https://github.com/n0nuser/LocalRAG/issues/124),
+[#125](https://github.com/n0nuser/LocalRAG/issues/125),
+[#126](https://github.com/n0nuser/LocalRAG/issues/126),
+[#127](https://github.com/n0nuser/LocalRAG/issues/127),
+[#128](https://github.com/n0nuser/LocalRAG/issues/128),
+[#129](https://github.com/n0nuser/LocalRAG/issues/129),
+[#130](https://github.com/n0nuser/LocalRAG/issues/130),
+[#131](https://github.com/n0nuser/LocalRAG/issues/131),
+[#132](https://github.com/n0nuser/LocalRAG/issues/132),
+[#133](https://github.com/n0nuser/LocalRAG/issues/133), and
+[#134](https://github.com/n0nuser/LocalRAG/issues/134). Unmilestoned issue
 [#48](https://github.com/n0nuser/LocalRAG/issues/48) tracks a RAGAS
 `answer_relevancy` regression and is diagnostic work, not a roadmap milestone
 claim. The roadmap publication issue is [#66](https://github.com/n0nuser/LocalRAG/issues/66)
@@ -218,7 +250,7 @@ Run the lightweight validator from the repository root:
 uv run python scripts/validate_roadmap.py
 ```
 
-It checks that the nine milestone links occur exactly once, titles and milestone
+It checks that every live milestone link occurs exactly once, titles and milestone
 numbers match live GitHub data, referenced issue links exist, and each issue is
 listed under its actual milestone. For offline review, pass a JSON fixture with
 the same `milestones` and `issues` arrays:
@@ -238,7 +270,7 @@ benchmarks, or create/update GitHub objects.
 2. Check the issue's hard dependencies and update the issue links/status in the
    roadmap only when a roadmap refresh is part of the change.
 3. Keep changes small and land them through a short-lived branch and PR to
-   `main`, following [contributor workflow](.github/CONTRIBUTING.md).
+   `main`, following [contributor workflow](CONTRIBUTING.md).
 4. Add or update an ADR in [`docs/adr/`](docs/adr/) for a durable architectural
    decision: a public contract, persistence/schema boundary, compatibility or
    migration policy, extension/trust boundary, or a default that changes system

@@ -16,7 +16,7 @@ failed implementation.
 From the repository root:
 
 ```bash
-uv run python research/70-late-interaction-spike/run_fixture.py \
+uv run python research/late_interaction_spike/run_fixture.py \
   --output evals/results/late-interaction-fixture
 uv run pytest tests/test_late_interaction.py
 ```

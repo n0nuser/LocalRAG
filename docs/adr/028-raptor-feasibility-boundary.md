@@ -10,7 +10,7 @@ in Chroma and must not silently mix summary vectors with that collection.
 ## Decision
 
 Keep RAPTOR as a research-only, dependency-free prototype in
-`research/68-raptor-spike/`. It is not wired into ingestion, API dependency
+`research/raptor_spike/`. It is not wired into ingestion, API dependency
 injection, Chroma, the default retriever, RAGAS, or manual evaluation paths.
 The prototype uses deterministic seeded hash-partition clusters
 (`cluster_count=2`, minimum size 2, reduction factor 2), truncating summaries to

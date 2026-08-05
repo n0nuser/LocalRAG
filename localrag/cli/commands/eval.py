@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from pathlib import Path
 
 import typer
 
-_RUNNER = Path(__file__).parent.parent.parent.parent / "evals" / "run_evals.py"
+# Invoked as a module, not a file path: `evals` ships in the wheel, so resolving
+# it relative to __file__ would break for an installed package.
+_RUNNER_MODULE = "evals.run_evals"
 
 
 def eval_suite(
@@ -35,7 +36,8 @@ def eval_suite(
     """Run the RAGAS evaluation suite and print a pass/fail summary."""
     cmd = [
         sys.executable,
-        str(_RUNNER),
+        "-m",
+        _RUNNER_MODULE,
         f"--api-url={api_url}",
         f"--dataset={dataset}",
         f"--split={split}",
