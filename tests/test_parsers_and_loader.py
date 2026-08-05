@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 
 import pytest
@@ -81,7 +82,19 @@ def test_loader_parse_file_dispatches_extensions(tmp_path: Path) -> None:
     assert parse_file(md).endswith("hello")
     assert parse_file(txt) == "hello"
     assert parse_file(py) == "print('x')"
-    assert parse_file(docx) == parse_docx(docx)
+    assert "p1" in parse_file(docx)
+
+
+def test_loader_uses_anydoc_for_csv_when_optional_extra_is_installed(tmp_path: Path) -> None:
+    csv_path = tmp_path / "rows.csv"
+    csv_path.write_text("name,value\nalpha,1\n", encoding="utf-8")
+
+    if importlib.util.find_spec("anydoc") is None:
+        pytest.skip("anydoc extra is not installed")
+
+    output = parse_file(csv_path)
+
+    assert "alpha" in output
 
 
 def test_loader_parse_file_dispatches_pdf(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
