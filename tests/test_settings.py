@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from pydantic import BaseModel
 
 from localrag.settings import (
     ConfigError,
@@ -12,6 +13,7 @@ from localrag.settings import (
     load_settings,
     set_current_settings,
 )
+from localrag.settings_map import FLAT_TO_PATH, PATH_TO_FLAT, UNGROUPED_FIELDS
 
 
 def test_default_chunk_overlap_is_within_10_to_20_percent_of_max_chars() -> None:
@@ -50,6 +52,61 @@ def test_retired_cli_override_warns_instead_of_failing(tmp_path: Path) -> None:
     with pytest.warns(DeprecationWarning, match="retired"):
         settings = load_settings(config, {"context_compression_enabled": True})
     assert settings.rag_top_k == Settings().rag_top_k
+
+
+def test_every_grouped_leaf_has_exactly_one_flat_name() -> None:
+    """The flat map must be total: no grouped field may be unreachable by env var."""
+    leaves: set[str] = set()
+
+    def walk(model: type[BaseModel], prefix: str) -> None:
+        for name, field in model.model_fields.items():
+            annotation = field.annotation
+            path = f"{prefix}{name}"
+            if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+                walk(annotation, f"{path}.")
+            else:
+                leaves.add(path)
+
+    for group, field in Settings.model_fields.items():
+        annotation = field.annotation
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            walk(annotation, f"{group}.")
+
+    assert leaves == set(PATH_TO_FLAT), (
+        f"unmapped grouped fields: {sorted(leaves - set(PATH_TO_FLAT))}; "
+        f"stale map entries: {sorted(set(PATH_TO_FLAT) - leaves)}"
+    )
+    assert set(Settings.model_fields) - set(FLAT_TO_PATH) >= UNGROUPED_FIELDS
+
+
+@pytest.mark.parametrize(
+    ("variable", "value", "attribute", "expected"),
+    [
+        ("HYDE_ENABLED", "true", "hyde_enabled", True),
+        ("RAG_TOP_K", "11", "rag_top_k", 11),
+        ("ADAPTIVE_MAX_ROUNDS", "2", "adaptive_max_rounds", 2),
+        ("OTEL_SERVICE_NAME", "svc", "otel_service_name", "svc"),
+        ("LLM_BACKEND", "openai", "llm_backend", "openai"),
+    ],
+)
+def test_documented_flat_env_vars_still_resolve(
+    variable: str,
+    value: str,
+    attribute: str,
+    expected: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Grouping the model must not break any documented environment variable."""
+    monkeypatch.setenv(variable, value)
+    assert getattr(Settings(), attribute) == expected
+
+
+def test_with_overrides_reaches_grouped_fields() -> None:
+    """model_copy on a flat name would silently no-op; with_overrides must not."""
+    settings = Settings().with_overrides(hyde_enabled=True, rag_top_k=8)
+    assert settings.hyde_enabled is True
+    assert settings.retrieval.hyde.enabled is True
+    assert settings.retrieval.top_k == 8
 
 
 def test_configuration_precedence_is_defaults_yaml_dotenv_environment_cli(
@@ -118,10 +175,14 @@ def test_snapshot_redacts_secrets_and_host_paths(tmp_path: Path) -> None:
 
     snapshot = settings.resolved_snapshot()
 
-    assert snapshot["api_key"] == "<redacted>"
-    assert snapshot["openai_api_key"] == "<redacted>"
+    assert snapshot["api"]["key"] == "<redacted>"
+    assert snapshot["llm"]["openai_api_key"] == "<redacted>"
     assert str(tmp_path) not in json.dumps(snapshot)
-    assert snapshot["chroma_persist_path"] == "<path>"
+    assert snapshot["chroma"]["persist_path"] == "<path>"
+    # Redaction must survive the flat projection too.
+    flat = settings.flat_snapshot()
+    assert flat["api_key"] == "<redacted>"
+    assert flat["chroma_persist_path"] == "<path>"
 
 
 def test_legacy_yaml_alias_warns_and_cross_field_validation_rejects(
