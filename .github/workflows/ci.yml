@@ -141,8 +141,8 @@ jobs:
       - name: Install the embedding model only
         run: docker compose exec -T ollama ollama pull nomic-embed-text
 
-      - name: Install the generation model for query coverage
-        run: docker compose exec -T ollama ollama pull llama3.2:latest
+      - name: Install the small generation model for query coverage
+        run: docker compose exec -T ollama ollama pull qwen2.5:0.5b
 
       - name: Start API without model-pulling init
         run: >-
@@ -150,7 +150,7 @@ jobs:
           --publish 8000:8000
           --env API_KEY=$API_KEY
           --env LLM_BACKEND=ollama
-          --env OLLAMA_LLM_MODEL=llama3.2:latest
+          --env OLLAMA_LLM_MODEL=qwen2.5:0.5b
           localrag-api
 
       - name: Wait for API liveness
