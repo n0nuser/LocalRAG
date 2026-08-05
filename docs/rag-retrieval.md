@@ -355,8 +355,8 @@ re-embedding any source whose file bytes haven't changed.
 
 ## Extractive context compression
 
-Compression is disabled by default (`CONTEXT_COMPRESSION_ENABLED=false`). When
-enabled, the exact order is **retrieve -> optional cross-encoder rerank ->
+Compression is always applied (ADR 036 retired its flag); the
+`CONTEXT_COMPRESSION_*` budgets bound how much context survives. The exact order is **retrieve -> optional cross-encoder rerank ->
 freshness/ranking -> parent-section expansion -> compression -> prompt ->
 generation**. It receives the final text, including `expanded_text`, but never
 changes retrieval scores or source identity. JSON and SSE share the same engine

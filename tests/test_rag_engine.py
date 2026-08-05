@@ -211,7 +211,6 @@ def test_rag_engine_low_confidence_disabled_by_default() -> None:
 def test_rag_engine_compresses_shared_prompt_path_without_changing_sources() -> None:
     settings = Settings(
         rag_system_prompt="SYS",
-        context_compression_enabled=True,
         context_compression_per_context_tokens=3,
         context_compression_total_tokens=3,
         context_compression_per_context_chars=30,

@@ -147,7 +147,7 @@ def test_ingestion_cache_hit_still_rebuilds_source_metadata_and_upserts(tmp_path
         settings=settings,
         embedder=embedder,  # type: ignore[arg-type]
         vector_store=vector_store,  # type: ignore[arg-type]
-        embedding_cache=EmbeddingCache(tmp_path / "cache", enabled=True),
+        embedding_cache=EmbeddingCache(tmp_path / "cache"),
     )
 
     service.ingest_file(path)
