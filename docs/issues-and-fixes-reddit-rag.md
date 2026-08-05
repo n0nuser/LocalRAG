@@ -1,5 +1,7 @@
 # Issues and fixes: Reddit retrieval thread vs LocalRAG
 
+> **Dated research snapshot (2026-05-21).** This is a point-in-time investigation, not a maintained map of current behavior. Code, defaults, and measurements have moved on since it was written — verify against the current source and the [docs index](../README.md#documentation) before acting on it.
+
 ## 1) Chunking that breaks structure
 
 ### Generic issue

@@ -67,6 +67,7 @@ override unless `COMPOSE_OVERRIDE` is supplied.
 | Ollama HTTP request/response shapes | `localrag/ollama/schemas.py` (used by embedder, RAG engine, health, setup) |
 | Embedding collection compatibility | `localrag/storage/vector_store.py`, [ADR 019](adr/019-embedding-provider-contract.md), embedding settings in `localrag/settings.py` |
 | Generation sampling (temperature/seed) | `localrag/ollama/schemas.py` (`OllamaChatOptions`), `localrag/llm/providers/ollama.py`, `LLM_TEMPERATURE` / `LLM_SEED` in `localrag/settings.py` |
+| Evaluation, any aspect (start here) | [evaluation.md](evaluation.md) — routes to datasets, metrics, reproducibility, reports, leaderboard |
 | Eval suite / metric contracts / bounded RAGAS scoring | `evals/metrics.py`, `evals/concurrency.py`, `evals/run_evals.py`, `evals/results/schema.py`, `docs/evaluation-metrics.md`, `localrag/cli/commands/eval.py` |
 | Eval reproducibility (seed, run metadata) | `evals/environment.py`, `evals/run_evals.py`, [reproducibility.md](reproducibility.md) |
 | Eval result versioning/comparison/baselines | `evals/results/`, `evals/compare.py`, `evals/baselines/`, `localrag/cli/commands/eval_compare.py` |

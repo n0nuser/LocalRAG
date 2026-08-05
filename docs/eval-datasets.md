@@ -1,5 +1,7 @@
 # Evaluation dataset contract
 
+> Part of the [evaluation documentation](evaluation.md) — start there for the pipeline overview.
+
 The durable decision behind this contract is [ADR 011](adr/011-evaluation-dataset-contract.md).
 
 The eval runner (`evals/run_evals.py`) does not read a fixed file. It selects

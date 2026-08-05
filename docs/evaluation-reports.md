@@ -1,5 +1,7 @@
 # Evaluation Reports
 
+> Part of the [evaluation documentation](evaluation.md) — start there for the pipeline overview.
+
 Generate a local report from one or more canonical benchmark artifacts:
 
 ```bash

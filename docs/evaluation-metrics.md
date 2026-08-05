@@ -1,5 +1,7 @@
 # Evaluation Metrics
 
+> Part of the [evaluation documentation](evaluation.md) — start there for the pipeline overview.
+
 Metric implementation semantics are pinned by `evals/metrics.py` and the
 RAGAS version in `pyproject.toml`/`uv.lock`. A result records
 `metric_contract_version`, the RAGAS prompt/version, judge seed, endpoint, and
