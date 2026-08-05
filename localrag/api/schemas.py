@@ -275,6 +275,7 @@ class QueryResponse(BaseModel):
         description="Total wall-clock latency in milliseconds.", examples=[312.5]
     )
     model: str = Field(description="Model tag used to generate the answer.", examples=["llama3.2"])
+    provider: str = Field(description="Provider that generated the answer.", examples=["ollama"])
     low_confidence: bool = Field(
         default=False,
         description=(

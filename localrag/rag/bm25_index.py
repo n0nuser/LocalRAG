@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import threading
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -19,6 +20,14 @@ class Bm25Hit:
     score: float
 
 
+@dataclass(frozen=True)
+class _Bm25Snapshot:
+    ids: tuple[str, ...]
+    documents: tuple[str, ...]
+    metadatas: tuple[dict[str, Any], ...]
+    index: BM25Okapi | None
+
+
 @dataclass
 class Bm25Index:
     vector_store: VectorStore
@@ -26,6 +35,10 @@ class Bm25Index:
     corpus_documents: list[str] = field(default_factory=list)
     corpus_metadatas: list[dict[str, Any]] = field(default_factory=list)
     bm25: BM25Okapi | None = None
+    _snapshot: _Bm25Snapshot = field(
+        default_factory=lambda: _Bm25Snapshot((), (), (), None), init=False, repr=False
+    )
+    _snapshot_lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
 
     @classmethod
     def from_vector_store(cls, store: VectorStore) -> Bm25Index:
@@ -44,23 +57,33 @@ class Bm25Index:
             corpus_documents.append(document)
             corpus_metadatas.append(metadata)
             tokenized.append(tokenize(document))
-        bm25 = BM25Okapi(tokenized) if tokenized else None
-        self.corpus_ids = corpus_ids
-        self.corpus_documents = corpus_documents
-        self.corpus_metadatas = corpus_metadatas
-        self.bm25 = bm25
+        snapshot = _Bm25Snapshot(
+            tuple(corpus_ids),
+            tuple(corpus_documents),
+            tuple(corpus_metadatas),
+            BM25Okapi(tokenized) if tokenized else None,
+        )
+        with self._snapshot_lock:
+            self._snapshot = snapshot
+            # Keep these attributes for callers that inspect the index state.
+            self.corpus_ids = list(snapshot.ids)
+            self.corpus_documents = list(snapshot.documents)
+            self.corpus_metadatas = list(snapshot.metadatas)
+            self.bm25 = snapshot.index
 
     def query(self, text: str, top_k: int) -> list[Bm25Hit]:
-        if self.bm25 is None or top_k <= 0:
+        with self._snapshot_lock:
+            snapshot = self._snapshot
+        if snapshot.index is None or top_k <= 0:
             return []
         tokens = tokenize(text)
         if not tokens:
             return []
 
-        scores = self.bm25.get_scores(tokens)
+        scores = snapshot.index.get_scores(tokens)
         query_text = text.strip().lower()
         if query_text:
-            for index, document in enumerate(self.corpus_documents):
+            for index, document in enumerate(snapshot.documents):
                 if query_text in document.lower():
                     scores[index] = float(scores[index]) + 1.0
         ranked_indexes = sorted(
@@ -70,9 +93,9 @@ class Bm25Index:
         )[:top_k]
         return [
             Bm25Hit(
-                chunk_id=self.corpus_ids[index],
-                text=self.corpus_documents[index],
-                metadata=self.corpus_metadatas[index],
+                chunk_id=snapshot.ids[index],
+                text=snapshot.documents[index],
+                metadata=snapshot.metadatas[index],
                 score=float(scores[index]),
             )
             for index in ranked_indexes

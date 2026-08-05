@@ -22,6 +22,16 @@ class BaseLLMProvider(ABC):
         """Return the configured default model for this backend."""
         return "unknown"
 
+    @property
+    def effective_provider(self) -> str:
+        """Provider that produced the most recent response or stream."""
+        return self.provider_name
+
+    @property
+    def effective_model(self) -> str:
+        """Model that produced the most recent response or stream."""
+        return self.default_model
+
     @abstractmethod
     def generate(
         self,

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass
+from dataclasses import field as dataclass_field
 from hashlib import sha1
 from pathlib import Path
 from typing import Any
@@ -18,6 +20,9 @@ logger = logging.getLogger(__name__)
 class VectorStore:
     client: chromadb.ClientAPI
     collection: Collection
+    _write_lock: threading.RLock = dataclass_field(
+        default_factory=threading.RLock, init=False, repr=False
+    )
 
     @classmethod
     def create(cls, persist_path: str, collection_name: str) -> VectorStore:
@@ -60,17 +65,9 @@ class VectorStore:
             logger.error("vector_upsert_empty_embedding source=%s", source)
             raise ValueError("embeddings must be non-empty vectors")
 
-        ids = [
-            str(metadata.get("chunk_id") or self._chunk_id(source=source, chunk_index=index))
-            for index, metadata in enumerate(metadatas)
-        ]
-        self.collection.upsert(
-            ids=ids,
-            documents=chunks,
-            embeddings=embeddings,  # type: ignore[arg-type]
-            metadatas=metadatas,  # type: ignore[arg-type]
-        )
-        self._bump_revision()
+        with self._write_lock:
+            self._upsert(source, chunks, embeddings, metadatas)
+            self._bump_revision()
         logger.debug(
             "vector_upsert source=%s chunk_count=%s",
             source,
@@ -84,17 +81,64 @@ class VectorStore:
         embeddings: list[list[float]],
         metadatas: list[dict[str, Any]],
     ) -> None:
-        """Upsert a replacement before deleting obsolete source vectors."""
-        old_ids = self._source_ids(source)
-        self.add_chunks(source, chunks, embeddings, metadatas)
-        ids = {
-            str(metadata.get("chunk_id") or self._chunk_id(source, index))
+        """Replace one source while readers see either the old or new version."""
+        if len(chunks) != len(embeddings) or len(chunks) != len(metadatas):
+            raise ValueError("chunks, embeddings, and metadatas must have the same length")
+        if any(len(embedding) == 0 for embedding in embeddings):
+            raise ValueError("embeddings must be non-empty vectors")
+        with self._write_lock:
+            old = self.collection.get(
+                where={"source": source},
+                include=["documents", "metadatas", "embeddings"],
+            )
+            try:
+                self._upsert(source, chunks, embeddings, metadatas)
+                new_ids = {
+                    str(metadata.get("chunk_id") or self._chunk_id(source, index))
+                    for index, metadata in enumerate(metadatas)
+                }
+                old_id_set = {str(chunk_id) for chunk_id in old.get("ids") or []}
+                obsolete = old_id_set - new_ids
+                if obsolete:
+                    self.collection.delete(ids=sorted(obsolete))
+                self._bump_revision()
+            except Exception:
+                # Chroma has no multi-operation transaction. Restore the complete
+                # previous source so a failed replacement cannot destroy it.
+                try:
+                    self.collection.delete(where={"source": source})
+                    old_ids = old.get("ids") or []
+                    old_documents = old.get("documents") or []
+                    old_embeddings = old.get("embeddings")
+                    old_metadatas = old.get("metadatas") or []
+                    if old_ids:
+                        self.collection.upsert(
+                            ids=old_ids,
+                            documents=old_documents,
+                            embeddings=(old_embeddings if old_embeddings is not None else []),  # type: ignore[arg-type]
+                            metadatas=old_metadatas,  # type: ignore[arg-type]
+                        )
+                except Exception:
+                    logger.exception("vector_replace_rollback_failed source=%s", source)
+                raise
+
+    def _upsert(
+        self,
+        source: str,
+        chunks: list[str],
+        embeddings: list[list[float]],
+        metadatas: list[dict[str, Any]],
+    ) -> None:
+        ids = [
+            str(metadata.get("chunk_id") or self._chunk_id(source=source, chunk_index=index))
             for index, metadata in enumerate(metadatas)
-        }
-        obsolete = old_ids - ids
-        if obsolete:
-            self.collection.delete(ids=sorted(obsolete))
-            self._bump_revision()
+        ]
+        self.collection.upsert(
+            ids=ids,
+            documents=chunks,
+            embeddings=embeddings,  # type: ignore[arg-type]
+            metadatas=metadatas,  # type: ignore[arg-type]
+        )
 
     def _source_ids(self, source: str) -> set[str]:
         raw = self.collection.get(where={"source": source}, include=[])
@@ -135,8 +179,8 @@ class VectorStore:
             )
         if recorded_dimension is None and effective_dimension is not None:
             raw = self.collection.get(include=["embeddings"], limit=1)
-            rows = raw.get("embeddings") or []
-            if rows and isinstance(rows[0], list) and len(rows[0]) != effective_dimension:
+            rows = raw.get("embeddings")
+            if rows is not None and len(rows) > 0 and len(rows[0]) != effective_dimension:
                 raise EmbeddingIncompatibilityError(
                     "Embedding dimension is incompatible with the legacy collection; "
                     "run `localrag collections rebuild`."
@@ -157,11 +201,14 @@ class VectorStore:
                 "localrag:embedding_dimension": dimension,
             }
         )
+        # Chroma treats hnsw:space as immutable and rejects it in modify().
+        metadata.pop("hnsw:space", None)
         self.collection.modify(metadata=metadata)
 
     def delete_by_source(self, source: str) -> None:
-        self.collection.delete(where={"source": source})
-        self._bump_revision()
+        with self._write_lock:
+            self.collection.delete(where={"source": source})
+            self._bump_revision()
         logger.debug("vector_delete_by_source source=%s", source)
 
     def _bump_revision(self) -> None:
@@ -169,18 +216,20 @@ class VectorStore:
         metadata["localrag:corpus_revision"] = int(metadata.get("localrag:corpus_revision", 0)) + 1
         modify = getattr(self.collection, "modify", None)
         if modify is not None:
+            metadata.pop("hnsw:space", None)
             modify(metadata=metadata)
 
     def query(
         self, embedding: list[float], top_k: int, where: dict[str, Any] | None = None
     ) -> dict[str, Any]:
         logger.debug("vector_query top_k=%s where=%s", top_k, where)
-        return self.collection.query(  # type: ignore[return-value]
-            query_embeddings=[embedding],  # type: ignore[arg-type]
-            n_results=top_k,
-            where=where,
-            include=["documents", "metadatas", "distances"],
-        )
+        with self._write_lock:
+            return self.collection.query(  # type: ignore[return-value]
+                query_embeddings=[embedding],  # type: ignore[arg-type]
+                n_results=top_k,
+                where=where,
+                include=["documents", "metadatas", "distances"],
+            )
 
     def get_chunks_by_headings(
         self,
@@ -198,7 +247,8 @@ class VectorStore:
         where: dict[str, Any] = {"$or": clauses} if len(clauses) > 1 else clauses[0]
         if metadata_filter:
             where = {"$and": [where, *[{key: value} for key, value in metadata_filter.items()]]}
-        raw = self.collection.get(where=where, include=["documents", "metadatas"])
+        with self._write_lock:
+            raw = self.collection.get(where=where, include=["documents", "metadatas"])
         documents = raw.get("documents") or []
         metadatas = raw.get("metadatas") or []
         requested = set(headings)
@@ -225,7 +275,8 @@ class VectorStore:
         return self.get_chunks_by_headings([(source, heading_path)]).get((source, heading_path), [])
 
     def list_distinct_sources(self) -> list[str]:
-        raw = self.collection.get(include=["metadatas"])
+        with self._write_lock:
+            raw = self.collection.get(include=["metadatas"])
         metadatas = raw.get("metadatas")
         if not metadatas:
             return []
@@ -239,11 +290,17 @@ class VectorStore:
         return [c.name for c in self.client.list_collections()]
 
     def delete_collection(self, name: str) -> None:
-        self.client.delete_collection(name)
+        with self._write_lock:
+            self.client.delete_collection(name)
+            if getattr(self.collection, "name", None) == name:
+                self.collection = self.client.get_or_create_collection(
+                    name=name, metadata={"hnsw:space": "cosine"}
+                )
         logger.warning("vector_collection_deleted name=%s", name)
 
     def get_all_chunks(self) -> list[tuple[str, str, dict[str, Any]]]:
-        raw = self.collection.get(include=["documents", "metadatas"])
+        with self._write_lock:
+            raw = self.collection.get(include=["documents", "metadatas"])
         ids = raw.get("ids") or []
         documents = raw.get("documents") or []
         metadatas = raw.get("metadatas") or []

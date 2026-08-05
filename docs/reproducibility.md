@@ -40,6 +40,29 @@ false confidence:
 
 Every guarantee below is level 1 unless stated otherwise.
 
+### Answer relevancy diagnosis (#48)
+
+The historical `0.488` report cannot be treated as a pipeline regression without
+its exact dataset checksum, judge model, embedding model, and hardware metadata.
+The current runner records those inputs and uses `temperature=0` plus the selected
+seed, but local model output and embedding behavior remain best-effort. A real
+offline run on 2026-08-04 with dataset `localrag-core` v1.0.0, seed 42, Ollama
+`gemma3:4b` and `nomic-embed-text` scored a six-record sample at:
+
+| Metric | Value |
+| --- | ---: |
+| faithfulness | 1.000 |
+| answer_relevancy | 0.249 |
+| context_precision | 0.917 |
+| context_recall | 1.000 |
+
+The same environment's three-record smoke sample scored answer relevancy `0.820`.
+Per-case scores ranged from `0.0` to `0.820`, while deterministic exact match
+and F1 were both `1.0`. This is reproducible judge variance and sample
+composition, not evidence that retrieval contexts are source paths. No threshold
+or score was fabricated or recalibrated; compare judge metrics only with matching
+run metadata and use deterministic metrics for regression tests.
+
 ## Running a reproducible eval
 
 ```bash

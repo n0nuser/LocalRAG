@@ -24,8 +24,8 @@ spec:
       containers:
         - name: localrag-api
           # CI publishes this release tag once; deployments must not use latest.
-          image: localrag-api:0.1.0
-          imagePullPolicy: IfNotPresent
+          image: ghcr.io/n0nuser/localrag-api:0.1.0
+          imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -44,12 +44,16 @@ spec:
               port: 8000
             initialDelaySeconds: 15
             periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /ready
               port: 8000
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
           resources:
             requests:
               cpu: "250m"

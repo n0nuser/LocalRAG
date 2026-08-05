@@ -328,6 +328,28 @@ def test_build_rows_records_record_id() -> None:
     assert rows[0]["record_id"] == "r1"
 
 
+def test_live_build_rows_uses_api_context_text_and_ids_without_fixture_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = DatasetRecord(
+        record_id="r1",
+        question="q",
+        reference_answer="a",
+        citations=[{"citation_id": "fixture", "source": "s", "text": "fixture text"}],
+    )
+    monkeypatch.setattr(
+        run_evals_module,
+        "_query_api",
+        lambda *_args: ("live answer", ["actual chunk text"], ["live-id"]),
+    )
+
+    rows = _build_rows([record], "http://unused", "", offline=False)
+
+    assert rows[0]["contexts"] == ["actual chunk text"]
+    assert rows[0]["retrieved_ids"] == ["live-id"]
+    assert "fixture text" not in rows[0]["contexts"]
+
+
 # --- bundled fixtures stay valid (regression guard) ---
 
 

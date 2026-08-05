@@ -19,7 +19,7 @@ Agents (and humans) move faster when they:
 4. [`.env.example`](../.env.example) — canonical env var names and defaults (mirrors `Settings` in `localrag/settings.py`); [`config.example.yaml`](../config.example.yaml) shows structured configuration.
 5. [architecture.md](architecture.md) — layers, data flow, extension points.
 6. [deployment.md](deployment.md) — Kubernetes persistence, dependency, probe, and security contract.
-6. The specific file(s) for your task (see table below).
+7. The specific file(s) for your task (see table below).
 
 For contributor workflows, read [`Taskfile.yml`](../Taskfile.yml) and the
 Taskfile section in [CONTRIBUTING](../.github/CONTRIBUTING.md). It is the thin

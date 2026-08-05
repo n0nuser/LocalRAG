@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
 
@@ -41,3 +42,32 @@ def test_bm25_index_returns_exact_string_match_first() -> None:
 
     assert hits[0].chunk_id == "2"
     assert hits[0].metadata == {"source": "b.md", "chunk_index": 1}
+
+
+def test_refresh_publishes_complete_snapshot_during_concurrent_queries() -> None:
+    store = StubStore(chunks=[("old", "old corpus", {"source": "old"})])
+    index = Bm25Index.from_vector_store(store)  # type: ignore[arg-type]
+
+    def refresh() -> None:
+        for _ in range(20):
+            store.chunks = [("new", "new corpus", {"source": "new"})]
+            index.refresh()
+            store.chunks = [("old", "old corpus", {"source": "old"})]
+            index.refresh()
+
+    def query() -> set[str]:
+        seen: set[str] = set()
+        for _ in range(100):
+            hits = index.query("corpus", top_k=1)
+            if hits:
+                seen.add(hits[0].chunk_id)
+        return seen
+
+    # Run the two operations concurrently without allowing a mutable corpus to
+    # leak into an individual query result.
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        query_future = executor.submit(query)
+        refresh_future = executor.submit(refresh)
+        refresh_future.result()
+        observed = query_future.result()
+    assert observed <= {"old", "new"}

@@ -19,12 +19,15 @@ def require_api(base_url: str) -> None:
         response = httpx.get(f"{base_url}/health", timeout=3.0)
         response.raise_for_status()
     except httpx.HTTPError:
-        pytest.skip("LocalRAG API not reachable - run docker compose up first")
+        pytest.fail("LocalRAG API is not reachable; the Compose integration job must start it")
 
 
 @pytest.fixture(scope="session")
 def api_key() -> str:
-    return os.getenv("LOCALRAG_TEST_API_KEY", "")
+    value = os.getenv("LOCALRAG_TEST_API_KEY", "")
+    if not value:
+        pytest.fail("LOCALRAG_TEST_API_KEY is required for authenticated integration tests")
+    return value
 
 
 @pytest.fixture(scope="session")
@@ -33,5 +36,6 @@ def auth_enabled(base_url: str) -> bool:
     try:
         response = httpx.get(f"{base_url}/collections", timeout=10.0)
     except httpx.HTTPError:
-        return False
-    return response.status_code == 401
+        pytest.fail("Could not probe API authentication; integration setup is incomplete")
+    assert response.status_code == 401, "Compose integration must enable API authentication"
+    return True

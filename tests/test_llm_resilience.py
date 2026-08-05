@@ -137,6 +137,8 @@ def test_resilient_provider_opens_circuit_after_fail_max_and_falls_back() -> Non
     response_again = resilient.generate("q", [])
     assert response_again.answer == "fallback"
     assert len(always_fails.calls) == 2
+    assert resilient.effective_provider == "fallback"
+    assert resilient.effective_model == "fb"
 
 
 def test_resilient_provider_raises_when_circuit_open_and_no_fallback() -> None:

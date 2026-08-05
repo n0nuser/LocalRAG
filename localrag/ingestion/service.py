@@ -80,33 +80,34 @@ class IngestionService:
         return self.ingest_paths(files, embed_model=embed_model)
 
     def rebuild_collection(self, embed_model: str | None = None) -> RebuildCollectionResult:
-        sources = self.vector_store.list_distinct_sources()
-        stored_hashes = self._stored_content_hashes()
-        missing_sources: list[str] = []
-        skipped_unchanged: list[str] = []
-        paths_to_ingest: list[Path] = []
-        for source in sources:
-            path = Path(source)
-            if not path.is_file():
-                missing_sources.append(source)
-                self.vector_store.delete_by_source(source)
-                logger.warning("rebuild_skip_missing_file source=%s", source)
-                continue
-            current_hash = _file_content_hash(path)
-            if stored_hashes.get(source) == current_hash:
-                skipped_unchanged.append(source)
-                continue
-            paths_to_ingest.append(path)
-        ingest = self.ingest_paths(paths_to_ingest, embed_model=embed_model)
-        logger.info("rebuild_skipped_unchanged count=%s", len(skipped_unchanged))
-        return RebuildCollectionResult(
-            files_processed=ingest.files_processed,
-            total_chunks=ingest.total_chunks,
-            processed_sources=ingest.processed_sources,
-            missing_sources=sorted(missing_sources),
-            failed_sources=ingest.failed_sources,
-            skipped_unchanged_sources=sorted(skipped_unchanged),
-        )
+        with self._write_lock:
+            sources = self.vector_store.list_distinct_sources()
+            stored_hashes = self._stored_content_hashes()
+            missing_sources: list[str] = []
+            skipped_unchanged: list[str] = []
+            paths_to_ingest: list[Path] = []
+            for source in sources:
+                path = Path(source)
+                if not path.is_file():
+                    missing_sources.append(source)
+                    self.vector_store.delete_by_source(source)
+                    logger.warning("rebuild_skip_missing_file source=%s", source)
+                    continue
+                current_hash = _file_content_hash(path)
+                if stored_hashes.get(source) == current_hash:
+                    skipped_unchanged.append(source)
+                    continue
+                paths_to_ingest.append(path)
+            ingest = self._ingest_paths_locked(paths_to_ingest, embed_model)
+            logger.info("rebuild_skipped_unchanged count=%s", len(skipped_unchanged))
+            return RebuildCollectionResult(
+                files_processed=ingest.files_processed,
+                total_chunks=ingest.total_chunks,
+                processed_sources=ingest.processed_sources,
+                missing_sources=sorted(missing_sources),
+                failed_sources=ingest.failed_sources,
+                skipped_unchanged_sources=sorted(skipped_unchanged),
+            )
 
     def _stored_content_hashes(self) -> dict[str, str]:
         hashes: dict[str, str] = {}

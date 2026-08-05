@@ -41,6 +41,14 @@ class RAGEngine:
                 "trace": next(
                     (event.get("trace") for event in events if event["type"] == "final"), None
                 ),
+                "retrieved_chunks": next(
+                    (
+                        event.get("retrieved_chunks", 0)
+                        for event in events
+                        if event["type"] == "final"
+                    ),
+                    0,
+                ),
             }
         chunks: list[str] = []
         sources: list[dict[str, object]] = []
@@ -83,6 +91,7 @@ class RAGEngine:
                     trace = result.trace.to_dict()
                     trace["hyde"] = _hyde_trace(getattr(self.retriever, "last_hyde", None))
                     event["trace"] = trace
+                    event["retrieved_chunks"] = len(contexts)
                 yield event
             return
         with span(SpanName.RETRIEVAL, {"stage": "retrieve"}):

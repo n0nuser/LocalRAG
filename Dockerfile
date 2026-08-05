@@ -24,13 +24,14 @@ RUN useradd --create-home --uid 10001 localrag \
     && chown -R localrag:localrag /app
 
 # Build and install the local package on top of the already-cached deps.
-RUN uv sync --locked --no-dev
+RUN uv sync --locked --no-dev \
+    && chown -R localrag:localrag /app/.venv
 
 USER localrag
 
 EXPOSE 8000
 
-CMD ["uv", "run", "uvicorn", "localrag.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["/app/.venv/bin/uvicorn", "localrag.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 FROM app AS benchmark
 
