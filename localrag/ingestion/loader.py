@@ -5,7 +5,6 @@ from pathlib import Path
 
 from localrag.ingestion.parsers.anydoc import detect_anydoc_format, parse_anydoc
 from localrag.ingestion.parsers.code import parse_code
-from localrag.ingestion.parsers.docx import parse_docx
 from localrag.ingestion.parsers.markdown import parse_markdown
 from localrag.ingestion.parsers.pdf import parse_pdf
 from localrag.ingestion.parsers.text import parse_text
@@ -110,8 +109,6 @@ def parse_file(path: Path) -> str:
         return parse_pdf(path)
     if file_type in {suffix.removeprefix(".") for suffix in ANYDOC_EXTENSIONS}:
         return parse_anydoc(path)
-    if extension == ".docx":
-        return parse_docx(path)
     if extension in MARKDOWN_EXTENSIONS:
         return parse_markdown(path)
     if extension in CODE_EXTENSIONS:
