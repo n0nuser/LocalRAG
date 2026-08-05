@@ -506,6 +506,8 @@ class Settings(BaseSettings):
                 f"{sorted(supported_backends)}, got {self.llm_fallback_backend!r}"
             )
             raise ValueError(message)
+        if self.llm_fallback_backend == self.llm_backend:
+            raise ValueError("llm_fallback_backend must differ from llm_backend")
         if not 0 <= self.otel_sample_rate <= 1:
             raise ValueError("otel_sample_rate must be between 0 and 1")
         if self.otel_max_attribute_length < 1:

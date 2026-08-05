@@ -78,3 +78,13 @@ configuration exits 2.
 Concurrency does not promise bit-for-bit judge equality. Compare EM/F1 exactly
 for deterministic fixtures; compare judge-backed metrics with documented
 tolerance (the existing guidance treats deltas below roughly 0.02 as noise).
+
+## Live context boundary
+
+Live evaluation obtains answer text from `POST /query` and retrieved chunk text
+and stable `chunk_id` values from the authenticated benchmark-only
+`POST /query/contexts` endpoint. It never substitutes source paths or fixture
+contexts for a live response. The endpoint is deliberately separate from the
+normal public query response because raw document text may contain private data;
+benchmark clients must be explicitly authenticated and handle the returned text
+as sensitive evaluation input.

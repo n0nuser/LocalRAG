@@ -44,8 +44,12 @@ class FakeCollection:
             }
         )
 
-    def delete(self, where: dict[str, object]) -> None:
-        self.delete_calls.append({"where": where})
+    def delete(
+        self,
+        where: dict[str, object] | None = None,
+        ids: list[str] | None = None,
+    ) -> None:
+        self.delete_calls.append({"where": where, "ids": ids})
 
     def query(
         self,
@@ -171,7 +175,7 @@ def test_vector_store_upsert_delete_query_and_list_collections() -> None:
     assert ids == expected_ids
 
     store.delete_by_source(source=source)
-    assert collection.delete_calls == [{"where": {"source": source}}]
+    assert collection.delete_calls == [{"where": {"source": source}, "ids": None}]
 
     out = store.query(embedding=[0.1], top_k=3)
     assert out == collection.query_result
@@ -198,6 +202,36 @@ def test_vector_store_query_passes_where_filter_to_collection() -> None:
     store.query(embedding=[0.1], top_k=3, where={"source": "a.md"})
 
     assert collection.query_calls[0]["where"] == {"source": "a.md"}  # type: ignore[index]
+
+
+def test_vector_store_replace_source_restores_old_version_after_failure() -> None:
+    collection = FakeCollection(
+        upsert_calls=[],
+        delete_calls=[],
+        query_calls=[],
+        query_result={},
+        get_return={
+            "ids": ["old-id"],
+            "documents": ["old document"],
+            "embeddings": [[0.1]],
+            "metadatas": [{"source": "src", "chunk_id": "old-id"}],
+        },
+    )
+    client = FakeClient(collections=[], deleted_collections=[])
+    store = VectorStore(client=client, collection=collection)  # type: ignore[arg-type]
+
+    original_upsert = collection.upsert
+
+    def fail_new_upsert(**kwargs: object) -> None:
+        if kwargs["documents"] == ["new document"]:
+            raise RuntimeError("write failed")
+        original_upsert(**kwargs)  # type: ignore[arg-type]
+
+    collection.upsert = fail_new_upsert  # type: ignore[method-assign]
+    with pytest.raises(RuntimeError, match="write failed"):
+        store.replace_source("src", ["new document"], [[0.2]], [{"source": "src"}])
+
+    assert collection.upsert_calls[-1]["documents"] == ["old document"]
 
 
 def test_vector_store_list_distinct_sources() -> None:

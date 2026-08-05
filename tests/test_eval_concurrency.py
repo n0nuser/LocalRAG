@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import asyncio
 import math
+from typing import Self
 
 import pytest
 
 from evals.concurrency import ConcurrencyLimits, run_cases
-from evals.run_evals import _score_rows_parallel
+from evals.dataset.schema import DatasetRecord
+from evals.run_evals import _build_rows_async, _score_rows_parallel
 
 
 @pytest.mark.asyncio
@@ -142,3 +144,57 @@ async def test_judge_failure_keeps_partial_metric_values() -> None:
     assert scores["answer_relevancy"] == [0.75]
     assert math.isnan(scores["faithfulness"][0])
     assert outcomes[0]["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_async_live_rows_keep_returned_context_text_and_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Response:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {
+                "answer": "live answer",
+                "contexts": [
+                    {
+                        "chunk_id": "live-id",
+                        "text": "actual chunk text",
+                        "source": "/private/doc.md",
+                        "chunk_index": 0,
+                    }
+                ],
+            }
+
+    class Client:
+        async def __aenter__(self) -> Self:
+            return self
+
+        async def __aexit__(self, *_args: object) -> None:
+            return None
+
+        async def post(self, url: str, **_kwargs: object) -> Response:
+            if url.endswith("/query"):
+                return Response()
+            return Response()
+
+    monkeypatch.setattr("evals.run_evals.httpx.AsyncClient", lambda **_kwargs: Client())
+    record = DatasetRecord(
+        record_id="r1",
+        question="q",
+        reference_answer="a",
+        citations=[{"citation_id": "fixture", "source": "s", "text": "fixture text"}],
+    )
+
+    rows, _execution = await _build_rows_async(
+        [record],
+        "http://api",
+        "",
+        offline=False,
+        limits=ConcurrencyLimits(),
+        timeout=1,
+    )
+
+    assert rows[0]["contexts"] == ["actual chunk text"]
+    assert rows[0]["retrieved_ids"] == ["live-id"]

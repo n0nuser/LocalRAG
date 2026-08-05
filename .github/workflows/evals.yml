@@ -29,7 +29,6 @@ jobs:
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: uv run python evals/run_evals.py --offline
-        continue-on-error: true
 
       - name: Upload eval results
         uses: actions/upload-artifact@v4

@@ -115,3 +115,11 @@ def test_cached_settings_are_isolated_by_current_execution_context() -> None:
     assert get_settings().tenant_id == "first"
     set_current_settings(second)
     assert get_settings().tenant_id == "second"
+
+
+def test_fallback_backend_must_be_supported_and_distinct() -> None:
+    with pytest.raises(ValueError, match="must differ"):
+        Settings(llm_backend="ollama", llm_fallback_backend="ollama")
+
+    with pytest.raises(ValueError, match="llm_fallback_backend"):
+        Settings(llm_fallback_backend="not-a-provider")

@@ -32,3 +32,19 @@ Langfuse is not part of the core tracing path. Its package has a separate
 optional extra for a future adapter, and `LANGFUSE_ENABLED` does nothing in this
 release. RAGAS and manual evaluation remain authoritative and do not require
 telemetry.
+
+## Prometheus Metrics
+
+The `/metrics` endpoint exposes bounded counters and histograms for query
+duration, retrieved chunks, generated tokens, query/provider failures, cache
+hits and misses, ingestion failures, background job terminal status, upload
+cleanup, audit-log rotation, and HTTP failures by status class. Labels are limited to transport/outcome
+ operation names and provider identity; model names, question text, source
+ paths, and request IDs are never labels. JSON, adaptive, and SSE queries record
+ the same duration, retrieval, token, audit, and failure signals. Fallback use,
+ upload quota rejection, oversized audit records, and audit write/cleanup
+ failures have dedicated bounded counters.
+
+Useful alerts include `rate(localrag_query_failures_total[5m]) > 0`, a sustained
+`localrag_ingest_jobs_pending` near the configured cap, and any increase in
+`localrag_provider_fallbacks_total` or `localrag_upload_quota_rejections_total`.

@@ -4,6 +4,14 @@ LocalRAG is a small, layered Python package. Most features touch one layer; cros
 
 Configuration is resolved once per execution context by `localrag.settings`: built-in defaults < YAML < `.env` < process environment < explicit CLI `--set` overrides. The API loads `LOCALRAG_CONFIG` during lifespan before cached services are constructed. CLI users pass `--config PATH` before a command. YAML sections (`embedding`, `retrieval`, `generation`, `dataset`, and `evaluation`) map to the single flat `Settings` model; unknown YAML keys and CLI fields fail fast. YAML-relative paths resolve against the configuration file directory, while environment-only settings retain current-working-directory behavior. Environment interpolation uses `${NAME}`. Secrets are accepted from environment sources and redacted from `config-show` snapshots. See [ADR 020](adr/020-structured-configuration.md).
 
+Deployment has an explicit single-replica contract. Compose binds host ports to
+localhost, requires API and Grafana secrets, and keeps observability opt-in;
+the API image runs as `localrag` with a read-only root filesystem. Kubernetes
+uses a `ReadWriteOnce` PVC for embedded Chroma, a separate Ollama ClusterIP
+endpoint, and `/health` versus dependency-aware `/ready` probes. The HPA is
+constrained to one replica because Chroma and the in-process job registry are
+not shared across pods. See [docs/deployment.md](deployment.md).
+
 The **HTTP API** uses a basic DDD-style split: **schemas** (`localrag/api/schemas.py`) hold request/response OpenAPI models only; **application services** (`localrag/api/service.py`) implement use cases (liveness/readiness, ingest HTTP rules, query SSE mapping, collection operations); **repositories** (`localrag/api/repository.py`) isolate persistence used by those services (Chroma collections wrapping `VectorStore`); **routers** (`localrag/api/routers/*.py`) stay thin adapters. `GET /health` is dependency-free liveness; `GET /ready` checks required Ollama and Chroma dependencies and returns `503` when unavailable. Neither unauthenticated response exposes storage paths or collection names. `HttpMappedError` subclasses (`IngestApiError`, `RagApiError`) and the handler in `main.py` translate validation and RAG failures to HTTP without putting that logic in routers.
 
 ## Data flow

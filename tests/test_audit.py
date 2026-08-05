@@ -69,3 +69,22 @@ def test_write_audit_record_metadata_only_and_rotation(tmp_path: Path) -> None:
     assert record["question"] == ""
     assert record["sources"] == []
     assert record["answer"] == ""
+
+
+def test_write_audit_record_reduces_oversized_content(tmp_path: Path) -> None:
+    log_path = tmp_path / "audit.jsonl"
+    write_audit_record(
+        str(log_path),
+        correlation_id="rid",
+        question="q" * 10_000,
+        sources=[{"source": "s" * 10_000}],
+        answer="a" * 10_000,
+        model="m",
+        latency_ms=1,
+        max_bytes=1_000,
+    )
+
+    record = json.loads(log_path.read_text(encoding="utf-8"))
+    assert record["truncated"] is True
+    assert record["question"] == ""
+    assert record["answer"] == ""

@@ -6,13 +6,6 @@ services:
       - "127.0.0.1:11434:11434"
     volumes:
       - ollama_data:/root/.ollama
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 10s
@@ -40,11 +33,12 @@ services:
   localrag-setup:
     build: .
     image: localrag-api:local
-    command: uv run localrag setup
+    command: /app/.venv/bin/localrag setup
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
     env_file:
-      - .env
+      - path: .env
+        required: false
     depends_on:
       ollama:
         condition: service_healthy
@@ -60,11 +54,20 @@ services:
       - OLLAMA_BASE_URL=http://ollama:11434
       - CHROMA_PERSIST_PATH=/app/data/chroma
       - API_KEY=${API_KEY:?Set API_KEY in .env before starting Compose}
+      - UV_CACHE_DIR=/tmp/uv-cache
     env_file:
-      - .env
+      - path: .env
+        required: false
     volumes:
-      - ./data:/app/data
-      - ./docs:/app/docs
+      - localrag_data:/app/data
+      - ./docs:/app/docs:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
     depends_on:
       ollama:
         condition: service_healthy
@@ -79,6 +82,7 @@ services:
 
   prometheus:
     image: prom/prometheus:v3.5.0
+    profiles: [observability]
     restart: unless-stopped
     ports:
       - "127.0.0.1:9090:9090"
@@ -96,6 +100,7 @@ services:
 
   grafana:
     image: grafana/grafana:12.1.1
+    profiles: [observability]
     restart: unless-stopped
     ports:
       - "127.0.0.1:3000:3000"
@@ -115,6 +120,7 @@ services:
       retries: 5
 
 volumes:
+  localrag_data:
   ollama_data:
   chroma_data:
   prometheus_data:

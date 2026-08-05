@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Generator
+from contextvars import ContextVar
 from functools import partial
 from typing import Any, TypeVar
 
@@ -19,6 +20,7 @@ import openai
 import pybreaker
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 
+from localrag import metrics as app_metrics
 from localrag.llm.providers.base import BaseLLMProvider
 from localrag.llm.types import LLMResponse
 
@@ -61,6 +63,10 @@ class ResilientProvider(BaseLLMProvider):
             fail_max=fail_max, reset_timeout=reset_timeout_seconds
         )
         self._max_attempts = max_attempts
+        self._identity: ContextVar[tuple[str, str]] = ContextVar(
+            "localrag_effective_llm_identity",
+            default=(provider.provider_name, provider.default_model),
+        )
 
     @property
     def provider_name(self) -> str:
@@ -69,6 +75,17 @@ class ResilientProvider(BaseLLMProvider):
     @property
     def default_model(self) -> str:
         return self._provider.default_model
+
+    @property
+    def effective_provider(self) -> str:
+        return self._identity.get()[0]
+
+    @property
+    def effective_model(self) -> str:
+        return self._identity.get()[1]
+
+    def _record_identity(self, provider: BaseLLMProvider, model: str | None) -> None:
+        self._identity.set((provider.provider_name, model or provider.default_model))
 
     def _retrying(self, func: Callable[[], _T]) -> _T:
         wrapped = retry(
@@ -79,19 +96,35 @@ class ResilientProvider(BaseLLMProvider):
         )(func)
         return wrapped()
 
-    def _call_with_breaker(self, fn: Callable[[], _T], fallback: Callable[[], _T] | None) -> _T:
+    def _call_with_breaker(
+        self,
+        fn: Callable[[], _T],
+        fallback: Callable[[], _T] | None,
+        fallback_model: str | None = None,
+    ) -> _T:
         try:
             return self._breaker.call(self._retrying, fn)
         except pybreaker.CircuitBreakerError:
             logger.warning("llm_circuit_open falling_back=%s", fallback is not None)
             if fallback is not None:
-                return fallback()
+                self._record_identity(self._fallback_provider, fallback_model)  # type: ignore[arg-type]
+                app_metrics.provider_fallbacks_total.labels(
+                    provider=self._fallback_provider.provider_name  # type: ignore[union-attr]
+                ).inc()
+                result = fallback()
+                if isinstance(result, LLMResponse):
+                    self._identity.set((self._fallback_provider.provider_name, result.model))  # type: ignore[union-attr]
+                return result
+            raise
+        except Exception:
+            app_metrics.provider_failures_total.labels(provider=self._provider.provider_name).inc()
             raise
 
     def _stream_with_breaker(
         self,
         start_fn: Callable[[], tuple[Generator[dict[str, Any]], dict[str, Any] | None]],
         fallback_stream: Callable[[], Generator[dict[str, Any]]] | None,
+        fallback_model: str | None = None,
     ) -> Generator[dict[str, Any]]:
         # Streaming can't be retried mid-token-stream: the retry/breaker call only
         # guards establishing the stream (forcing the first event to surface any
@@ -101,24 +134,37 @@ class ResilientProvider(BaseLLMProvider):
         except pybreaker.CircuitBreakerError:
             logger.warning("llm_circuit_open falling_back=%s", fallback_stream is not None)
             if fallback_stream is not None:
+                self._record_identity(self._fallback_provider, fallback_model)  # type: ignore[arg-type]
+                app_metrics.provider_fallbacks_total.labels(
+                    provider=self._fallback_provider.provider_name  # type: ignore[union-attr]
+                ).inc()
                 yield from fallback_stream()
                 return
+        except Exception:
+            app_metrics.provider_failures_total.labels(provider=self._provider.provider_name).inc()
             raise
         if first_event is not None:
             yield first_event
-        yield from gen
+        try:
+            yield from gen
+        except Exception:
+            app_metrics.provider_failures_total.labels(provider=self._provider.provider_name).inc()
+            raise
 
     def generate(self, prompt: str, context: list[str], *, model: str | None = None) -> LLMResponse:
+        self._record_identity(self._provider, model)
         fallback = None
         if self._fallback_provider is not None:
             fallback = partial(self._fallback_provider.generate, prompt, context, model=model)
         return self._call_with_breaker(
-            partial(self._provider.generate, prompt, context, model=model), fallback
+            partial(self._provider.generate, prompt, context, model=model), fallback, model
         )
 
     def stream(
         self, prompt: str, context: list[str], *, model: str | None = None
     ) -> Generator[dict[str, Any]]:
+        self._record_identity(self._provider, model)
+
         def start() -> tuple[Generator[dict[str, Any]], dict[str, Any] | None]:
             gen = self._provider.stream(prompt, context, model=model)
             first_event = next(gen, None)
@@ -127,19 +173,22 @@ class ResilientProvider(BaseLLMProvider):
         fallback_stream = None
         if self._fallback_provider is not None:
             fallback_stream = partial(self._fallback_provider.stream, prompt, context, model=model)
-        yield from self._stream_with_breaker(start, fallback_stream)
+        yield from self._stream_with_breaker(start, fallback_stream, model)
 
     def generate_from_prompt(self, prompt: str, *, model: str | None = None) -> LLMResponse:
+        self._record_identity(self._provider, model)
         fallback = None
         if self._fallback_provider is not None:
             fallback = partial(self._fallback_provider.generate_from_prompt, prompt, model=model)
         return self._call_with_breaker(
-            partial(self._provider.generate_from_prompt, prompt, model=model), fallback
+            partial(self._provider.generate_from_prompt, prompt, model=model), fallback, model
         )
 
     def stream_from_prompt(
         self, prompt: str, *, model: str | None = None
     ) -> Generator[dict[str, Any]]:
+        self._record_identity(self._provider, model)
+
         def start() -> tuple[Generator[dict[str, Any]], dict[str, Any] | None]:
             gen = self._provider.stream_from_prompt(prompt, model=model)
             first_event = next(gen, None)
@@ -150,7 +199,7 @@ class ResilientProvider(BaseLLMProvider):
             fallback_stream = partial(
                 self._fallback_provider.stream_from_prompt, prompt, model=model
             )
-        yield from self._stream_with_breaker(start, fallback_stream)
+        yield from self._stream_with_breaker(start, fallback_stream, model)
 
     def count_tokens(self, text: str) -> int:
         return self._provider.count_tokens(text)
