@@ -94,6 +94,19 @@ def test_loader_uses_anydoc_for_csv_and_detects_content_type(tmp_path: Path) -> 
     assert "alpha" in output
 
 
+def test_loader_detects_anydoc_content_with_misleading_extension(tmp_path: Path) -> None:
+    source = tmp_path / "source.docx"
+    doc = Document()
+    doc.add_heading("Detected heading", level=1)
+    doc.add_paragraph("Detected body")
+    doc.save(source)
+    path = tmp_path / "document.bin"
+    path.write_bytes(source.read_bytes())
+
+    assert detect_file_type(path) == "docx"
+    assert "Detected heading" in parse_file(path)
+
+
 def test_loader_parse_file_dispatches_pdf(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     # Avoid real PDF parsing in unit tests: we only want to test dispatch.
     monkeypatch.setattr(ingestion_loader, "parse_pdf", lambda _: "PDF ok")

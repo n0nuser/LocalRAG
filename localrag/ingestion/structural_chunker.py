@@ -4,6 +4,7 @@ import re
 
 from localrag.ingestion.contract import Chunk
 from localrag.ingestion.loader import (
+    ANYDOC_EXTENSIONS,
     CODE_EXTENSIONS,
     MARKDOWN_EXTENSIONS,
     MARKDOWN_PRODUCING_EXTENSIONS,
@@ -19,7 +20,11 @@ def chunk_document(text: str, file_type: str, settings: Settings) -> list[Chunk]
     if not cleaned_text:
         return []
 
-    if file_type in MARKDOWN_EXTENSIONS or file_type in MARKDOWN_PRODUCING_EXTENSIONS:
+    if (
+        file_type in MARKDOWN_EXTENSIONS
+        or file_type in MARKDOWN_PRODUCING_EXTENSIONS
+        or file_type in ANYDOC_EXTENSIONS
+    ):
         return _chunk_markdown(
             text=cleaned_text,
             min_chars=settings.chunk_min_chars,
