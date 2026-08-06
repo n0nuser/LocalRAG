@@ -494,3 +494,86 @@ def test_ingestion_service_rebuild_skips_unchanged_sources(tmp_path: Path) -> No
 
     assert result.skipped_unchanged_sources == [str(unchanged.resolve())]
     assert result.processed_sources == [str(changed.resolve())]
+
+
+def test_ingestion_service_reports_progress_per_file(tmp_path: Path) -> None:
+    """A caller-supplied callback must see each file as it completes.
+
+    Ingest is the slowest operation in the system and previously produced no
+    output until the whole run finished, making a healthy long run
+    indistinguishable from a hung one.
+    """
+    root = tmp_path / "docs"
+    root.mkdir()
+    first = root / "a.md"
+    first.write_text("hello world", encoding="utf-8")
+    second = root / "b.md"
+    second.write_text("second document", encoding="utf-8")
+
+    settings = Settings(
+        ingest_roots=[str(root)],
+        chunk_chars=5,
+        chunk_overlap_chars=0,
+        embedding_batch_size=2,
+    )
+    service = IngestionService(
+        settings=settings,
+        embedder=StubEmbedder(seen_texts_batches=[]),  # type: ignore[arg-type]
+        vector_store=StubVectorStore(  # type: ignore[arg-type]
+            deleted_sources=[], added=[], distinct_sources=None
+        ),
+    )
+
+    events: list[tuple[int, int, str, int | None]] = []
+    result = service.ingest_paths(
+        [first, second],
+        on_progress=lambda event: events.append(
+            (event.file_index, event.file_count, Path(event.source).name, event.chunks_added)
+        ),
+    )
+
+    assert result.files_processed == 2
+    assert [(index, count, name) for index, count, name, _ in events] == [
+        (1, 2, "a.md"),
+        (2, 2, "b.md"),
+    ]
+    assert all(chunks_added and chunks_added > 0 for *_, chunks_added in events)
+
+
+def test_ingestion_service_progress_reports_failures(tmp_path: Path) -> None:
+    """Failed files must be reported too, or a stalled run looks like a quiet one."""
+    root = tmp_path / "docs"
+    root.mkdir()
+    good = root / "a.md"
+    good.write_text("hello world", encoding="utf-8")
+    bad = root / "b.md"
+    bad.write_text("boom please", encoding="utf-8")
+
+    class FailingEmbedder(StubEmbedder):
+        """Fail one specific file, so the test does not depend on why it failed."""
+
+        def embed_texts(
+            self, texts: list[str], batch_size: int, *, model: str | None = None
+        ) -> list[list[float]]:
+            if any("boom" in text for text in texts):
+                message = "embedding backend unavailable"
+                raise RuntimeError(message)
+            return super().embed_texts(texts, batch_size, model=model)
+
+    settings = Settings(ingest_roots=[str(root)], chunk_chars=50, chunk_overlap_chars=0)
+    service = IngestionService(
+        settings=settings,
+        embedder=FailingEmbedder(seen_texts_batches=[]),  # type: ignore[arg-type]
+        vector_store=StubVectorStore(  # type: ignore[arg-type]
+            deleted_sources=[], added=[], distinct_sources=None
+        ),
+    )
+
+    events: list[tuple[str, str | None]] = []
+    service.ingest_paths(
+        [good, bad],
+        on_progress=lambda event: events.append((Path(event.source).name, event.error)),
+    )
+
+    assert ("a.md", None) in events
+    assert any(name == "b.md" and error is not None for name, error in events)
