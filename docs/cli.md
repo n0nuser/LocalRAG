@@ -42,6 +42,18 @@ Progress lines go to **stderr** and the final `status=` summary to **stdout**, s
 piping stdout stays parseable. Pass `--quiet` to suppress the per-file lines and
 print only the summary.
 
+The summary reports the run's outcome, and the exit code follows it:
+
+| `status=` | Meaning | Exit code |
+| --- | --- | --- |
+| `ok` | Every discovered file was processed or deliberately skipped | 0 |
+| `partial` | Some files ingested, at least one failed permanently | 1 |
+| `error` | Nothing was ingested | 1 |
+
+When any file fails, the summary gains `failed=<n>` and each failure is listed on
+stderr. A run that ingested nothing never reports success, so scripts and CI can
+rely on the exit code.
+
 Files that no parser can handle — and binary content in a file with a textual
 extension — are reported and skipped rather than being read as text. See
 [document-formats.md](document-formats.md).
