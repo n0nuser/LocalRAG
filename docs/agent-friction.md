@@ -31,7 +31,8 @@ deleted collection UUID and return a misleading 503.
 
 ## Integration Test Assumptions
 
-The Compose setup pulls `gemma3:4b`; integration tests must not request an
-unprovisioned model such as `qwen2.5:0.5b`. Run the full integration suite only
-after rebuilding the image and starting the stack, using
-`LOCALRAG_TEST_API_KEY` for protected endpoints.
+Integration tests must use the stack's configured default LLM model rather than
+hardcoding a model tag: local Compose setup and CI intentionally provision
+different models. Run the full integration suite only after rebuilding the
+image and starting the stack, using `LOCALRAG_TEST_API_KEY` for protected
+endpoints.

@@ -87,7 +87,7 @@ def test_query_json_endpoint(base_url: str, auth_enabled: bool, api_key: str) ->
         pytest.fail("LOCALRAG_TEST_API_KEY is required")
     response = httpx.post(
         f"{base_url}/query",
-        json={"question": "What is LocalRAG?", "model": "gemma3:4b"},
+        json={"question": "What is LocalRAG?"},
         headers=_headers(api_key),
         timeout=60.0,
     )
@@ -117,7 +117,7 @@ def test_query_stream_endpoint(base_url: str, auth_enabled: bool, api_key: str) 
         pytest.fail("LOCALRAG_TEST_API_KEY is required")
     response = httpx.post(
         f"{base_url}/query/stream",
-        json={"question": "Give me one sentence about LocalRAG.", "model": "gemma3:4b"},
+        json={"question": "Give me one sentence about LocalRAG."},
         headers=_headers(api_key),
         timeout=60.0,
     )
