@@ -6,19 +6,36 @@ from pathlib import Path
 import typer
 
 from localrag.application.container import get_ingestion_service
+from localrag.ingestion.service import IngestProgress
 
 logger = logging.getLogger(__name__)
 
 
-def ingest(path: str, recursive: bool | None = None) -> None:
+def _echo_progress(event: IngestProgress) -> None:
+    """Report one file's outcome to stderr, keeping stdout to the final summary."""
+    name = Path(event.source).name
+    if event.error is not None:
+        detail = f"failed: {event.error}"
+    elif event.chunks_added is None:
+        detail = "skipped (no chunks)"
+    else:
+        detail = f"{event.chunks_added} chunks"
+    typer.echo(f"[{event.file_index}/{event.file_count}] {name} — {detail}", err=True)
+
+
+def ingest(path: str, recursive: bool | None = None, *, quiet: bool = False) -> None:
     service = get_ingestion_service()
     target = Path(path)
     logger.info("cli_ingest path=%s recursive=%s is_dir=%s", path, recursive, target.is_dir())
 
+    # Ingest is the slowest operation here; without per-file output a healthy long
+    # run is indistinguishable from a hung one.
+    on_progress = None if quiet else _echo_progress
+
     if target.is_dir():
-        result = service.ingest_directory(path=target, recursive=recursive)
+        result = service.ingest_directory(path=target, recursive=recursive, on_progress=on_progress)
     else:
-        result = service.ingest_file(path=target)
+        result = service.ingest_file(path=target, on_progress=on_progress)
 
     logger.info(
         "cli_ingest_done files=%s chunks=%s",

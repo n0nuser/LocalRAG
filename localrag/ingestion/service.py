@@ -43,6 +43,25 @@ class IngestionResult:
 
 
 @dataclass
+class IngestProgress:
+    """One file's outcome, emitted as the batch runs.
+
+    Lets a transport report progress without the service knowing how — it stays
+    free of presentation concerns while long runs remain observable.
+    """
+
+    file_index: int
+    file_count: int
+    source: str
+    chunks_added: int | None = None
+    error: str | None = None
+
+
+# Called once per file as it finishes. Never raises into the ingest loop.
+ProgressCallback = Callable[[IngestProgress], None]
+
+
+@dataclass
 class RebuildCollectionResult:
     """Outcome of re-embedding every chunk for sources currently in the vector store."""
 
@@ -63,11 +82,20 @@ class IngestionService:
     embedding_cache: EmbeddingCache | None = None
     _write_lock: threading.RLock = field(default_factory=threading.RLock, init=False, repr=False)
 
-    def ingest_file(self, path: Path, embed_model: str | None = None) -> IngestionResult:
-        return self.ingest_paths([path], embed_model=embed_model)
+    def ingest_file(
+        self,
+        path: Path,
+        embed_model: str | None = None,
+        on_progress: ProgressCallback | None = None,
+    ) -> IngestionResult:
+        return self.ingest_paths([path], embed_model=embed_model, on_progress=on_progress)
 
     def ingest_directory(
-        self, path: Path, recursive: bool | None = None, embed_model: str | None = None
+        self,
+        path: Path,
+        recursive: bool | None = None,
+        embed_model: str | None = None,
+        on_progress: ProgressCallback | None = None,
     ) -> IngestionResult:
         should_recurse = self.settings.ingest_recursive if recursive is None else recursive
         files = list_supported_files(path, recursive=should_recurse)
@@ -77,7 +105,7 @@ class IngestionService:
             should_recurse,
             len(files),
         )
-        return self.ingest_paths(files, embed_model=embed_model)
+        return self.ingest_paths(files, embed_model=embed_model, on_progress=on_progress)
 
     def rebuild_collection(self, embed_model: str | None = None) -> RebuildCollectionResult:
         with self._write_lock:
@@ -118,18 +146,27 @@ class IngestionService:
                 hashes[source] = content_hash
         return hashes
 
-    def ingest_paths(self, paths: list[Path], embed_model: str | None = None) -> IngestionResult:
+    def ingest_paths(
+        self,
+        paths: list[Path],
+        embed_model: str | None = None,
+        on_progress: ProgressCallback | None = None,
+    ) -> IngestionResult:
         with self._write_lock:
-            return self._ingest_paths_locked(paths, embed_model)
+            return self._ingest_paths_locked(paths, embed_model, on_progress=on_progress)
 
     def _ingest_paths_locked(
-        self, paths: list[Path], embed_model: str | None = None
+        self,
+        paths: list[Path],
+        embed_model: str | None = None,
+        on_progress: ProgressCallback | None = None,
     ) -> IngestionResult:
         files_processed, total_chunks, processed_sources, retry_queue = self._ingest_batch(
             self._allowed_paths(paths),
             embed_model,
             log_fn=logger.warning,
             log_event="ingest_file_failed_will_retry",
+            on_progress=on_progress,
         )
 
         failed_sources: list[FailedSource] = []
@@ -168,13 +205,25 @@ class IngestionService:
         *,
         log_fn: Callable[..., None],
         log_event: str,
+        on_progress: ProgressCallback | None = None,
     ) -> tuple[int, int, list[str], list[tuple[Path, str]]]:
         files_processed = 0
         total_chunks = 0
         processed_sources: list[str] = []
         failed: list[tuple[Path, str]] = []
-        for resolved_path in paths:
+        file_count = len(paths)
+        for file_index, resolved_path in enumerate(paths, start=1):
             chunks_added, error = self._safe_ingest_one(resolved_path, embed_model)
+            self._report_progress(
+                on_progress,
+                IngestProgress(
+                    file_index=file_index,
+                    file_count=file_count,
+                    source=str(resolved_path),
+                    chunks_added=chunks_added,
+                    error=error,
+                ),
+            )
             if error is not None:
                 log_fn("%s path=%s error=%s", log_event, resolved_path, error)
                 failed.append((resolved_path, error))
@@ -185,6 +234,16 @@ class IngestionService:
             total_chunks += chunks_added
             processed_sources.append(str(resolved_path))
         return files_processed, total_chunks, processed_sources, failed
+
+    @staticmethod
+    def _report_progress(callback: ProgressCallback | None, event: IngestProgress) -> None:
+        """Emit progress without letting a reporting bug abort the ingest."""
+        if callback is None:
+            return
+        try:
+            callback(event)
+        except Exception:
+            logger.exception("ingest_progress_callback_failed source=%s", event.source)
 
     def _safe_ingest_one(
         self, resolved_path: Path, embed_model: str | None
