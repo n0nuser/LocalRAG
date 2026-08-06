@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import sqlite3
 import threading
@@ -15,11 +16,87 @@ from chromadb.api.models.Collection import Collection
 
 from localrag.embedding.base import EmbeddingIncompatibilityError, EmbeddingProvider
 
+try:  # pragma: no cover - exercised implicitly; absent only on non-Unix hosts.
+    import grp
+    import pwd
+except ImportError:  # pragma: no cover - Windows has no pwd/grp.
+    grp = None  # type: ignore[assignment]
+    pwd = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 # Used only when the client cannot report its own cap. Below every Chroma limit
 # seen in practice, so a wrong guess costs an extra round trip, not a failure.
 _DEFAULT_MAX_BATCH_SIZE = 1000
+
+
+class PersistPathError(RuntimeError):
+    """Raised when the Chroma persist path cannot be opened for writing."""
+
+
+def _describe_owner(path: Path) -> str:
+    """Best-effort ``user:group`` for a path, for the unwritable-path message."""
+    if pwd is None or grp is None:  # pragma: no cover - non-Unix host
+        return "unknown"
+    try:
+        stat = path.stat()
+    except OSError:  # pragma: no cover - path vanished between failure and report
+        return "unknown"
+    try:
+        user = pwd.getpwuid(stat.st_uid).pw_name
+    except KeyError:
+        user = str(stat.st_uid)
+    try:
+        group = grp.getgrgid(stat.st_gid).gr_name
+    except KeyError:
+        group = str(stat.st_gid)
+    return f"{user}:{group}"
+
+
+def _current_user() -> str:
+    """Best-effort ``user:group`` for the running process."""
+    if pwd is None or grp is None:  # pragma: no cover - non-Unix host
+        return "unknown"
+    try:
+        return f"{pwd.getpwuid(os.getuid()).pw_name}:{grp.getgrgid(os.getgid()).gr_name}"
+    except (OSError, KeyError):  # pragma: no cover - unmapped uid/gid
+        return "unknown"
+
+
+def _unwritable_message(path: Path) -> str:
+    """Explain an unwritable persist path and name the remedy that fits its cause."""
+    owner = _describe_owner(path)
+    current = _current_user()
+    # Another user's directory needs chown; our own needs chmod. Suggesting the
+    # wrong one sends the reader down a dead end, so branch on the actual cause.
+    remedy = (
+        f"Fix ownership with: sudo chown -R $(id -un):$(id -gn) {path}"
+        if owner != current
+        else f"Restore write permission with: chmod -R u+w {path}"
+    )
+    return (
+        f"Chroma persist path is not writable: {path} "
+        f"(owned by {owner}, running as {current}). "
+        f"{remedy} — or point CHROMA_PERSIST_PATH at a directory you own."
+    )
+
+
+def _connect(persist_path: str) -> chromadb.ClientAPI:
+    """Open a Chroma client, translating permission failures into an actionable error.
+
+    Chroma surfaces an unwritable persist directory as SQLite's bare "attempt to
+    write a readonly database", which names neither the path nor the cause. The
+    usual cause is a persist directory owned by another user (root-owned data
+    left behind by a container or a sudo-run command), so report the path, its
+    owner, and the fix instead of the raw SQLite text.
+    """
+    try:
+        return chromadb.PersistentClient(path=persist_path)
+    except Exception as exc:
+        if "readonly database" not in str(exc):
+            raise
+        message = _unwritable_message(Path(persist_path).resolve())
+        raise PersistPathError(message) from exc
 
 
 @dataclass
@@ -33,8 +110,12 @@ class VectorStore:
 
     @classmethod
     def create(cls, persist_path: str, collection_name: str) -> VectorStore:
-        Path(persist_path).mkdir(parents=True, exist_ok=True)
-        client = chromadb.PersistentClient(path=persist_path)
+        try:
+            Path(persist_path).mkdir(parents=True, exist_ok=True)
+        except PermissionError as exc:
+            message = _unwritable_message(Path(persist_path).parent)
+            raise PersistPathError(message) from exc
+        client = _connect(persist_path)
         collection = client.get_or_create_collection(
             name=collection_name,
             metadata={"hnsw:space": "cosine"},
@@ -49,7 +130,7 @@ class VectorStore:
     @classmethod
     def open(cls, persist_path: str, collection_name: str) -> VectorStore:
         """Open an existing collection without creating or mutating it."""
-        client = chromadb.PersistentClient(path=persist_path)
+        client = _connect(persist_path)
         return cls(
             client=client,
             collection=client.get_collection(name=collection_name),

@@ -38,6 +38,9 @@ uv run localrag query "What are the key topics in these documents?"
 
 That's the whole loop — no cloud API keys needed for local Ollama mode.
 Ollama install details, including running it in Docker, are in [docs/ollama.md](docs/ollama.md).
+Contributors can run the same commands through [Task](https://taskfile.dev/) (`task install`, `task ingest`, `task query`);
+installation and the full prerequisite list are in
+[CONTRIBUTING.md](CONTRIBUTING.md#prerequisites-and-installation).
 
 ### Run the API
 
@@ -60,6 +63,31 @@ That service exits 0 when it finishes; that is expected, not a failure.
 - API: `http://localhost:8000/docs`
 - MCP: `http://localhost:8002/mcp`
 - Grafana: `http://localhost:3000` (admin / admin)
+
+## Troubleshooting
+
+**`Chroma persist path is not writable`** — the directory at `CHROMA_PERSIST_PATH`
+(default `./data/chroma`) is owned by another user or has lost write permission.
+This usually means the data was created by a root-owned process — a container
+bind mount, or a `localrag` command run under `sudo`. The error names the path,
+its owner, and the fix; the common one is:
+
+```bash
+sudo chown -R $(id -un):$(id -gn) ./data
+```
+
+The same failure makes parts of the unit suite fail, since those tests write to
+the configured persist path. Fix ownership before trusting a red run.
+
+**`Unable to create retriever plugin 'builtin'`** — usually the error above,
+wrapped by the plugin registry. Read the end of the traceback for the real
+cause.
+
+**`task` is not installed** — every task is a thin wrapper over a `uv run …`
+command, listed under
+[Development without Task](CONTRIBUTING.md#development-without-task). Install
+instructions are in
+[CONTRIBUTING.md](CONTRIBUTING.md#prerequisites-and-installation).
 - Prometheus: `http://localhost:9090`
 
 ## How it works
