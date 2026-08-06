@@ -17,6 +17,8 @@ class FakeCollection:
     query_calls: list[dict[str, object]]
     query_result: dict[str, object]
     get_return: dict[str, object] = field(default_factory=dict)
+    # Mirrors Chroma's own cap so the fake refuses what the real backend refuses.
+    max_batch_size: int | None = None
 
     def get(
         self,
@@ -35,6 +37,11 @@ class FakeCollection:
         embeddings: list[list[float]],
         metadatas: list[dict[str, object]],
     ) -> None:
+        if self.max_batch_size is not None and len(ids) > self.max_batch_size:
+            message = (
+                f"Batch size of {len(ids)} is greater than max batch size of {self.max_batch_size}"
+            )
+            raise ValueError(message)
         self.upsert_calls.append(
             {
                 "ids": ids,
@@ -73,6 +80,13 @@ class FakeCollection:
 class FakeClient:
     collections: list[object]
     deleted_collections: list[str]
+    max_batch_size: int | None = None
+
+    def get_max_batch_size(self) -> int:
+        if self.max_batch_size is None:
+            message = "max batch size not configured for this fake"
+            raise AssertionError(message)
+        return self.max_batch_size
 
     def list_collections(self) -> list[object]:
         return self.collections
@@ -136,6 +150,40 @@ def test_vector_store_add_chunks_rejects_empty_embeddings() -> None:
             embeddings=[[]],
             metadatas=[{"x": 1}],
         )
+
+
+def test_vector_store_splits_upserts_above_the_backend_batch_limit() -> None:
+    """A document larger than the backend limit must be written in batches.
+
+    Chroma rejects an oversized batch outright, which previously failed the whole
+    file after all of its embeddings had already been computed.
+    """
+    max_batch = 10
+    total = 25
+
+    collection = FakeCollection(
+        upsert_calls=[],
+        delete_calls=[],
+        query_calls=[],
+        query_result={},
+        get_return={},
+        max_batch_size=max_batch,
+    )
+    client = FakeClient(collections=[], deleted_collections=[], max_batch_size=max_batch)
+    store = VectorStore(client=client, collection=collection)  # type: ignore[arg-type]
+
+    store.add_chunks(
+        source="big.epub",
+        chunks=[f"chunk-{index}" for index in range(total)],
+        embeddings=[[float(index)] for index in range(total)],
+        metadatas=[{"chunk_index": index} for index in range(total)],
+    )
+
+    assert len(collection.upsert_calls) == 3
+    assert [len(call["ids"]) for call in collection.upsert_calls] == [10, 10, 5]  # type: ignore[arg-type]
+
+    written = [chunk for call in collection.upsert_calls for chunk in call["documents"]]  # type: ignore[union-attr]
+    assert written == [f"chunk-{index}" for index in range(total)]
 
 
 def test_vector_store_upsert_delete_query_and_list_collections() -> None:
