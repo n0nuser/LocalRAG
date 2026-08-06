@@ -48,7 +48,7 @@ Non-obvious Python constraints are **not** duplicated here. Read them before edi
 | --- | --- |
 | `localrag/application/` | Transport-neutral use cases, DTOs, errors, jobs, repositories, and runtime container |
 | `localrag/api/` | FastAPI HTTP adapter — see the DDD split below |
-| `localrag/mcp/` | MCP JSON-RPC adapter over stdio and HTTP |
+| `localrag/mcp/` | MCP adapter (FastMCP SDK) over stdio and HTTP |
 | `localrag/cli/` | Typer app (`localrag.cli.app:app`); one module per command in `cli/commands/` |
 | `localrag/ingestion/` | Loader, parsers (`anydoc`, `pdf`, `docx`, `markdown`, `code`, `text`), chunking (`contract`, `structural_chunker`, `chunker`, `recursive_chunker`), embedder, `service` |
 | `localrag/rag/` | `engine`, `retriever`, `bm25_index`, `reranker`, `adaptive`, `compressor`, `hyde`, `query_rewrite`, `query_cache`, `prompt` |
@@ -77,7 +77,7 @@ The FastAPI layer follows a **light domain-driven** split:
 | **Dependency injection** | `localrag/api/dependencies.py` | Shared service instances, `require_api_key`. |
 | **Background jobs** | `localrag/application/jobs.py` | Async ingest job registry behind `ingest_directory_async` / `get_ingest_job`. |
 | **Middleware** | `localrag/api/middleware.py` | Request ID, logging. |
-| **MCP adapter** | `localrag/mcp/` | JSON-RPC tool schemas and transport adapters over the same application use cases. |
+| **MCP adapter** | `localrag/mcp/` | FastMCP tool registration and transport adapters over the same application use cases. |
 | **Cross-cutting API errors** | `localrag/api/exceptions.py` | `HttpMappedError` subclasses (`IngestApiError`, `RagApiError`) mapped to HTTP in `localrag/api/main.py`. |
 
 Routers: `health`, `ingest`, `query`, `collections`, `agent`, `metrics`.
