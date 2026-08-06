@@ -12,6 +12,96 @@ alwaysApply: false
 - Read whole test files before editing to spot patterns, reusable fixtures, and avoid duplication.
 - Each test verifies one specific behavior with a descriptive name.
 
+## Where each kind of test runs
+
+**Unit tests run locally. End-to-end tests run in Docker. Always.**
+
+| Kind | Where | Command |
+| --- | --- | --- |
+| Unit / non-service (`-m "not integration"`) | Local, via `uv` | `task test` |
+| Integration and end-to-end (`-m integration`) | The Compose stack | `task test-integration` |
+
+Never claim an end-to-end path works based on a local run. The local tree and
+the running container are different artifacts, and the differences are exactly
+where the bugs live.
+
+### Rebuild the image before trusting an end-to-end result
+
+A running Compose stack keeps serving the image it started with. Source changes
+— including new dependencies — are **not** in a container that has been up since
+before those changes landed. A stale container has produced a *successful-looking*
+ingest of binary garbage because the parser it shipped with predated the format's
+support.
+
+Before any end-to-end run that is meant to prove something:
+
+```bash
+docker compose build localrag-api && docker compose up -d localrag-api
+```
+
+If behavior contradicts the source you are reading, diff the container's copy
+against the working tree before theorizing:
+
+```bash
+docker exec <container> sh -c 'cat /app/localrag/<path>' | diff - localrag/<path>
+```
+
+### Constraints inside the API container
+
+The runtime image is hardened and minimal. Do not plan a test around running
+pytest inside it:
+
+- **Rootfs is read-only** — `docker cp` fails outright. Pipe files in instead:
+  `docker exec -i <container> sh -c 'cat > /tmp/x.py' < x.py`
+- **No pytest, no pip** — the image ships runtime dependencies only.
+- **Writable paths are limited** — `/tmp` is a tmpfs mount; `$HOME/.cache` is not
+  writable, so anything that lazily downloads a model at call time will fail.
+
+To run the real pytest file against real ingested data, copy the store out and
+point `CHROMA_PERSIST_PATH` at the copy:
+
+```bash
+docker exec <container> tar -cf - -C /app/data chroma | tar -xf - -C "$SCRATCH"
+CHROMA_PERSIST_PATH="$SCRATCH/chroma" uv run pytest -m integration
+```
+
+Note that `/app/data` is a Docker **volume**, not the repo's `data/` directory —
+that host path can be stale and is not what the container reads.
+
+## Testing retrieval: use the app's retriever, never `query_texts`
+
+Calling `collection.query(query_texts=[...])` makes Chroma embed the query with
+**its own default model**, which is not the model the corpus was built with. Such
+a test exercises a pipeline that does not exist in production, and it fails in the
+container anyway because the model cache is read-only.
+
+Drive retrieval through `get_retriever()` so queries embed via the configured
+provider and go through the real fusion and rerank path:
+
+```python
+set_current_settings(load_settings().with_overrides(chroma_collection_name=NAME))
+chunks = get_retriever().retrieve(question, n_results=5)
+```
+
+Assert on returned text and metadata. Do not assert on raw Chroma distances —
+the retriever returns results already ranked, so distance ordering is not its
+contract.
+
+## Faked boundaries hide real contract breaks
+
+The unit suite fakes the vector store, so **no unit test exercises a real Chroma
+call**. Invalid arguments, backend limits, and embedding quality are all
+structurally invisible to it — a full green unit run is not evidence that the
+storage or retrieval path works.
+
+When a fake stands in for an external client, give it the **real signature** and
+make it reject what the real backend rejects. A fake written as
+`def get(self, **_): ...` silently accepts arguments Chroma errors on, which is
+precisely how an invalid `include` value shipped while every test passed.
+
+Anything that can only fail against the real backend — batch limits, `include`
+contracts, parser routing, embedding quality — needs an `integration` test.
+
 ## Network & Determinism
 
 - No outbound HTTP — autouse fixture in `tests/conftest.py` blocks network. Use `@pytest.mark.no_requests` only when explicitly needed.

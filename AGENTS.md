@@ -21,6 +21,8 @@ Gates enforced by [`.pre-commit-config.yaml`](.pre-commit-config.yaml): ruff (li
 
 Tests marked `integration` require a running stack and are excluded from the default run.
 
+**Unit tests run locally (`task test`); end-to-end tests run in Docker (`task test-integration`) — always.** Rebuild the image before trusting an end-to-end result: a stack that has been up since before your changes is still serving the old artifact, dependencies included. The unit suite fakes the vector store, so a green run is **not** evidence that storage or retrieval works — anything that can only fail against real Chroma (batch limits, `include` contracts, parser routing, embedding quality) needs an `integration` test. Read [`.cursor/rules/testing.mdc`](.cursor/rules/testing.mdc) before writing tests: it covers the container's constraints (read-only rootfs, no pytest/pip) and why retrieval tests must go through `get_retriever()` rather than Chroma's `query_texts`.
+
 ## Trunk-based Git (read this before branching)
 
 `main` is the only long-lived branch. **Do not** keep a personal or team **`develop`** for routine work—it slows integration and fights trunk-based development. Branch short-lived **`feat/…`** or **`fix/…`** from an **updated `main`**, open PRs **to `main`**, and integrate with **`git rebase origin/main`** (never merge commits for that). On GitHub use **Rebase** or **Squash** merge only. Full policy: [`CONTRIBUTING.md`](CONTRIBUTING.md).
