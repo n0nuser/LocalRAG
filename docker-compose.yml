@@ -21,7 +21,9 @@ services:
     volumes:
       - chroma_data:/chroma/.chroma/index
     healthcheck:
-      test: ["CMD-SHELL", "echo > /dev/tcp/localhost/8000"]
+      # /dev/tcp is a bash builtin; the image's /bin/sh is dash and lacks it, so
+      # CMD-SHELL here would fail forever regardless of Chroma's actual state.
+      test: ["CMD", "bash", "-c", "echo > /dev/tcp/localhost/8000"]
       interval: 10s
       timeout: 5s
       retries: 5

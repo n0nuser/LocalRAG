@@ -1,5 +1,25 @@
 # Deployment
 
+## GPU offload for Ollama
+
+`docker-compose.yml` reserves no GPU, so Ollama runs on CPU by default. Embedding
+then dominates ingest: roughly 5 chunks/second, which turns a directory of large
+PDFs into minutes of work. This is the default because a hard GPU reservation
+fails to start on hosts without one.
+
+On a host with an NVIDIA GPU and the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
+opt in with [`docker-compose.gpu.yml`](../docker-compose.gpu.yml):
+
+```bash
+docker info | grep -i runtimes          # expect "nvidia" in the list
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+docker compose logs ollama | grep -iE "library=|offloaded"
+```
+
+`library=cpu` or `offloaded 0/N layers` means the GPU was not picked up and the
+stack is still embedding on CPU.
+
 ## Compose security boundary
 
 The default `docker-compose.yml` is a local-trust deployment: every published

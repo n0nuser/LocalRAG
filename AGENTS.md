@@ -6,7 +6,7 @@ LocalRAG keeps **human-oriented** docs in the [README](README.md) and **machine-
 
 ## Toolchain
 
-Python **3.13+**, dependencies and commands through **uv**. [`Taskfile.yml`](Taskfile.yml) is the portable wrapper contract (`task install`, `task test`, `task lint`, `task format`, `task ingest`, `task benchmark`, `task docker-up`, …); `task --list` enumerates it.
+Python **3.13+**, dependencies and commands through **uv**. [`Taskfile.yml`](Taskfile.yml) is the portable wrapper contract (`task install`, `task test`, `task lint`, `task format`, `task ingest`, `task benchmark`, `task docker-up`, …); `task --list` enumerates it. Installing Task, uv, Docker, and Ollama is covered in [CONTRIBUTING](CONTRIBUTING.md#prerequisites-and-installation); every task also has a plain `uv run …` equivalent, so Task is optional.
 
 ```bash
 uv sync --locked

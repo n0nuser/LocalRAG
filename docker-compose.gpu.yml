@@ -1,0 +1,26 @@
+# NVIDIA GPU override for Ollama — opt in, never merged automatically.
+#
+# Without this file Ollama runs on CPU. Embedding then dominates ingest time:
+# roughly 5 chunks/second, so a few hundred-page PDFs take minutes. Offloading
+# to a GPU is the single biggest ingest speedup available.
+#
+# Requires the NVIDIA Container Toolkit on the host. Verify with:
+#   docker info | grep -i runtimes      # expect "nvidia" in the list
+#
+# Usage (the base file alone stays CPU-only for contributors without a GPU):
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# or, through the Taskfile:
+#   task docker-up COMPOSE_OVERRIDE=docker-compose.gpu.yml
+#
+# Confirm the offload actually happened — "library=cpu" or "offloaded 0/N
+# layers" means the GPU was not picked up:
+#   docker compose logs ollama | grep -iE "library=|offloaded"
+services:
+  ollama:
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
