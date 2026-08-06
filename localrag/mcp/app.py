@@ -5,8 +5,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
+from starlette.applications import Starlette
 
 from localrag.application.container import (
     get_collection_repository,
@@ -15,12 +14,12 @@ from localrag.application.container import (
     get_retriever,
 )
 from localrag.application.runtime import get_embedder
-from localrag.mcp.server import McpServer
+from localrag.mcp.server import build_mcp_server
 from localrag.settings import get_settings, load_settings, set_current_settings
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_app: Starlette) -> AsyncIterator[None]:
     set_current_settings(load_settings(os.environ.get("LOCALRAG_CONFIG")))
     try:
         yield
@@ -31,31 +30,29 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             get_retriever().close()
 
 
-app = FastAPI(title="LocalRAG MCP", version="0.1.0", lifespan=lifespan)
+def _build_app() -> Any:
+    """Build the FastMCP ASGI app.
 
+    ``get_engine`` / ``get_ingestion_service`` / ``get_collection_repository``
+    are passed as factories rather than called here: they are ``lru_cache``d,
+    so the first real tool call builds the embedder/vector store/retriever
+    once and every later call (and every ``tools/list``/``initialize``) is
+    free. This keeps startup cheap, matching the previous hand-rolled adapter's
+    behavior of only loading dependencies for ``tools/call``.
 
-def _server(load_dependencies: bool) -> McpServer:
-    if not load_dependencies:
-        return McpServer(settings=get_settings())
-    return McpServer(
+    ``FastMCP.http_app()`` has no ``lifespan=`` parameter of its own, so the
+    settings-loading/dependency-teardown lifespan is passed into
+    ``build_mcp_server`` and forwarded to the ``FastMCP`` constructor instead,
+    which is what ``http_app()``'s returned ASGI app actually runs.
+    """
+    mcp = build_mcp_server(
         settings=get_settings(),
-        engine=get_engine(),
-        ingestion_service=get_ingestion_service(),
-        collection_repo=get_collection_repository(),
+        engine_factory=get_engine,
+        ingestion_service_factory=get_ingestion_service,
+        collection_repo_factory=get_collection_repository,
+        lifespan=lifespan,
     )
+    return mcp.http_app(path="/mcp", stateless_http=True)
 
 
-@app.post("/mcp")
-async def mcp(request: Request) -> JSONResponse:
-    message = await request.json()
-    api_key = request.headers.get("X-API-Key")
-    response = _server(message.get("method") == "tools/call").handle_message(message, api_key)
-    if response is None:
-        return JSONResponse(content={})
-    return JSONResponse(content=response)
-
-
-def handle_stdio_message(
-    message: dict[str, Any], api_key: str | None = None
-) -> dict[str, Any] | None:
-    return _server(message.get("method") == "tools/call").handle_message(message, api_key)
+app = _build_app()
