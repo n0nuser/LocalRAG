@@ -15,9 +15,10 @@ import json
 import os
 import re
 import warnings
+from collections.abc import Hashable
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import yaml
 from pydantic import model_validator
@@ -1115,11 +1116,48 @@ class Settings(BaseSettings):
         return flat
 
 
+class _FrozenOverride(NamedTuple):
+    """Hashable stand-in for a container override value inside the cache key.
+
+    The ``kind`` tag keeps the encoding injective: without it a list of pairs
+    and a mapping with the same pairs would collapse onto one cache key, so a
+    later lookup could return settings resolved from a different input.
+    """
+
+    kind: str
+    items: tuple[Any, ...]
+
+
+def _freeze_override(value: Any) -> Any:
+    """Make an override value hashable so it can take part in an ``lru_cache`` key."""
+    if isinstance(value, dict):
+        frozen = ((key, _freeze_override(item)) for key, item in value.items())
+        return _FrozenOverride("dict", tuple(sorted(frozen, key=lambda pair: str(pair[0]))))
+    if isinstance(value, list):
+        return _FrozenOverride("list", tuple(_freeze_override(item) for item in value))
+    if isinstance(value, tuple):
+        return _FrozenOverride("tuple", tuple(_freeze_override(item) for item in value))
+    if not isinstance(value, Hashable):
+        raise ConfigError(f"Unsupported CLI override value type: {type(value).__name__}")  # noqa: EM102
+    return value
+
+
+def _thaw_override(value: Any) -> Any:
+    """Restore a frozen override to the real ``list``/``dict`` pydantic expects."""
+    if not isinstance(value, _FrozenOverride):
+        return value
+    if value.kind == "dict":
+        return {key: _thaw_override(item) for key, item in value.items}
+    if value.kind == "tuple":
+        return tuple(_thaw_override(item) for item in value.items)
+    return [_thaw_override(item) for item in value.items]
+
+
 @lru_cache(maxsize=32)
 def _cached_settings(config_path: str | None, overrides: tuple[tuple[str, Any], ...]) -> Settings:
     token = _yaml_path.set(Path(config_path).expanduser().resolve() if config_path else None)
     try:
-        return Settings(**dict(overrides))
+        return Settings(**{field: _thaw_override(value) for field, value in overrides})
     finally:
         _yaml_path.reset(token)
 
@@ -1133,11 +1171,11 @@ def load_settings(
     for retired in sorted(set(supplied) & _RETIRED_FLAGS):
         _warn_retired_flag(retired)
         supplied.pop(retired)
-    overrides = tuple(sorted(supplied.items()))
     unknown = set(supplied) - set(FLAT_TO_PATH) - UNGROUPED_FIELDS - set(Settings.model_fields)
     if unknown:
         field = sorted(unknown)[0]
         raise ConfigError(f"Unknown CLI override: {field}")  # noqa: EM102
+    overrides = tuple((field, _freeze_override(supplied[field])) for field in sorted(supplied))
     return _cached_settings(str(path) if path else None, overrides)
 
 
