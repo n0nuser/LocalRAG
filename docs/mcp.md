@@ -51,7 +51,9 @@ When `API_KEY` is configured, set `MCP_API_KEY` for the stdio process — stdio 
 
 Both transports enforce the same API key contract as the REST API, implemented as a FastMCP `Middleware` (`ApiKeyMiddleware` in `localrag/mcp/server.py`) rather than one of FastMCP's built-in JWT/OAuth `auth=` providers, since LocalRAG uses a single static key, not per-user tokens.
 HTTP reads `X-API-Key` via `fastmcp.server.dependencies.get_http_headers()`; stdio reads `MCP_API_KEY` from the environment because no HTTP headers exist there.
-A mismatched or missing key surfaces to the client as a tool-call error (`fastmcp.exceptions.ToolError`), not a transport-level failure — the JSON-RPC response has `result.isError: true` with the message `"Invalid or missing API key."`.
+The check runs on `on_request`, so it gates every method — `initialize` and `tools/list` as well as `tools/call`. This matches the hand-rolled adapter it replaced, which rejected unauthenticated callers on every method, and keeps the tool list from disclosing deployment surface to an unauthenticated caller.
+
+A mismatched or missing key is therefore rejected at the protocol level, not as a tool result: the JSON-RPC response carries an `error` object with the message `"Invalid or missing API key."`. Because `initialize` is gated too, an unauthenticated MCP client fails while opening the session rather than on its first tool call.
 
 ## Wire surface
 
