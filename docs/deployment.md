@@ -3,7 +3,7 @@
 ## Compose security boundary
 
 The default `docker-compose.yml` is a local-trust deployment: every published
-port is bound to `127.0.0.1`, API access requires `API_KEY`, and Grafana requires
+port is bound to `127.0.0.1`, API and MCP access require `API_KEY`, and Grafana requires
 `GRAFANA_ADMIN_PASSWORD`. The observability services are opt-in via
 `--profile observability`. Do not remove the secret interpolation or publish
 these ports through an untrusted host interface without adding an authenticated
@@ -29,7 +29,7 @@ jobs and diverge from the active vector-store state.
 
 ## Persistence contract
 
-`localrag-api` stores Chroma under `/app/data/chroma` on the `localrag-data`
+`localrag-api` and `localrag-mcp` store and read Chroma under `/app/data/chroma` on the `localrag-data`
 PVC. The claim is `ReadWriteOnce` and the deployment has exactly one replica.
 This is durable across pod replacement on a node, but is not multi-node HA,
 multi-replica storage, or a backup policy. Back up the PVC before upgrades and
@@ -71,6 +71,9 @@ host bind mount can be owned by a different UID and make the unprivileged API
 unable to write Chroma data. Use `docker volume inspect localrag_localrag_data`
 for the host-managed storage location, or use the CLI outside Compose when a
 specific host directory must be the source of truth.
+The MCP container is a separate process using the same image and data volume.
+It listens on port `8002` and exposes `/mcp`; it does not replace the REST API or its health probes.
+
 Requests and limits in `deployment.yaml` are intentionally conservative
 starting values; tune them from observed Ollama/model memory and CPU usage,
 without removing requests or limits.

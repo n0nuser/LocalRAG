@@ -5,7 +5,7 @@ import logging
 
 import typer
 
-from localrag.api.dependencies import get_ingestion_service, get_vector_store
+from localrag.application.container import get_ingestion_service, get_vector_store
 
 logger = logging.getLogger(__name__)
 app = typer.Typer(help="Collection operations")

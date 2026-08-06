@@ -46,7 +46,9 @@ Non-obvious Python constraints are **not** duplicated here. Read them before edi
 
 | Package | Role |
 | --- | --- |
-| `localrag/api/` | FastAPI layer — see the DDD split below |
+| `localrag/application/` | Transport-neutral use cases, DTOs, errors, jobs, repositories, and runtime container |
+| `localrag/api/` | FastAPI HTTP adapter — see the DDD split below |
+| `localrag/mcp/` | MCP JSON-RPC adapter over stdio and HTTP |
 | `localrag/cli/` | Typer app (`localrag.cli.app:app`); one module per command in `cli/commands/` |
 | `localrag/ingestion/` | Loader, parsers (`anydoc`, `pdf`, `docx`, `markdown`, `code`, `text`), chunking (`contract`, `structural_chunker`, `chunker`, `recursive_chunker`), embedder, `service` |
 | `localrag/rag/` | `engine`, `retriever`, `bm25_index`, `reranker`, `adaptive`, `compressor`, `hyde`, `query_rewrite`, `query_cache`, `prompt` |
@@ -69,12 +71,13 @@ The FastAPI layer follows a **light domain-driven** split:
 | Piece | Location | Role |
 | --- | --- | --- |
 | **Schemas** (request/response DTOs, OpenAPI) | `localrag/api/schemas.py` | Pydantic models and path type aliases only—no business rules. |
-| **Application services** | `localrag/api/service.py` | Use cases: orchestration, validation, logging, mapping to/from schemas. |
-| **Repositories** | `localrag/api/repository.py` | Persistence boundaries for the API (e.g. Chroma collections via `VectorStore`). |
-| **HTTP adapters** | `localrag/api/routers/*.py` | Routes: dependencies, call services, return responses. **No** Pydantic models or domain logic in router modules. |
+| **Application services** | `localrag/application/` | Transport-neutral use cases: orchestration, validation, logging, and domain errors. |
+| **Repositories** | `localrag/application/repository.py` | Persistence boundaries for application use cases (e.g. Chroma collections via `VectorStore`). |
+| **HTTP adapters** | `localrag/api/routers/*.py`, `localrag/api/service.py` | Routes and schema/error mapping: dependencies, call application services, return HTTP responses. **No** domain logic in adapter modules. |
 | **Dependency injection** | `localrag/api/dependencies.py` | Shared service instances, `require_api_key`. |
-| **Background jobs** | `localrag/api/jobs.py` | Async ingest job registry behind `ingest_directory_async` / `get_ingest_job`. |
+| **Background jobs** | `localrag/application/jobs.py` | Async ingest job registry behind `ingest_directory_async` / `get_ingest_job`. |
 | **Middleware** | `localrag/api/middleware.py` | Request ID, logging. |
+| **MCP adapter** | `localrag/mcp/` | JSON-RPC tool schemas and transport adapters over the same application use cases. |
 | **Cross-cutting API errors** | `localrag/api/exceptions.py` | `HttpMappedError` subclasses (`IngestApiError`, `RagApiError`) mapped to HTTP in `localrag/api/main.py`. |
 
 Routers: `health`, `ingest`, `query`, `collections`, `agent`, `metrics`.

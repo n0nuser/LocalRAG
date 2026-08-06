@@ -10,7 +10,6 @@ from localrag.api.dependencies import (
     get_query_cache,
     require_api_key,
 )
-from localrag.api.jobs import JobRegistry
 from localrag.api.schemas import (
     IngestDirectoryRequest,
     IngestDirectoryResponse,
@@ -19,6 +18,7 @@ from localrag.api.schemas import (
     IngestJobResponse,
     IngestJobStatusResponse,
 )
+from localrag.application.jobs import JobRegistry
 from localrag.ingestion.service import IngestionService
 from localrag.rag.query_cache import QueryCache
 from localrag.settings import Settings

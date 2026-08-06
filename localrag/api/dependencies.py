@@ -6,8 +6,8 @@ from http import HTTPStatus
 from fastapi import Depends, HTTPException, Security
 from fastapi.security import APIKeyHeader
 
-from localrag.api.jobs import JobRegistry
-from localrag.api.repository import ChromaCollectionRepository
+from localrag.application.jobs import JobRegistry
+from localrag.application.repository import ChromaCollectionRepository
 from localrag.embedding.base import EmbeddingProvider
 from localrag.embedding.cache import EmbeddingCache
 from localrag.embedding.factory import build_embedding_provider

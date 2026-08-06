@@ -12,7 +12,7 @@ endpoint, and `/health` versus dependency-aware `/ready` probes. The HPA is
 constrained to one replica because Chroma and the in-process job registry are
 not shared across pods. See [docs/deployment.md](deployment.md).
 
-The **HTTP API** uses a basic DDD-style split: **schemas** (`localrag/api/schemas.py`) hold request/response OpenAPI models only; **application services** (`localrag/api/service.py`) implement use cases (liveness/readiness, ingest HTTP rules, query SSE mapping, collection operations); **repositories** (`localrag/api/repository.py`) isolate persistence used by those services (Chroma collections wrapping `VectorStore`); **routers** (`localrag/api/routers/*.py`) stay thin adapters. `GET /health` is dependency-free liveness; `GET /ready` checks required Ollama and Chroma dependencies and returns `503` when unavailable. Neither unauthenticated response exposes storage paths or collection names. `HttpMappedError` subclasses (`IngestApiError`, `RagApiError`) and the handler in `main.py` translate validation and RAG failures to HTTP without putting that logic in routers.
+The **application layer** (`localrag/application/`) owns transport-neutral DTOs, use cases, errors, jobs, repositories, and runtime factories. The **HTTP API** keeps OpenAPI schemas (`localrag/api/schemas.py`), HTTP error mapping, and thin routers; `localrag/api/service.py` only converts HTTP schemas to application DTOs and responses. The CLI and MCP adapter call the application layer directly. `GET /health` is dependency-free liveness; `GET /ready` checks required Ollama and Chroma dependencies and returns `503` when unavailable. Neither unauthenticated response exposes storage paths or collection names.
 
 ## Data flow
 
@@ -21,6 +21,8 @@ flowchart LR
   subgraph inputs
     CLI[CLI Typer]
     API[FastAPI]
+    MCP[MCP stdio / HTTP]
+    APP[Application use cases]
   end
   subgraph ingestion
     L[loader + parsers]
@@ -38,8 +40,10 @@ flowchart LR
     P[prompt]
     LLM[Ollama chat HTTP]
   end
-  CLI --> L
-  API --> L
+  CLI --> APP
+  API --> APP
+  MCP --> APP
+  APP --> L
   L --> C --> E --> VS
   E -. ingestion scope only .-> EC
   EC -. cache hit/miss .-> E
@@ -57,9 +61,9 @@ flowchart LR
   COMP --> P --> LLM
 ```
 
-  - **Ingest:** files → `loader` / `ingestion/parsers/*` → text → the shared `Chunk` contract (`localrag/ingestion/contract.py`) implemented by fixed, structural, or recursive strategies → the factory-created `EmbeddingProvider` → `VectorStore` (Chroma, persistent path from settings). Contract IDs are deterministic from source, strategy, index, and text; offsets are explicitly absent because current strategies normalize or repack text. Empty input emits no chunks and oversized atomic input is retained with an `oversized` marker. The same provider instance embeds retrieval queries. Collection metadata records provider/model/dimension and rejects incompatible operations; changing the embedding space requires an explicit rebuild. The **HTTP** ingest flow runs path decode, existence checks, and `INGEST_ROOTS` in `localrag/api/service.py` (`ingest_file` / `ingest_directory`), then calls `IngestionService`; optional per-request `embed_model` overrides the configured model and is compatibility-checked. Failures raise `IngestApiError` → JSON in `main.py`. CLI ingests call `IngestionService` directly. `POST /ingest/upload` (`ingest_upload` in `service.py`) takes a multipart file instead of a server path: it validates the extension against `loader.SUPPORTED_EXTENSIONS`, streams it to disk under `UPLOAD_DIR` in 1 MiB chunks while enforcing `UPLOAD_MAX_BYTES` (bypassing `INGEST_ROOTS`, since the server picks the destination), then calls `IngestionService.ingest_file` the same way. See the endpoint's OpenAPI description for upload limitations (no AV scan, extension-only validation, single file per request). For long-running directory ingests, `POST /ingest/directory/async` (`ingest_directory_async` in `service.py`) runs the same path validation synchronously, then submits the actual `IngestionService.ingest_directory` call to the in-process `JobRegistry` (`localrag/api/jobs.py`) and returns `202 {job_id, status: "pending"}` immediately; poll `GET /ingest/jobs/{job_id}` (`get_ingest_job`) for `running` / `done` (with `result`) / `failed` (with `error`). See [ADR 021](adr/021-chunking-strategy-contract.md).
+  - **Ingest:** files → `loader` / `ingestion/parsers/*` → text → the shared `Chunk` contract (`localrag/ingestion/contract.py`) implemented by fixed, structural, or recursive strategies → the factory-created `EmbeddingProvider` → `VectorStore` (Chroma, persistent path from settings). Contract IDs are deterministic from source, strategy, index, and text; offsets are explicitly absent because current strategies normalize or repack text. Empty input emits no chunks and oversized atomic input is retained with an `oversized` marker. The same provider instance embeds retrieval queries. Collection metadata records provider/model/dimension and rejects incompatible operations; changing the embedding space requires an explicit rebuild. The application ingest use cases in `localrag/application/service.py` own path decode, existence checks, `INGEST_ROOTS`, upload limits, and background jobs; the HTTP adapter maps their DTOs and errors to OpenAPI responses. CLI and MCP calls use the same application use cases directly. See [ADR 021](adr/021-chunking-strategy-contract.md) and [ADR 038](adr/038-application-and-mcp-boundaries.md).
 - **Rebuild:** `POST /collections/rebuild` and `localrag collections rebuild` list distinct `source` values in the active collection, drop vectors for missing files, and re-chunk/re-embed remaining paths (optional `embed_model` override). Implemented in `IngestionService.rebuild_collection`.
-  - **Query (JSON):** `POST /query` returns a complete `QueryResponse` (answer, sources, latency_ms, model) from `query_json` in `localrag/api/service.py`. Retrieval supports vector-only and hybrid (vector + BM25 with reciprocal-rank fusion), optional bounded query expansion, then applies optional freshness decay based on chunk `ingested_at`. When `ADAPTIVE_ENABLED=true`, `AdaptiveRetrievalPolicy` performs bounded evidence evaluation/escalation/refinement and adds an observable trace; thresholds are corpus-tuned heuristics, not calibrated confidence. JSON and SSE use the same engine policy path. `RAGEngine` generates the answer via its injected `provider` (a `BaseLLMProvider` built by `llm/factory.py::build_provider`, resilience-wrapped), so `LLM_BACKEND` genuinely governs which backend answers `/query` — it is no longer hard-wired to Ollama. Requires `X-API-Key` when `API_KEY` is set.
+  - **Query (JSON):** `POST /query` returns a complete `QueryResponse` (answer, sources, latency_ms, model) from the application `query_json` use case, adapted by `localrag/api/service.py`. Retrieval supports vector-only and hybrid (vector + BM25 with reciprocal-rank fusion), optional bounded query expansion, then applies optional freshness decay based on chunk `ingested_at`. When `ADAPTIVE_ENABLED=true`, `AdaptiveRetrievalPolicy` performs bounded evidence evaluation/escalation/refinement and adds an observable trace; thresholds are corpus-tuned heuristics, not calibrated confidence. JSON and SSE use the same engine policy path. `RAGEngine` generates the answer via its injected `provider` (a `BaseLLMProvider` built by `llm/factory.py::build_provider`, resilience-wrapped), so `LLM_BACKEND` genuinely governs which backend answers `/query` — it is no longer hard-wired to Ollama. Requires `X-API-Key` when `API_KEY` is set.
 - **Query (SSE stream):** `POST /query/stream` streams tokens as Server-Sent Events. Retrieval runs synchronously first (`get_query_contexts`) so errors map to HTTP before SSE starts, then tokens are mapped via `iter_query_sse_events`. Token streaming likewise goes through `RAGEngine.provider.stream_from_prompt(...)`, so `LLM_BACKEND` governs the streaming path too.
 - **Metrics:** `GET /metrics` exposes Prometheus metrics via `prometheus_client` (router at `localrag/api/routers/metrics.py`). No auth required.
 
@@ -69,14 +73,16 @@ flowchart LR
 | --- | --- | --- |
 | Settings | `localrag/settings.py`, `localrag/settings_groups.py`, `localrag/settings_map.py` | Grouped `Settings` model behind flat public names; YAML, `.env`, process env, and CLI override sources, plus redacted grouped/flat snapshots |
 | Logging | `localrag/logging_config.py`, `localrag/api/middleware.py` | `configure_logging()`, stderr handler on `localrag.*`, `X-Request-ID` on HTTP requests |
-| API wiring | `localrag/api/dependencies.py` | Cached factories: vector store, shared embedding provider, BM25 index, retriever, RAG engine, ingestion service, `ChromaCollectionRepository` |
+| Application layer | `localrag/application/` | Transport-neutral DTOs, use cases, errors, jobs, collection repository, and runtime factories |
+| API wiring | `localrag/api/dependencies.py` | FastAPI dependency wrappers for vector store, embedding provider, BM25 index, retriever, RAG engine, ingestion service, and collection repository |
 | HTTP API (transport) | `localrag/api/main.py`, `localrag/api/routers/*` | Lifespan (`configure_logging`), `RequestContextMiddleware` (`X-Request-ID`), global exception + validation handlers + `HttpMappedError`; thin route handlers |
 | HTTP API (contracts) | `localrag/api/schemas.py` | Pydantic request/response models and path aliases (OpenAPI) |
-| HTTP API (use cases) | `localrag/api/service.py` | Health check, ingest HTTP rules, query JSON (`query_json`) + SSE events, collection list/delete/rebuild orchestration |
+| HTTP API (adapter) | `localrag/api/service.py` | Maps OpenAPI schemas to application DTOs and application responses back to HTTP models |
+| MCP adapter | `localrag/mcp/` | JSON-RPC tool surface over stdio and `/mcp` HTTP; no business rules |
 | API key auth | `localrag/api/dependencies.py` | `require_api_key` dependency — enforces `X-API-Key` when `API_KEY` env var is set |
 | Prometheus metrics | `localrag/api/routers/metrics.py` | `GET /metrics` via `prometheus_client.generate_latest()` |
-| HTTP API (persistence) | `localrag/api/repository.py` | `ChromaCollectionRepository` → `VectorStore` for collection list/delete and health’s collection list |
-| Background ingest jobs | `localrag/api/jobs.py` | `JobRegistry` — in-memory `ThreadPoolExecutor`-backed job store for `POST /ingest/directory/async`; no persistence across process restarts |
+| Application persistence | `localrag/application/repository.py` | `ChromaCollectionRepository` → `VectorStore` for collection list/delete |
+| Background ingest jobs | `localrag/application/jobs.py` | `JobRegistry` — in-memory `ThreadPoolExecutor`-backed job store for background ingest; no persistence across process restarts |
 | CLI | `localrag/cli/app.py`, `localrag/cli/commands/*`, `docs/cli.md` | `localrag` Typer entry (`pyproject` `[project.scripts]`); `inspect` is read-only local diagnostics and `benchmark` delegates to `evals.matrix.run_matrix` |
 | Ingestion orchestration | `localrag/ingestion/service.py` | `IngestionService`: paths → parse → chunk → embed → upsert |
 | File formats | `localrag/ingestion/parsers/*` | pdf (Markdown extraction via pdf-inspector, with OCR fallback via pypdfium2 + pytesseract), docx, markdown, text, code |
@@ -157,12 +163,12 @@ See [ADR 033](adr/033-dockerized-benchmark-boundary.md).
 - **New file type:** add a parser under `localrag/ingestion/parsers/`, register it via `loader` / parser dispatch (see `localrag/ingestion/loader.py`).
 - **PDF OCR behavior:** edit `localrag/ingestion/parsers/pdf.py` and the `OCR_*` settings in `localrag/settings.py`; see [ocr.md](ocr.md) for the Tesseract install requirement.
 - **Chunking behavior:** edit `localrag/ingestion/contract.py`, the selected strategy (`chunker.py`, `structural_chunker.py`, or `recursive_chunker.py`), and related knobs in `localrag/settings.py`; see [ADR 021](adr/021-chunking-strategy-contract.md).
-- **New HTTP surface:** add schemas in `localrag/api/schemas.py`, application logic in `localrag/api/service.py`, persistence in `localrag/api/repository.py` (if new storage access), thin router in `localrag/api/routers/`, wire DI in `localrag/api/dependencies.py`, include the router in `localrag/api/main.py`.
+- **New transport surface:** add or reuse a use case in `localrag/application/`, then add only transport-specific DTO/error mapping and a thin adapter. HTTP schemas belong in `localrag/api/schemas.py`; MCP tools belong in `localrag/mcp/`.
 - **New CLI command:** new module under `localrag/cli/commands/`, register in `localrag/cli/app.py`.
 - **New config:** field on `Settings` in `localrag/settings.py`, document in `.env.example`, use via `get_settings()`.
 - **Retrieval ranking:** modify `localrag/rag/retriever.py` and `localrag/rag/bm25_index.py` for fusion/decay behavior.
 - **Retriever plugin:** use the public contract in `localrag/plugins/retriever.py`; install a pinned distribution exposing `localrag.retrievers` and select `retriever_plugin`.
-- **Stricter HTTP ingest policy:** adjust checks in `localrag/api/service.py` (`ingest_file` / `ingest_directory`) and/or `is_path_allowed` in `localrag/settings.py`.
+- **Stricter ingest policy:** adjust checks in `localrag/application/service.py` (`ingest_file` / `ingest_directory`) and/or `is_path_allowed` in `localrag/settings.py`.
 
 ## Tests
 
