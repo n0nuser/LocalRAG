@@ -31,6 +31,18 @@ A file is accepted when its suffix is in the supported set **or** content
 detection recognizes it, which is why `is_supported()` can accept files with no
 familiar extension.
 
+## Unsupported files are rejected, not guessed at
+
+`parse_file()` raises `UnsupportedFileTypeError` when no parser matches, instead
+of falling back to the text parser. It also raises for binary content in a file
+whose extension is textual (`.txt`, `.rst`), detected by sniffing the first 8 KB
+for NUL bytes and undecodable UTF-8.
+
+This matters because the previous catch-all fallback decoded arbitrary bytes into
+chunks that were embedded and became retrievable — a corrupt corpus with no error
+raised anywhere. Ingestion catches the error per file, so one unparseable input is
+reported and skipped rather than aborting the batch.
+
 ## PDF and OCR
 
 PDFs keep their own path: `pdf-inspector` extracts per-page Markdown and flags
