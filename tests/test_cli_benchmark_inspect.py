@@ -26,11 +26,27 @@ class FakeCollection:
     def count(self) -> int:
         return len(self.rows)
 
-    def get(self, **_: Any) -> dict[str, Any]:
+    def get(
+        self,
+        include: list[str] | None = None,
+        limit: int | None = None,
+        **_: Any,
+    ) -> dict[str, Any]:
+        # Chroma rejects anything outside this set, and returns ids regardless.
+        # Enforcing it here is what makes an invalid `include` fail the suite.
+        valid = {"documents", "embeddings", "metadatas", "distances", "uris", "data"}
+        invalid = sorted(set(include or []) - valid)
+        if invalid:
+            message = (
+                f"Expected include item to be one of {', '.join(sorted(valid))}, "
+                f"got {invalid[0]} in get."
+            )
+            raise ValueError(message)
+        rows = self.rows if limit is None else self.rows[:limit]
         return {
-            "ids": [row["id"] for row in self.rows],
-            "documents": [row["document"] for row in self.rows],
-            "metadatas": [row["metadata"] for row in self.rows],
+            "ids": [row["id"] for row in rows],
+            "documents": [row["document"] for row in rows],
+            "metadatas": [row["metadata"] for row in rows],
         }
 
 

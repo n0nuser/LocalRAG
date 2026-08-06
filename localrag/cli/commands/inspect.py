@@ -13,6 +13,9 @@ from localrag.settings import get_settings
 from localrag.storage.vector_store import VectorStore
 
 INSPECT_SCHEMA_VERSION = 1
+# Rows fetched before sorting, so the sample is stable rather than dependent on
+# Chroma's storage order. Bounded to keep inspect cheap on large collections.
+_SAMPLE_POOL_LIMIT = 1000
 _SENSITIVE = re.compile(r"(?:api[_-]?key|password|secret|token)", re.IGNORECASE)
 
 
@@ -85,7 +88,12 @@ def _metadata_summary(collection: Any, limit: int) -> dict[str, Any]:
 
 def inspect_collection(collection_name: str, sample_count: int, max_chars: int) -> dict[str, Any]:
     collection = open_collection(collection_name)
-    raw = collection.get(include=["ids", "documents", "metadatas"], limit=sample_count)
+    # Chroma always returns ids and rejects them as an `include` member.
+    #
+    # Chroma applies `limit` before any ordering, so limiting to sample_count
+    # here would make the "deterministic sample" depend on storage order. Fetch a
+    # bounded superset instead, then sort and truncate below.
+    raw = collection.get(include=["documents", "metadatas"], limit=_SAMPLE_POOL_LIMIT)
     rows = sorted(
         zip(
             raw.get("ids") or [],
