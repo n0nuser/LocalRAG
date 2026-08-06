@@ -5,7 +5,7 @@ import time
 
 import pytest
 
-from localrag.api.jobs import Job, JobRegistry, JobStatus, TooManyPendingJobsError
+from localrag.application.jobs import Job, JobRegistry, JobStatus, TooManyPendingJobsError
 
 
 def _wait_for_terminal(registry: JobRegistry, job_id: str, timeout: float = 5.0) -> Job | None:

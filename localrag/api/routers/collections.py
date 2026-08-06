@@ -9,7 +9,6 @@ from localrag.api.dependencies import (
     get_query_cache,
     require_api_key,
 )
-from localrag.api.repository import ChromaCollectionRepository
 from localrag.api.schemas import (
     CollectionDeleteResponse,
     CollectionListResponse,
@@ -17,6 +16,7 @@ from localrag.api.schemas import (
     RebuildCollectionRequest,
     RebuildCollectionResponse,
 )
+from localrag.application.repository import ChromaCollectionRepository
 from localrag.ingestion.service import IngestionService
 from localrag.rag.query_cache import QueryCache
 

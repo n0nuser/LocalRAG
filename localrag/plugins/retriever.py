@@ -13,6 +13,12 @@ from importlib.metadata import EntryPoint
 from importlib.metadata import entry_points as metadata_entry_points
 from typing import Any, Protocol, TypedDict, cast
 
+from localrag.application.runtime import (
+    get_bm25_index,
+    get_embedder,
+    get_reranker,
+    get_vector_store,
+)
 from localrag.rag.retriever import Retriever
 from localrag.settings import Settings
 
@@ -77,13 +83,6 @@ class _BuiltinPlugin:
 
     @staticmethod
     def create(settings: Settings) -> RetrieverContract:
-        from localrag.api.dependencies import (  # noqa: PLC0415
-            get_bm25_index,
-            get_embedder,
-            get_reranker,
-            get_vector_store,
-        )
-
         return cast(
             "RetrieverContract",
             Retriever(

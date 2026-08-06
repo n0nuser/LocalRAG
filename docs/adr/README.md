@@ -59,6 +59,7 @@ default.
 | [035](035-atomic-ingestion-replacement.md) | Serialized atomic source replacement | Accepted | Ingestion |
 | [036](036-retire-zero-cost-feature-flags.md) | Retire zero-cost feature flags, unify retrieval stages | Accepted | Retrieval / Configuration |
 | [037](037-grouped-configuration-model.md) | Grouped configuration model behind flat public names | Accepted | Configuration |
+| [038](038-application-and-mcp-boundaries.md) | Transport-agnostic application boundary and MCP adapter | Accepted | Architecture / MCP |
 
 ## Research spikes
 

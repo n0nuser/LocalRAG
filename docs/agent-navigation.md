@@ -33,14 +33,17 @@ override unless `COMPOSE_OVERRIDE` is supplied.
 | --- | --- |
 | Environment / defaults | `localrag/settings.py`, `localrag/settings_groups.py` (grouped fields + validation), `localrag/settings_map.py` (flat↔grouped map — **add new settings in all three**), `.env.example`, `config.example.yaml`, [configuration.md](configuration.md), `docs/adr/020-structured-configuration.md`, `docs/adr/037-grouped-configuration-model.md` |
 | FastAPI routes (HTTP only) | `localrag/api/routers/*.py` |
+| Transport-agnostic use cases | `localrag/application/`, `localrag/application/service.py`, `localrag/application/container.py` |
+| MCP tools and transports | `localrag/mcp/server.py`, `localrag/mcp/app.py`, `docs/mcp.md` |
 | API request/response OpenAPI models | `localrag/api/schemas.py` |
-| API use cases (health, ingest rules, query JSON + SSE, collections including rebuild) | `localrag/api/service.py` |
-| API persistence boundary (Chroma collections) | `localrag/api/repository.py` |
+| Application use cases (health, ingest rules, query JSON + SSE, collections including rebuild) | `localrag/application/service.py` |
+| API schema/error adapter | `localrag/api/service.py`, `localrag/api/exceptions.py` |
+| Application persistence boundary (Chroma collections) | `localrag/application/repository.py` |
 | API app factory (lifespan, middleware, error handlers) | `localrag/api/main.py` |
-| HTTP ingest path validation (`INGEST_ROOTS`, URL decode) | `localrag/api/service.py`, `localrag/settings.py` (`is_path_allowed`), `localrag/api/exceptions.py` + `main.py` handler |
-| HTTP multipart file upload ingest (`POST /ingest/upload`) | `localrag/api/routers/ingest.py` (`ingest_upload`, Swagger limitations in `_UPLOAD_DESCRIPTION`), `localrag/api/service.py` (`ingest_upload`, cleanup), upload lifecycle settings in `localrag/settings.py`, [data-lifecycle.md](data-lifecycle.md) |
+| Ingest path validation (`INGEST_ROOTS`, URL decode) | `localrag/application/service.py`, `localrag/settings.py` (`is_path_allowed`), `localrag/api/exceptions.py` + `main.py` handler |
+| HTTP multipart file upload ingest (`POST /ingest/upload`) | `localrag/api/routers/ingest.py` (`ingest_upload`, Swagger limitations in `_UPLOAD_DESCRIPTION`), `localrag/application/service.py` (`ingest_upload`, cleanup), upload lifecycle settings in `localrag/settings.py`, [data-lifecycle.md](data-lifecycle.md) |
 | Query audit lifecycle | `localrag/audit.py`, audit lifecycle settings in `localrag/settings.py`, [data-lifecycle.md](data-lifecycle.md) |
-| Background ingest jobs | `localrag/api/jobs.py`, `localrag/api/routers/ingest.py` (async routes), `localrag/api/service.py` (`ingest_directory_async`, `get_ingest_job`) |
+| Background ingest jobs | `localrag/application/jobs.py`, `localrag/api/routers/ingest.py` (async routes), `localrag/application/service.py` (`ingest_directory_async`, `get_ingest_job`) |
 | DI / shared service instances | `localrag/api/dependencies.py` |
 | Log format, levels, request ID | `localrag/logging_config.py`, `localrag/api/middleware.py`, `LOG_LEVEL` in `localrag/settings.py` |
 | Optional tracing / observability | `localrag/observability/tracing.py`, `OTEL_*` in `localrag/settings.py`, [observability.md](observability.md), [ADR 030](adr/030-optional-otel-observability-boundary.md) |
