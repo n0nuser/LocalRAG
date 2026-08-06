@@ -147,6 +147,7 @@ def query_json(
             model=request.model,
             n_results=request.n_results,
             metadata_filter=request.metadata_filter,
+            collection=request.collection,
         ),
         engine,
         query_cache,
@@ -169,6 +170,7 @@ def get_query_contexts(request: schemas.QueryRequest, engine: RAGEngine) -> list
             model=request.model,
             n_results=request.n_results,
             metadata_filter=request.metadata_filter,
+            collection=request.collection,
         ),
         engine,
     )
@@ -185,6 +187,7 @@ def iter_query_sse_events(
             model=request.model,
             n_results=request.n_results,
             metadata_filter=request.metadata_filter,
+            collection=request.collection,
         ),
         engine,
         contexts,

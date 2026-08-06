@@ -87,6 +87,23 @@ def test_query_json_returns_answer() -> None:
     app.dependency_overrides.clear()
 
 
+def test_query_json_selects_request_collection() -> None:
+    selected: list[str] = []
+
+    @dataclass
+    class CollectionEngine(StubEngine):
+        def for_collection(self, collection: str) -> CollectionEngine:
+            selected.append(collection)
+            return self
+
+    app.dependency_overrides[get_engine] = lambda: CollectionEngine()
+    response = TestClient(app).post("/query", json={"question": "Hi", "collection": "experiments"})
+
+    assert response.status_code == 200
+    assert selected == ["experiments"]
+    app.dependency_overrides.clear()
+
+
 def test_benchmark_contexts_return_text_and_stable_id() -> None:
     class BenchmarkRetriever(StubRetriever):
         def retrieve(self, **_kwargs: object) -> list[dict[str, Any]]:
@@ -138,6 +155,18 @@ def test_metrics_endpoint_returns_prometheus_text() -> None:
     response = client.get("/metrics")
     assert response.status_code == 200
     assert "python_info" in response.text or "HELP" in response.text
+
+
+def test_build_info_is_protected(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LOCALRAG_BUILD_SHA", "test-sha")
+    app.dependency_overrides[get_settings] = lambda: Settings(api_key="secret")
+    client = TestClient(app)
+
+    assert client.get("/build-info").status_code == 401
+    response = client.get("/build-info", headers={"X-API-Key": "secret"})
+
+    assert response.json() == {"build_sha": "test-sha"}
+    app.dependency_overrides.clear()
 
 
 @pytest.mark.parametrize(

@@ -157,9 +157,12 @@ class RetrieverPluginRegistry:
             raise PluginExecutionError(
                 _message("Unable to create retriever plugin '{}': {}", plugin_id, exc)
             ) from exc
+        self.track(instance, plugin_id)
+        return instance
+
+    def track(self, instance: RetrieverContract, plugin_id: str) -> None:
         self._instances.append(instance)
         self._instance_ids[id(instance)] = plugin_id
-        return instance
 
     def retrieve(
         self,
@@ -202,6 +205,14 @@ class ManagedRetriever:
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[RetrievalContext]:
         return self._registry.retrieve(self._instance, question, n_results, metadata_filter)
+
+    def for_collection(self, collection: str) -> ManagedRetriever:
+        """Create a tracked built-in retriever for a request-scoped collection."""
+        if not isinstance(self._instance, Retriever):
+            raise TypeError("Per-request collections require the built-in retriever.")
+        instance = self._instance.for_collection(collection)
+        self._registry.track(instance, "builtin")
+        return type(self)(self._registry, instance)
 
     def close(self) -> None:
         self._registry.close()

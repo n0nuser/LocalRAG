@@ -61,6 +61,7 @@ default.
 | [037](037-grouped-configuration-model.md) | Grouped configuration model behind flat public names | Accepted | Configuration |
 | [038](038-application-and-mcp-boundaries.md) | Transport-agnostic application boundary and MCP adapter | Amended by [039](039-fastmcp-sdk-adoption.md) | Architecture / MCP |
 | [039](039-fastmcp-sdk-adoption.md) | Adopt the FastMCP SDK for the MCP adapter | Accepted | Architecture / MCP |
+| [040](040-request-scoped-collection-selection.md) | Request-scoped HTTP collection selection | Accepted | API / Retrieval |
 
 ## Research spikes
 

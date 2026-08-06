@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import sqlite3
 from dataclasses import dataclass, field
 from hashlib import sha1
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -383,6 +385,47 @@ def test_vector_store_get_chunks_by_headings_filters_and_groups_in_one_lookup() 
     )
 
     assert sections == {("guide.md", "Setup"): [(1, "team-a first"), (2, "team-a second")]}
+
+
+def test_delete_collection_removes_only_its_persisted_hnsw_segment(tmp_path: Path) -> None:
+    persist_path = tmp_path / "chroma"
+    persist_path.mkdir()
+    database = persist_path / "chroma.sqlite3"
+    collection_id = "collection-id"
+    segment_id = "segment-id"
+    unrelated_segment_id = "unrelated-segment-id"
+    connection = sqlite3.connect(database)
+    connection.execute("CREATE TABLE segments (id TEXT, type TEXT, collection TEXT)")
+    connection.execute(
+        "INSERT INTO segments VALUES (?, ?, ?)",
+        (segment_id, "urn:chroma:segment/vector/hnsw-local-persisted", collection_id),
+    )
+    connection.commit()
+    connection.close()
+    (persist_path / segment_id).mkdir()
+    (persist_path / unrelated_segment_id).mkdir()
+
+    collection = SimpleNamespace(name="target", id=collection_id)
+
+    class Client:
+        def get_collection(self, name: str) -> object:
+            assert name == "target"
+            return collection
+
+        def delete_collection(self, name: str) -> None:
+            assert name == "target"
+
+        def get_or_create_collection(self, name: str, metadata: dict[str, str]) -> object:
+            assert name == "target"
+            _ = metadata
+            return collection
+
+    store = VectorStore(client=Client(), collection=collection, persist_path=persist_path)  # type: ignore[arg-type]
+
+    store.delete_collection("target")
+
+    assert not (persist_path / segment_id).exists()
+    assert (persist_path / unrelated_segment_id).exists()
 
 
 def test_vector_store_create_initializes_persistent_client(

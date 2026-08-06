@@ -35,7 +35,7 @@ telemetry.
 
 ## Prometheus Metrics
 
-The `/metrics` endpoint exposes bounded counters and histograms for query
+The authenticated `/metrics` endpoint exposes bounded counters and histograms for query
 duration, retrieved chunks, generated tokens, query/provider failures, cache
 hits and misses, ingestion failures, background job terminal status, upload
 cleanup, audit-log rotation, and HTTP failures by status class. Labels are limited to transport/outcome
@@ -43,7 +43,12 @@ cleanup, audit-log rotation, and HTTP failures by status class. Labels are limit
  paths, and request IDs are never labels. JSON, adaptive, and SSE queries record
  the same duration, retrieval, token, audit, and failure signals. Fallback use,
  upload quota rejection, oversized audit records, and audit write/cleanup
- failures have dedicated bounded counters.
+failures have dedicated bounded counters.
+
+`GET /build-info` is protected by the same API key and returns the image's
+`LOCALRAG_BUILD_SHA`. `task docker-up` stamps this value from the current Git
+revision, and `task docker-check` compares it with the running API so a stale
+Compose image is visible before diagnosing application behavior.
 
 Useful alerts include `rate(localrag_query_failures_total[5m]) > 0`, a sustained
 `localrag_ingest_jobs_pending` near the configured cap, and any increase in

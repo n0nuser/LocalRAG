@@ -16,6 +16,11 @@ Set secrets in the environment or `.env` before starting:
 API_KEY='change-me' GRAFANA_ADMIN_PASSWORD='change-me-too' docker compose up -d
 ```
 
+`task docker-up` passes the current Git revision into the image as
+`LOCALRAG_BUILD_SHA`. Run `API_KEY=... task docker-check` after source changes;
+it calls the protected `/build-info` endpoint and exits non-zero when the
+running image is stale. Rebuild the stack before trusting end-to-end results.
+
 Ollama runs without a default GPU reservation so the stack also works on CPU
 CI runners. Configure GPU scheduling separately for hosts that support it.
 

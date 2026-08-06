@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import logging
+import shutil
+import sqlite3
 import threading
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
@@ -24,6 +26,7 @@ _DEFAULT_MAX_BATCH_SIZE = 1000
 class VectorStore:
     client: chromadb.ClientAPI
     collection: Collection
+    persist_path: Path | None = None
     _write_lock: threading.RLock = dataclass_field(
         default_factory=threading.RLock, init=False, repr=False
     )
@@ -41,13 +44,25 @@ class VectorStore:
             persist_path,
             collection_name,
         )
-        return cls(client=client, collection=collection)
+        return cls(client=client, collection=collection, persist_path=Path(persist_path))
 
     @classmethod
     def open(cls, persist_path: str, collection_name: str) -> VectorStore:
         """Open an existing collection without creating or mutating it."""
         client = chromadb.PersistentClient(path=persist_path)
-        return cls(client=client, collection=client.get_collection(name=collection_name))
+        return cls(
+            client=client,
+            collection=client.get_collection(name=collection_name),
+            persist_path=Path(persist_path),
+        )
+
+    def for_collection(self, name: str) -> VectorStore:
+        """Open another collection on this client's persist path."""
+        return type(self)(
+            client=self.client,
+            collection=self.client.get_collection(name=name),
+            persist_path=self.persist_path,
+        )
 
     def add_chunks(
         self,
@@ -333,12 +348,41 @@ class VectorStore:
 
     def delete_collection(self, name: str) -> None:
         with self._write_lock:
+            segment_ids = self._persisted_segment_ids(name)
             self.client.delete_collection(name)
+            for segment_id in segment_ids:
+                segment_path = (self.persist_path / segment_id) if self.persist_path else None
+                if segment_path is None:
+                    continue
+                try:
+                    _remove_directory(segment_path)
+                except OSError:
+                    logger.warning("vector_collection_segment_cleanup_failed path=%s", segment_path)
             if getattr(self.collection, "name", None) == name:
                 self.collection = self.client.get_or_create_collection(
                     name=name, metadata={"hnsw:space": "cosine"}
                 )
         logger.warning("vector_collection_deleted name=%s", name)
+
+    def _persisted_segment_ids(self, name: str) -> list[str]:
+        """Read HNSW segment IDs before Chroma removes their collection metadata."""
+        if self.persist_path is None:
+            return []
+        database = self.persist_path / "chroma.sqlite3"
+        if not database.is_file():
+            return []
+        try:
+            collection_id = str(self.client.get_collection(name=name).id)
+            with sqlite3.connect(database) as connection:
+                rows = connection.execute(
+                    "SELECT id FROM segments WHERE collection = ? "
+                    "AND type = 'urn:chroma:segment/vector/hnsw-local-persisted'",
+                    (collection_id,),
+                ).fetchall()
+        except (OSError, sqlite3.Error):
+            logger.warning("vector_collection_segment_lookup_failed name=%s", name, exc_info=True)
+            return []
+        return [str(row[0]) for row in rows]
 
     def get_all_chunks(self) -> list[tuple[str, str, dict[str, Any]]]:
         with self._write_lock:
@@ -357,3 +401,9 @@ class VectorStore:
     @staticmethod
     def _chunk_id(source: str, chunk_index: int) -> str:
         return sha1(f"{source}:{chunk_index}".encode(), usedforsecurity=False).hexdigest()
+
+
+def _remove_directory(path: Path) -> None:
+    """Remove one Chroma segment without touching unrelated persist-path entries."""
+    if path.is_dir():
+        shutil.rmtree(path)

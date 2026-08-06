@@ -127,7 +127,12 @@ tasks:
   docker-up:
     desc: Start the Compose stack in the background without removing volumes
     cmds:
-      - '{{.COMPOSE}} --project-name "{{.PROJECT}}" -f "{{.COMPOSE_FILE}}" {{if .COMPOSE_OVERRIDE}}-f "{{.COMPOSE_OVERRIDE}}" {{end}}up --build -d'
+      - 'LOCALRAG_BUILD_SHA="$$(git rev-parse HEAD)" {{.COMPOSE}} --project-name "{{.PROJECT}}" -f "{{.COMPOSE_FILE}}" {{if .COMPOSE_OVERRIDE}}-f "{{.COMPOSE_OVERRIDE}}" {{end}}up --build -d'
+
+  docker-check:
+    desc: Compare the running API image identity with the current Git revision
+    cmds:
+      - '{{.PYTHON}} -c ''import json, os, subprocess, sys, urllib.request; expected=subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(); request=urllib.request.Request("{{.API_URL}}/build-info", headers={"X-API-Key": os.environ["API_KEY"]}); actual=json.load(urllib.request.urlopen(request))["build_sha"]; print(f"running={actual} source={expected}"); sys.exit(0 if actual == expected else 1)'''
 
   docker-down:
     desc: Stop the Compose stack; named volumes are preserved

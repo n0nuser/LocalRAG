@@ -22,6 +22,16 @@ class RAGEngine:
     retriever: Retriever
     provider: BaseLLMProvider
 
+    def for_collection(self, collection: str) -> RAGEngine:
+        """Create a request-scoped engine targeting one collection."""
+        if not hasattr(self.retriever, "for_collection"):
+            raise TypeError("Per-request collections require the built-in retriever.")
+        return type(self)(
+            settings=self.settings.with_overrides(chroma_collection_name=collection),
+            retriever=self.retriever.for_collection(collection),
+            provider=self.provider,
+        )
+
     def answer(
         self,
         question: str,
