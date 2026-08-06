@@ -111,7 +111,9 @@ services:
       localrag-setup:
         condition: service_completed_successfully
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/docs')"]
+      # FastMCP serves only the MCP endpoint - there is no /docs route. Probe /mcp
+      # with a real JSON-RPC request; any HTTP response proves the app is serving.
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen(u.Request('http://localhost:8002/mcp', data=b'{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}', headers={'Content-Type': 'application/json', 'Accept': 'application/json, text/event-stream'}))"]
       interval: 10s
       timeout: 5s
       retries: 10

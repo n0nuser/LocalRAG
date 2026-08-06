@@ -8,6 +8,7 @@ from typing import cast
 import pytest
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
+from mcp.shared.exceptions import McpError
 
 from localrag.application.repository import ChromaCollectionRepository
 from localrag.ingestion.service import IngestionService
@@ -38,7 +39,10 @@ def make_client(tmp_path: Path, api_key: str = "secret") -> Client:
     return Client(mcp)
 
 
-async def test_mcp_tool_listing_returns_the_four_tools(tmp_path: Path) -> None:
+async def test_mcp_tool_listing_returns_the_four_tools(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MCP_API_KEY", "secret")
     async with make_client(tmp_path) as client:
         tools = await client.list_tools()
 
@@ -48,6 +52,24 @@ async def test_mcp_tool_listing_returns_the_four_tools(tmp_path: Path) -> None:
         "ingest_path",
         "list_collections",
     }
+
+
+async def test_mcp_tool_listing_requires_the_api_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``tools/list`` is gated, not just ``tools/call``.
+
+    The hand-rolled adapter this replaced rejected unauthenticated callers on
+    every method, and the tool list discloses deployment surface, so an
+    unauthenticated caller must not be able to enumerate it.
+    """
+    monkeypatch.delenv("MCP_API_KEY", raising=False)
+
+    # Gating at ``on_request`` covers ``initialize`` too, so an unauthenticated
+    # caller is rejected while opening the session - it never reaches a request.
+    with pytest.raises(McpError, match=re.escape("Invalid request parameters")):
+        async with make_client(tmp_path) as client:
+            await client.list_tools()
 
 
 async def test_mcp_list_collections_returns_stubbed_collections(
@@ -107,11 +129,15 @@ async def test_mcp_api_key_rejection(
     if env_key is not None:
         monkeypatch.setenv("MCP_API_KEY", env_key)
 
-    async with make_client(tmp_path) as client:
-        if expect_error:
-            with pytest.raises(ToolError, match=re.escape("Invalid or missing API key.")):
+    if expect_error:
+        # Gating happens at ``on_request``, which covers ``initialize``: the
+        # session itself fails to open, so the rejection surfaces as a
+        # protocol-level ``McpError`` rather than a tool-level error result.
+        with pytest.raises(McpError, match=re.escape("Invalid request parameters")):
+            async with make_client(tmp_path) as client:
                 await client.call_tool("list_collections", {})
-        else:
+    else:
+        async with make_client(tmp_path) as client:
             result = await client.call_tool("list_collections", {})
             assert result.data == {"collections": ["localrag"]}
 

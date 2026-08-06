@@ -11,7 +11,6 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from fastmcp.server.dependencies import get_http_headers
 from fastmcp.server.middleware import CallNext, Middleware, MiddlewareContext
-from mcp import types as mt
 from pydantic import Field
 
 from localrag.application import service as application_service
@@ -44,20 +43,25 @@ def _dependency_accessor[T](
 
 
 class ApiKeyMiddleware(Middleware):
-    """Rejects tool calls when the configured API key does not match the caller's.
+    """Rejects requests when the configured API key does not match the caller's.
 
     HTTP transport carries the key in the ``X-API-Key`` header; stdio has no
     headers, so it falls back to the ``MCP_API_KEY`` environment variable to
     match the API key contract the hand-rolled adapter used before FastMCP.
+
+    The check hooks ``on_request`` rather than ``on_call_tool`` so that
+    ``tools/list`` and ``initialize`` stay gated too. The previous hand-rolled
+    adapter rejected an unauthenticated caller on *every* method, and the tool
+    list is itself information about the deployment worth withholding.
     """
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
 
-    async def on_call_tool(
+    async def on_request(
         self,
-        context: MiddlewareContext[mt.CallToolRequestParams],
-        call_next: CallNext[mt.CallToolRequestParams, Any],
+        context: MiddlewareContext[Any],
+        call_next: CallNext[Any, Any],
     ) -> Any:
         if self.settings.api_key and self._caller_api_key() != self.settings.api_key:
             raise ToolError("Invalid or missing API key.")
