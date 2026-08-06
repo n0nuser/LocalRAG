@@ -26,6 +26,38 @@ path values are represented as `<path>`, and document contents or the full
 environment are never included. Keep credentials in environment variables or
 an untracked secrets mechanism, not YAML.
 
+## Ingest
+
+`ingest` takes a file or a directory and reports each file as it completes:
+
+```bash
+uv run localrag ingest ./docs
+[1/3] guide.md — 42 chunks
+[2/3] notes.md — skipped (no chunks)
+[3/3] report.pdf — 117 chunks
+status=ok files_processed=2 total_chunks=159
+```
+
+Progress lines go to **stderr** and the final `status=` summary to **stdout**, so
+piping stdout stays parseable. Pass `--quiet` to suppress the per-file lines and
+print only the summary.
+
+The summary reports the run's outcome, and the exit code follows it:
+
+| `status=` | Meaning | Exit code |
+| --- | --- | --- |
+| `ok` | Every discovered file was processed or deliberately skipped | 0 |
+| `partial` | Some files ingested, at least one failed permanently | 1 |
+| `error` | Nothing was ingested | 1 |
+
+When any file fails, the summary gains `failed=<n>` and each failure is listed on
+stderr. A run that ingested nothing never reports success, so scripts and CI can
+rely on the exit code.
+
+Files that no parser can handle — and binary content in a file with a textual
+extension — are reported and skipped rather than being read as text. See
+[document-formats.md](document-formats.md).
+
 ## Inspect
 
 `inspect` is read-only and never creates a missing collection, calls an LLM, or
