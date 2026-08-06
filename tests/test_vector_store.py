@@ -458,3 +458,77 @@ def test_vector_store_create_initializes_persistent_client(
     assert created_dir.exists()
     assert store.collection is sentinel_collection
     assert store.client.got_metadata == {"hnsw:space": "cosine"}
+
+
+def test_create_translates_readonly_database_into_actionable_error(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A read-only persist path must name the path and the fix, not SQLite's bare text."""
+    persist_path = tmp_path / "chroma"
+
+    def raise_readonly(path: str) -> object:  # noqa: ARG001 - signature must match Chroma's
+        message = "error returned from database: (code: 8) attempt to write a readonly database"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(vector_store_module.chromadb, "PersistentClient", raise_readonly)
+
+    with pytest.raises(vector_store_module.PersistPathError) as excinfo:
+        VectorStore.create(persist_path=str(persist_path), collection_name="localrag")
+
+    message = str(excinfo.value)
+    assert str(persist_path.resolve()) in message
+    # tmp_path belongs to the test user, so the remedy is a permission fix.
+    assert "chmod" in message
+    assert "CHROMA_PERSIST_PATH" in message
+
+
+def test_readonly_error_suggests_chown_when_another_user_owns_the_path(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A path owned by another user (root-owned container data) needs chown, not chmod."""
+
+    def raise_readonly(path: str) -> object:  # noqa: ARG001 - signature must match Chroma's
+        message = "attempt to write a readonly database"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(vector_store_module.chromadb, "PersistentClient", raise_readonly)
+    monkeypatch.setattr(vector_store_module, "_describe_owner", lambda _path: "root:root")
+    monkeypatch.setattr(vector_store_module, "_current_user", lambda: "pablo:pablo")
+
+    with pytest.raises(vector_store_module.PersistPathError) as excinfo:
+        VectorStore.create(persist_path=str(tmp_path / "chroma"), collection_name="localrag")
+
+    message = str(excinfo.value)
+    assert "chown" in message
+    assert "root:root" in message
+
+
+def test_create_reraises_unrelated_client_errors(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only permission failures are translated; other errors must surface unchanged."""
+
+    def raise_other(path: str) -> object:  # noqa: ARG001 - signature must match Chroma's
+        message = "some other chroma failure"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(vector_store_module.chromadb, "PersistentClient", raise_other)
+
+    with pytest.raises(RuntimeError, match="some other chroma failure"):
+        VectorStore.create(persist_path=str(tmp_path / "chroma"), collection_name="localrag")
+
+
+def test_create_reports_unwritable_parent_directory(tmp_path: Path) -> None:
+    """A parent directory that cannot be created must also produce the actionable error."""
+    parent = tmp_path / "locked"
+    parent.mkdir()
+    parent.chmod(0o500)
+    try:
+        with pytest.raises(vector_store_module.PersistPathError) as excinfo:
+            VectorStore.create(persist_path=str(parent / "chroma"), collection_name="localrag")
+    finally:
+        parent.chmod(0o700)
+
+    assert "not writable" in str(excinfo.value)
+    # The locked parent belongs to the test user, so a permission fix is the remedy.
+    assert "chmod" in str(excinfo.value)

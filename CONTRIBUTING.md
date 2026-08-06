@@ -25,12 +25,49 @@ The second line registers the [Conventional Commits](https://www.conventionalcom
 
 ## Contributor Taskfile
 
-Install Task 3.x, `uv`, and Python 3.13+ to use the repository's portable
-`Taskfile.yml`. Docker Compose v2 is required for the Docker and integration
-tasks; Ollama is required only for live model workflows. Linux and macOS work
-with their normal shells, Windows works with PowerShell when the underlying
-tools are installed, and WSL2 is supported when paths are configured for the
-WSL environment.
+### Prerequisites and installation
+
+| Tool | Needed for | Install |
+| --- | --- | --- |
+| [Task](https://taskfile.dev/) 3.x | Every `task …` command | [Installation guide](https://taskfile.dev/installation/) — see below |
+| [uv](https://docs.astral.sh/uv/) | Dependencies and every Python command | [Installation guide](https://docs.astral.sh/uv/getting-started/installation/) |
+| Python 3.13+ | Runtime | `uv python install 3.13` (uv can manage it for you) |
+| [Docker](https://docs.docker.com/get-started/get-docker/) with Compose v2 | `task docker-*`, `task test-integration` | [Docker Engine](https://docs.docker.com/engine/install/) or Docker Desktop |
+| [Ollama](https://ollama.com/download) | Live ingest, query, benchmark, and evaluation only | [docs/ollama.md](docs/ollama.md) |
+
+Task is a single Go binary; pick the line matching your platform (full list and
+checksums in the [Task installation docs](https://taskfile.dev/installation/)):
+
+```bash
+# Linux / WSL2 — installs ./bin/task, move it onto your PATH
+sh -c "$(curl -sSL https://taskfile.dev/install.sh)" -- -d -b ~/.local/bin
+
+# macOS
+brew install go-task/tap/go-task
+
+# Windows (PowerShell)
+winget install Task.Task
+```
+
+Then verify the toolchain and install the project:
+
+```bash
+task --version     # expect 3.x
+uv --version
+task install       # uv sync --locked
+task status        # tool versions, `localrag --help`, git status
+task --list        # full catalog of tasks
+```
+
+If you would rather not install Task at all, every command it wraps is listed
+under [Development without Task](#development-without-task).
+
+### Platform notes
+
+Docker Compose v2 is required for the Docker and integration tasks; Ollama is
+required only for live model workflows. Linux and macOS work with their normal
+shells, Windows works with PowerShell when the underlying tools are installed,
+and WSL2 is supported when paths are configured for the WSL environment.
 
 Run `task --list` for the complete catalog. The common checks are `task install`,
 `task lock-check`, `task lint`, `task test`, and `task format`. `task test-integration` expects a
@@ -41,10 +78,26 @@ Compose file does not load the host-specific WSL2 override; pass
 `COMPOSE_OVERRIDE` only after configuring a portable path.
 
 Ollama is needed for live ingest/query/evaluation and live benchmarks; the
-offline eval and fixture benchmark do not need it. Docker uses the host's
-available CPU/GPU support: the Compose file requests an NVIDIA GPU for Ollama
-when Docker supports it, so CPU-only hosts may need to adjust that existing
-Compose setting before starting the stack.
+offline eval and fixture benchmark do not need it.
+
+**The base Compose stack runs Ollama on CPU.** Embedding then dominates ingest
+time — on the order of 5 chunks/second, so a directory of large PDFs takes
+minutes. If the host has an NVIDIA GPU and the
+[NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html),
+opt into GPU offload with the [`docker-compose.gpu.yml`](docker-compose.gpu.yml)
+override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+# or: task docker-up COMPOSE_OVERRIDE=docker-compose.gpu.yml
+
+docker compose logs ollama | grep -iE "library=|offloaded"
+```
+
+`library=cpu` or `offloaded 0/N layers` in that output means the GPU was not
+picked up — check `docker info | grep -i runtimes` for `nvidia`. The override is
+never merged automatically, so the default stack keeps working on CPU-only
+hosts.
 
 Every Task variable is overridable on the command line or through the
 environment: `UV`, `PYTHON`, `COMPOSE`, `PROJECT`, `COMPOSE_FILE`,

@@ -25,7 +25,10 @@ For contributor workflows, read [`Taskfile.yml`](../Taskfile.yml) and the
 Taskfile section in [CONTRIBUTING](../CONTRIBUTING.md). It is the thin
 wrapper contract for `uv`, CLI, test, lint, benchmark, report, and Compose
 commands; its Docker tasks intentionally do not load the host-specific WSL2
-override unless `COMPOSE_OVERRIDE` is supplied.
+override unless `COMPOSE_OVERRIDE` is supplied. Prerequisites and how to install
+Task, uv, Docker Compose, and Ollama are in
+[CONTRIBUTING](../CONTRIBUTING.md#prerequisites-and-installation); Task is
+optional because every task maps to a plain `uv run …` command.
 
 ## “I’m changing X — open Y”
 
