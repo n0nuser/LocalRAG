@@ -72,9 +72,47 @@ SUPPORTED_EXTENSIONS = (
 
 logger = logging.getLogger(__name__)
 
+# Bytes sniffed to decide whether a file is binary. Large enough to reach past a
+# textual header (an XML prolog, a shebang) into real content.
+_BINARY_SNIFF_BYTES = 8192
+
+
+class UnsupportedFileTypeError(ValueError):
+    """Raised when a file cannot be parsed by any registered parser.
+
+    Ingestion catches this per file, so one unparseable input is reported and
+    skipped rather than aborting the batch.
+    """
+
+
+def _is_binary(path: Path) -> bool:
+    """Detect binary content so it is never decoded as prose.
+
+    A NUL byte does not occur in the text formats this project ingests, and is
+    the cheapest reliable signal. Undecodable UTF-8 catches the rest.
+    """
+    try:
+        sample = path.read_bytes()[:_BINARY_SNIFF_BYTES]
+    except OSError:
+        return False
+    if b"\x00" in sample:
+        return True
+    try:
+        sample.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        # The sniff window can split a multi-byte character, which is not a
+        # binary signal. Only a failure away from that boundary is.
+        return exc.start < len(sample) - 4
+    return False
+
 
 def is_supported_file(path: Path) -> bool:
-    return path.suffix.lower() in SUPPORTED_EXTENSIONS or detect_anydoc_format(path) is not None
+    extension = path.suffix.lower()
+    if extension in SUPPORTED_EXTENSIONS:
+        # Plain-text extensions are the only ones parsed without a format check,
+        # so they are also the only ones where binary content would slip through.
+        return extension not in TEXT_EXTENSIONS or not _is_binary(path)
+    return detect_anydoc_format(path) is not None
 
 
 def list_supported_files(path: Path, recursive: bool) -> list[Path]:
@@ -113,4 +151,13 @@ def parse_file(path: Path) -> str:
         return parse_markdown(path)
     if extension in CODE_EXTENSIONS:
         return parse_code(path)
+    if extension not in TEXT_EXTENSIONS:
+        # Falling back to the text parser here would decode arbitrary bytes into
+        # chunks that are embedded and become retrievable, silently poisoning the
+        # corpus. Refuse instead, so the caller reports an unparseable file.
+        message = f"no parser for {path.name!r} (extension {extension or 'none'!r})"
+        raise UnsupportedFileTypeError(message)
+    if _is_binary(path):
+        message = f"{path.name!r} contains binary content, not text"
+        raise UnsupportedFileTypeError(message)
     return parse_text(path)
