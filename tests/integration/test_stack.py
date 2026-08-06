@@ -23,10 +23,17 @@ def test_health_and_readiness(base_url: str) -> None:
     assert readiness.json() == {"status": "ok"}
 
 
-def test_metrics_endpoint(base_url: str) -> None:
-    response = httpx.get(f"{base_url}/metrics", timeout=10.0)
+def test_metrics_endpoint(base_url: str, api_key: str) -> None:
+    response = httpx.get(f"{base_url}/metrics", headers=_headers(api_key), timeout=10.0)
     assert response.status_code == 200
     assert "localrag_query_duration_seconds" in response.text
+
+
+def test_build_info_requires_auth_and_reports_identity(base_url: str, api_key: str) -> None:
+    assert httpx.get(f"{base_url}/build-info", timeout=10.0).status_code == 401
+    response = httpx.get(f"{base_url}/build-info", headers=_headers(api_key), timeout=10.0)
+    assert response.status_code == 200
+    assert response.json()["build_sha"]
 
 
 def test_api_key_missing_returns_401(base_url: str, auth_enabled: bool) -> None:
@@ -80,11 +87,29 @@ def test_query_json_endpoint(base_url: str, auth_enabled: bool, api_key: str) ->
         pytest.fail("LOCALRAG_TEST_API_KEY is required")
     response = httpx.post(
         f"{base_url}/query",
-        json={"question": "What is LocalRAG?", "model": "qwen2.5:0.5b"},
+        json={"question": "What is LocalRAG?", "model": "gemma3:4b"},
         headers=_headers(api_key),
         timeout=60.0,
     )
     assert response.status_code == 200
+
+    collections = httpx.get(f"{base_url}/collections", headers=_headers(api_key), timeout=10.0)
+    collection = collections.json()["collections"][0]
+    selected = httpx.post(
+        f"{base_url}/query",
+        json={"question": "What is LocalRAG?", "collection": collection},
+        headers=_headers(api_key),
+        timeout=60.0,
+    )
+    assert selected.status_code == 200
+
+    missing = httpx.post(
+        f"{base_url}/query",
+        json={"question": "What is LocalRAG?", "collection": "missing-collection"},
+        headers=_headers(api_key),
+        timeout=10.0,
+    )
+    assert missing.status_code == 404
 
 
 def test_query_stream_endpoint(base_url: str, auth_enabled: bool, api_key: str) -> None:
@@ -92,7 +117,7 @@ def test_query_stream_endpoint(base_url: str, auth_enabled: bool, api_key: str) 
         pytest.fail("LOCALRAG_TEST_API_KEY is required")
     response = httpx.post(
         f"{base_url}/query/stream",
-        json={"question": "Give me one sentence about LocalRAG.", "model": "qwen2.5:0.5b"},
+        json={"question": "Give me one sentence about LocalRAG.", "model": "gemma3:4b"},
         headers=_headers(api_key),
         timeout=60.0,
     )

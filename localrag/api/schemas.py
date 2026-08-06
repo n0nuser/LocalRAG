@@ -68,6 +68,14 @@ class QueryRequest(BaseModel):
         ),
         examples=[{"source": "/docs/handbook.pdf"}],
     )
+    collection: str | None = Field(
+        default=None,
+        description=(
+            "Optional Chroma collection to query. If omitted, uses the server's "
+            "configured `chroma_collection_name`."
+        ),
+        examples=["experiments"],
+    )
 
 
 class IngestFileRequest(BaseModel):

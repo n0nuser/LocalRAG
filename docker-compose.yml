@@ -31,7 +31,10 @@ services:
   # Runs from the same built image as localrag-api, so no separate script to
   # maintain. Exiting 0 is expected here — it's not meant to stay running.
   localrag-setup:
-    build: .
+    build:
+      context: .
+      args:
+        LOCALRAG_BUILD_SHA: ${LOCALRAG_BUILD_SHA:-unknown}
     image: localrag-api:local
     command: /app/.venv/bin/localrag setup
     environment:
@@ -45,7 +48,10 @@ services:
     restart: "no"
 
   localrag-api:
-    build: .
+    build:
+      context: .
+      args:
+        LOCALRAG_BUILD_SHA: ${LOCALRAG_BUILD_SHA:-unknown}
     image: localrag-api:local
     restart: unless-stopped
     ports:
@@ -81,7 +87,10 @@ services:
       start_period: 30s
 
   localrag-mcp:
-    build: .
+    build:
+      context: .
+      args:
+        LOCALRAG_BUILD_SHA: ${LOCALRAG_BUILD_SHA:-unknown}
     image: localrag-api:local
     restart: unless-stopped
     ports:

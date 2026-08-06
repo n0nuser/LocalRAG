@@ -7,6 +7,7 @@ from localrag.api.dependencies import (
     get_collection_repository,
     get_ingestion_service,
     get_query_cache,
+    invalidate_retrieval_caches,
     require_api_key,
 )
 from localrag.api.schemas import (
@@ -42,6 +43,7 @@ def delete_collection(
 ) -> CollectionDeleteResponse:
     response = api_service.delete_collection_response(collection_repo, name)
     query_cache.clear()
+    invalidate_retrieval_caches()
     return response
 
 

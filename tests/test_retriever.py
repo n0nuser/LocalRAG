@@ -57,6 +57,30 @@ def test_retriever_returns_contexts() -> None:
     ]
 
 
+def test_retriever_for_collection_creates_request_scoped_store() -> None:
+    @dataclass
+    class CollectionStore(StubStore):
+        selected: list[str]
+
+        def for_collection(self, name: str) -> CollectionStore:
+            self.selected.append(name)
+            return self
+
+    settings = Settings(chroma_collection_name="default")
+    store = CollectionStore(selected=[])
+    retriever = Retriever(
+        settings=settings,
+        embedder=StubEmbedder(),  # type: ignore[arg-type]
+        vector_store=store,  # type: ignore[arg-type]
+    )
+
+    selected = retriever.for_collection("experiments")
+
+    assert store.selected == ["experiments"]
+    assert selected.settings.chroma_collection_name == "experiments"
+    assert selected.embedder is retriever.embedder
+
+
 @respx.mock
 def test_retriever_raises_retrieval_failure_when_ollama_embed_fails() -> None:
     respx.post("http://ollama:11434/api/embed").mock(return_value=httpx.Response(503))

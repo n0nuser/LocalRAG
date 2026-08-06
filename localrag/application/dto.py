@@ -10,6 +10,7 @@ class QueryRequest:
     model: str | None = None
     n_results: int | None = None
     metadata_filter: dict[str, str] | None = None
+    collection: str | None = None
 
 
 @dataclass(frozen=True)

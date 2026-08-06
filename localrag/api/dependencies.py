@@ -8,6 +8,7 @@ from fastapi.security import APIKeyHeader
 
 from localrag.application.jobs import JobRegistry
 from localrag.application.repository import ChromaCollectionRepository
+from localrag.application.runtime import clear_runtime_caches
 from localrag.embedding.base import EmbeddingProvider
 from localrag.embedding.cache import EmbeddingCache
 from localrag.embedding.factory import build_embedding_provider
@@ -122,3 +123,15 @@ def get_collection_repository(
     store: VectorStore = Depends(get_vector_store),
 ) -> ChromaCollectionRepository:
     return ChromaCollectionRepository(_vector_store=store)
+
+
+def invalidate_retrieval_caches() -> None:
+    """Drop collection-bound retrieval objects after a collection mutation."""
+    if get_retriever.cache_info().currsize:
+        close = getattr(get_retriever(), "close", None)
+        if close is not None:
+            close()
+    get_engine.cache_clear()
+    get_retriever.cache_clear()
+    get_bm25_index.cache_clear()
+    clear_runtime_caches()

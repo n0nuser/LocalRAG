@@ -36,7 +36,7 @@ override unless `COMPOSE_OVERRIDE` is supplied.
 | Transport-agnostic use cases | `localrag/application/`, `localrag/application/service.py`, `localrag/application/container.py` |
 | MCP tools and transports | `localrag/mcp/server.py`, `localrag/mcp/app.py`, `docs/mcp.md` |
 | API request/response OpenAPI models | `localrag/api/schemas.py` |
-| Application use cases (health, ingest rules, query JSON + SSE, collections including rebuild) | `localrag/application/service.py` |
+| Application use cases (health, ingest rules, query JSON + SSE, request-scoped collections, collections including rebuild) | `localrag/application/service.py`, `localrag/rag/engine.py`, `localrag/rag/retriever.py` |
 | API schema/error adapter | `localrag/api/service.py`, `localrag/api/exceptions.py` |
 | Application persistence boundary (Chroma collections) | `localrag/application/repository.py` |
 | API app factory (lifespan, middleware, error handlers) | `localrag/api/main.py` |
@@ -48,7 +48,7 @@ override unless `COMPOSE_OVERRIDE` is supplied.
 | Log format, levels, request ID | `localrag/logging_config.py`, `localrag/api/middleware.py`, `LOG_LEVEL` in `localrag/settings.py` |
 | Optional tracing / observability | `localrag/observability/tracing.py`, `OTEL_*` in `localrag/settings.py`, [observability.md](observability.md), [ADR 030](adr/030-optional-otel-observability-boundary.md) |
 | API key auth | `localrag/api/dependencies.py` (`require_api_key`), `API_KEY` in `localrag/settings.py` |
-| Prometheus metrics endpoint | `localrag/api/routers/metrics.py` |
+| Prometheus metrics and running build identity | `localrag/api/routers/metrics.py`, `Taskfile.yml`, `Dockerfile`, [observability.md](observability.md) |
 | LLM provider abstraction | `localrag/llm/providers/`, `localrag/llm/factory.py` |
 | Cost estimation | `localrag/llm/costs.py` |
 | Agent tool-use (search_documents / answer_directly) | `localrag/agent/service.py`, `localrag/api/routers/agent.py` |
@@ -103,6 +103,8 @@ uv run ruff check .
 
 Pre-commit and contribution workflow: [`CONTRIBUTING.md`](../CONTRIBUTING.md).
 For portable task commands and their variable contract, use [`Taskfile.yml`](../Taskfile.yml).
+Known merge, Docker, Chroma, and integration-test friction is recorded in
+[`agent-friction.md`](agent-friction.md).
 
 ## External dependencies
 
