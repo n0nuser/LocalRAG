@@ -78,7 +78,7 @@ flowchart LR
 | HTTP API (transport) | `localrag/api/main.py`, `localrag/api/routers/*` | Lifespan (`configure_logging`), `RequestContextMiddleware` (`X-Request-ID`), global exception + validation handlers + `HttpMappedError`; thin route handlers |
 | HTTP API (contracts) | `localrag/api/schemas.py` | Pydantic request/response models and path aliases (OpenAPI) |
 | HTTP API (adapter) | `localrag/api/service.py` | Maps OpenAPI schemas to application DTOs and application responses back to HTTP models |
-| MCP adapter | `localrag/mcp/` | JSON-RPC tool surface over stdio and `/mcp` HTTP; no business rules |
+| MCP adapter | `localrag/mcp/` | FastMCP tool surface over stdio and `/mcp` HTTP; no business rules |
 | API key auth | `localrag/api/dependencies.py` | `require_api_key` dependency — enforces `X-API-Key` when `API_KEY` env var is set |
 | Prometheus metrics | `localrag/api/routers/metrics.py` | `GET /metrics` via `prometheus_client.generate_latest()` |
 | Application persistence | `localrag/application/repository.py` | `ChromaCollectionRepository` → `VectorStore` for collection list/delete |

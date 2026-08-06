@@ -1,13 +1,17 @@
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
+import pytest
+from fastmcp import Client
+from fastmcp.exceptions import ToolError
+
 from localrag.application.repository import ChromaCollectionRepository
 from localrag.ingestion.service import IngestionService
-from localrag.mcp.server import McpServer
-from localrag.rag.engine import RAGEngine
+from localrag.mcp.server import build_mcp_server
 from localrag.settings import Settings
 from localrag.storage.vector_store import VectorStore
 
@@ -23,69 +27,101 @@ class StubStore:
         return None
 
 
-def make_server(tmp_path: Path, api_key: str = "secret") -> McpServer:
-    settings = Settings(api_key=api_key, ingest_roots=[str(tmp_path / "allowed")])
-    return McpServer(
-        settings=settings,
-        engine=cast("RAGEngine", object()),
-        ingestion_service=cast("IngestionService", object()),
-        collection_repo=ChromaCollectionRepository(cast("VectorStore", StubStore(["localrag"]))),
-    )
+def make_settings(tmp_path: Path, api_key: str = "secret") -> Settings:
+    return Settings(api_key=api_key, ingest_roots=[str(tmp_path / "allowed")])
 
 
-def test_mcp_initialize_and_tool_listing(tmp_path: Path) -> None:
-    server = make_server(tmp_path)
+def make_client(tmp_path: Path, api_key: str = "secret") -> Client:
+    settings = make_settings(tmp_path, api_key=api_key)
+    repo = ChromaCollectionRepository(cast("VectorStore", StubStore(["localrag"])))
+    mcp = build_mcp_server(settings, collection_repo_factory=lambda: repo)
+    return Client(mcp)
 
-    initialize = server.handle_message(
-        {"jsonrpc": "2.0", "id": 1, "method": "initialize"}, "secret"
-    )
-    tools = server.handle_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, "secret")
 
-    assert initialize is not None
-    assert initialize["result"]["capabilities"] == {"tools": {}}
-    assert tools is not None
-    assert [tool["name"] for tool in tools["result"]["tools"]] == [
+async def test_mcp_tool_listing_returns_the_four_tools(tmp_path: Path) -> None:
+    async with make_client(tmp_path) as client:
+        tools = await client.list_tools()
+
+    assert {tool.name for tool in tools} == {
         "search_documents",
         "answer_question",
         "ingest_path",
         "list_collections",
-    ]
+    }
 
 
-def test_mcp_auth_and_collection_tool(tmp_path: Path) -> None:
-    server = make_server(tmp_path)
+async def test_mcp_list_collections_returns_stubbed_collections(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MCP_API_KEY", "secret")
+    async with make_client(tmp_path) as client:
+        result = await client.call_tool("list_collections", {})
 
-    unauthorized = server.handle_message(
-        {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": "list_collections"}}
-    )
-    authorized = server.handle_message(
-        {"jsonrpc": "2.0", "id": 2, "method": "tools/call", "params": {"name": "list_collections"}},
-        api_key="secret",
-    )
-
-    assert unauthorized is not None
-    assert unauthorized["error"]["code"] == -32001
-    assert authorized is not None
-    assert '"collections": ["localrag"]' in authorized["result"]["content"][0]["text"]
+    assert result.data == {"collections": ["localrag"]}
 
 
-def test_mcp_ingest_path_preserves_ingest_root_policy(tmp_path: Path) -> None:
-    server = make_server(tmp_path)
+async def test_mcp_ingest_path_outside_ingest_roots_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exercises the real application-layer path policy, not a mock of it.
+
+    The ingestion-service stub is never actually used: ``application.service``
+    raises ``IngestError`` before calling any of its methods, so a bare
+    ``object()`` reference is enough to prove the rejection is real.
+    """
+    monkeypatch.setenv("MCP_API_KEY", "secret")
     outside = tmp_path / "outside"
     outside.mkdir()
 
-    response = server.handle_message(
-        {
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "tools/call",
-            "params": {"name": "ingest_path", "arguments": {"path": str(outside)}},
-        },
-        api_key="secret",
+    settings = make_settings(tmp_path)
+    repo = ChromaCollectionRepository(cast("VectorStore", StubStore(["localrag"])))
+    ingestion_service = cast("IngestionService", object())
+    mcp = build_mcp_server(
+        settings,
+        ingestion_service_factory=lambda: ingestion_service,
+        collection_repo_factory=lambda: repo,
     )
 
-    assert response is not None
-    assert response["result"] == {
-        "isError": True,
-        "content": [{"type": "text", "text": "Path is not under configured ingest roots."}],
-    }
+    async with Client(mcp) as client:
+        with pytest.raises(
+            ToolError, match=re.escape("Path is not under configured ingest roots.")
+        ):
+            await client.call_tool("ingest_path", {"path": str(outside)})
+
+
+@pytest.mark.parametrize(
+    ("env_key", "expect_error"),
+    [
+        (None, True),
+        ("wrong-key", True),
+        ("secret", False),
+    ],
+)
+async def test_mcp_api_key_rejection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    env_key: str | None,
+    expect_error: bool,
+) -> None:
+    monkeypatch.delenv("MCP_API_KEY", raising=False)
+    if env_key is not None:
+        monkeypatch.setenv("MCP_API_KEY", env_key)
+
+    async with make_client(tmp_path) as client:
+        if expect_error:
+            with pytest.raises(ToolError, match=re.escape("Invalid or missing API key.")):
+                await client.call_tool("list_collections", {})
+        else:
+            result = await client.call_tool("list_collections", {})
+            assert result.data == {"collections": ["localrag"]}
+
+
+async def test_mcp_no_api_key_configured_allows_any_caller(tmp_path: Path) -> None:
+    settings = make_settings(tmp_path, api_key="")
+    repo = ChromaCollectionRepository(cast("VectorStore", StubStore(["localrag"])))
+    mcp = build_mcp_server(settings, collection_repo_factory=lambda: repo)
+
+    async with Client(mcp) as client:
+        result = await client.call_tool("list_collections", {})
+
+    assert result.data == {"collections": ["localrag"]}

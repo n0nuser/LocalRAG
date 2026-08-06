@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Accepted. Amended by [ADR 039](039-fastmcp-sdk-adoption.md): the MCP wire implementation described below (a hand-rolled JSON-RPC dispatcher, no SDK dependency) was replaced with the FastMCP SDK. The application-boundary decision — `localrag/application/`, transports depending on it instead of `localrag.api`, the four tool names, and the `INGEST_ROOTS`/API-key contracts — is still in force.
 
 ## Context
 
