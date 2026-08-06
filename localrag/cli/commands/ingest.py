@@ -5,7 +5,7 @@ from pathlib import Path
 
 import typer
 
-from localrag.api.dependencies import get_ingestion_service
+from localrag.application.container import get_ingestion_service
 
 logger = logging.getLogger(__name__)
 

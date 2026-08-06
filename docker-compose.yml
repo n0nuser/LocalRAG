@@ -80,6 +80,43 @@ services:
       retries: 10
       start_period: 30s
 
+  localrag-mcp:
+    build: .
+    image: localrag-api:local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8002:8002"
+    command: ["/app/.venv/bin/uvicorn", "localrag.mcp.app:app", "--host", "0.0.0.0", "--port", "8002"]
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - CHROMA_PERSIST_PATH=/app/data/chroma
+      - API_KEY=${API_KEY:?Set API_KEY in .env before starting Compose}
+      - UV_CACHE_DIR=/tmp/uv-cache
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - localrag_data:/app/data
+      - ./docs:/app/docs:ro
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    depends_on:
+      ollama:
+        condition: service_healthy
+      localrag-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/docs')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
   prometheus:
     image: prom/prometheus:v3.5.0
     profiles: [observability]

@@ -7,7 +7,7 @@ from localrag.storage.vector_store import VectorStore
 
 @dataclass(frozen=True)
 class ChromaCollectionRepository:
-    """Persistence for Chroma collection names (list/delete) used by the HTTP API."""
+    """Persistence boundary for Chroma collection names."""
 
     _vector_store: VectorStore
 

@@ -29,7 +29,7 @@ RUN uv sync --locked --no-dev \
 
 USER localrag
 
-EXPOSE 8000
+EXPOSE 8000 8002
 
 CMD ["/app/.venv/bin/uvicorn", "localrag.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
 

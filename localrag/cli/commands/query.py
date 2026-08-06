@@ -5,7 +5,7 @@ import logging
 
 import typer
 
-from localrag.api.dependencies import get_engine
+from localrag.application.container import get_engine
 from localrag.observability.tracing import SpanName, span
 
 logger = logging.getLogger(__name__)

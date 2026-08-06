@@ -7,8 +7,8 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from localrag.api.dependencies import get_api_settings, get_ingestion_service, get_job_registry
-from localrag.api.jobs import JobRegistry
 from localrag.api.main import app
+from localrag.application.jobs import JobRegistry
 from localrag.ingestion.service import IngestionResult
 from localrag.settings import Settings
 

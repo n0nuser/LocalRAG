@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, Response, status
 
 from localrag.api import service as api_service
 from localrag.api.dependencies import get_api_settings, get_collection_repository
-from localrag.api.repository import ChromaCollectionRepository
 from localrag.api.schemas import HealthResponse, ReadinessResponse
+from localrag.application.repository import ChromaCollectionRepository
 from localrag.settings import Settings
 
 router = APIRouter(prefix="", tags=["health"])

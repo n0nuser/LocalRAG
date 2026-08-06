@@ -10,7 +10,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from localrag.api.dependencies import get_embedder, get_retriever
-from localrag.api.exceptions import HttpMappedError
+from localrag.api.exceptions import HttpMappedError, to_http_error
 from localrag.api.middleware import RequestContextMiddleware
 from localrag.api.routers.agent import router as agent_router
 from localrag.api.routers.collections import router as collections_router
@@ -18,6 +18,7 @@ from localrag.api.routers.health import router as health_router
 from localrag.api.routers.ingest import router as ingest_router
 from localrag.api.routers.metrics import router as metrics_router
 from localrag.api.routers.query import router as query_router
+from localrag.application.errors import ApplicationError
 from localrag.logging_config import configure_logging
 from localrag.observability.tracing import configure_tracing, shutdown_tracing
 from localrag.settings import get_settings, load_settings, set_current_settings
@@ -66,6 +67,11 @@ async def http_mapped_error_handler(request: Request, exc: HttpMappedError) -> J
         status_code=int(exc.status_code),
         content={"detail": exc.detail},
     )
+
+
+@app.exception_handler(ApplicationError)
+async def application_error_handler(request: Request, exc: ApplicationError) -> JSONResponse:
+    return await http_mapped_error_handler(request, to_http_error(exc))
 
 
 @app.exception_handler(Exception)

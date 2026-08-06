@@ -223,7 +223,7 @@ reuse across requests, in contrast to top-level per-request APIs —
 `OllamaEmbedder` is currently an `lru_cache`d singleton
 (`localrag/api/dependencies.py`), so a long-lived pooled client fits, but thread
 safety across the ingest `ThreadPoolExecutor` (`max_workers=2`,
-`localrag/api/jobs.py:48`) should be confirmed.
+`localrag/application/jobs.py:48`) should be confirmed.
 
 **Checked, no issue found — embedding batch size.** `embedding_batch_size=32`
 (`localrag/settings.py:97`) is already near-optimal. Measured on 128 chunks of

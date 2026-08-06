@@ -17,6 +17,7 @@ LocalRAG is built around the parts that decide whether answers are trustworthy.
 - **Measures quality instead of asserting it.** A bundled dataset, RAGAS metrics, a reproducible benchmark runner, and versioned results ship with the project — retrieval changes can be compared, not guessed at.
 - **No vendor lock-in.** LLM and embedding providers sit behind interfaces, so switching between Ollama, OpenAI, and Anthropic is configuration rather than a rewrite.
 - **Bounded agent mode.** The agent endpoint has exactly two tools (`search_documents`, `answer_directly`) instead of an open-ended loop, so its behavior stays explainable.
+- **MCP transport.** MCP-capable clients can search, answer, ingest, and list collections through a separate authenticated process.
 
 ## Quickstart
 
@@ -57,6 +58,7 @@ Starts `localrag-api`, `ollama`, `chromadb`, `prometheus`, and `grafana`, and pu
 That service exits 0 when it finishes; that is expected, not a failure.
 
 - API: `http://localhost:8000/docs`
+- MCP: `http://localhost:8002/mcp`
 - Grafana: `http://localhost:3000` (admin / admin)
 - Prometheus: `http://localhost:9090`
 
@@ -137,6 +139,7 @@ Datasets, metrics, reproducibility, benchmark matrices, HTML reports, and the le
 Kubernetes manifests live in `k8s/`.
 The deployment is intentionally single-replica with a `ReadWriteOnce` volume, because Chroma and ingest jobs are node-local; do not apply `k8s/hpa.yaml` until those are externalized.
 See [docs/deployment.md](docs/deployment.md) for the persistence, readiness, and trust boundaries.
+MCP setup and tool contracts are documented in [docs/mcp.md](docs/mcp.md).
 
 ## Contributing
 
@@ -157,6 +160,7 @@ Setup, tests, quality gates, and the trunk-based Git workflow are in [CONTRIBUTI
 | [docs/observability.md](docs/observability.md) | Logging, metrics, optional OpenTelemetry |
 | [docs/data-lifecycle.md](docs/data-lifecycle.md) | Upload and query-audit retention |
 | [docs/deployment.md](docs/deployment.md) | Compose and Kubernetes contracts |
+| [docs/mcp.md](docs/mcp.md) | MCP tools, transports, and authentication |
 | [docs/plugin-author-guide.md](docs/plugin-author-guide.md) | Writing a retriever plugin |
 | [docs/evaluation.md](docs/evaluation.md) | **Start here for evaluation** — datasets, metrics, reproducibility, reports, leaderboard |
 | [docs/agent-navigation.md](docs/agent-navigation.md) | Fast codebase orientation for agents |
