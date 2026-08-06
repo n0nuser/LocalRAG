@@ -63,6 +63,7 @@ override unless `COMPOSE_OVERRIDE` is supplied.
 | Ingestion embedding cache | `localrag/embedding/cache.py`, embedding cache settings, [ADR 024](adr/024-embedding-cache-contract.md), `benchmarks/embedding_cache_benchmark.py` |
 | Ingest orchestration | `localrag/ingestion/service.py` |
 | Chroma collection / persist path | `localrag/storage/vector_store.py`, settings |
+| Concurrent-ingest exclusion (one writer per persist path) | `localrag/storage/persist_lock.py`, `localrag/ingestion/service.py`, [ADR 035](adr/035-atomic-ingestion-replacement.md), [cli.md](cli.md) |
 | Retrieval mode / hybrid ranking / freshness decay / HyDE experiment | `localrag/rag/retriever.py`, `localrag/rag/hyde.py`, `localrag/rag/bm25_index.py`, `localrag/settings.py`, [ADR 025](adr/025-hyde-retrieval-experiment.md) |
 | Retriever plugin contract / discovery | `localrag/plugins/retriever.py`, [plugin-author-guide.md](plugin-author-guide.md), [ADR 032](adr/032-retriever-plugin-contract.md) |
 | Bounded adaptive retrieval policy / trace | `localrag/rag/adaptive.py`, `localrag/rag/engine.py`, adaptive settings, [ADR 023](adr/023-bounded-adaptive-retrieval.md) |

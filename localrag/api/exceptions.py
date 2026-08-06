@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import status
 
 from localrag.application.errors import ApplicationError, ApplicationErrorKind
+from localrag.storage.persist_lock import ConcurrentIngestError
 
 
 class HttpMappedError(Exception):
@@ -24,6 +25,14 @@ class RagApiError(HttpMappedError):
 
 class AgentApiError(HttpMappedError):
     """Raised when the agent endpoint cannot run (e.g. missing provider credentials)."""
+
+
+class ConcurrentIngestApiError(HttpMappedError):
+    """Raised when another process already owns the Chroma persist path (ADR 035)."""
+
+    @classmethod
+    def create(cls, exc: ConcurrentIngestError) -> ConcurrentIngestApiError:
+        return cls(status.HTTP_409_CONFLICT, str(exc))
 
 
 def to_http_error(exc: ApplicationError) -> HttpMappedError:
