@@ -12,6 +12,7 @@ from urllib.parse import unquote
 from uuid import uuid4
 
 import httpx
+from chromadb.errors import NotFoundError
 
 from localrag import metrics as app_metrics
 from localrag.application.dto import (
@@ -415,6 +416,7 @@ def query_json(  # noqa: C901, PLR0915
     request: QueryRequest, engine: RAGEngine, query_cache: QueryCache | None = None
 ) -> QueryResponse:
     """Blocking JSON query — retrieves context then generates a full answer."""
+    engine = _engine_for_request(request, engine)
     t0 = time.perf_counter()
     cache_key: str | None = None
     if query_cache is not None:
@@ -575,6 +577,7 @@ def _query_error_kind(exc: RetrievalError) -> ApplicationErrorKind:
 
 def get_query_contexts(request: QueryRequest, engine: RAGEngine) -> list[dict[str, Any]]:
     """Retrieve chunks synchronously so embedding / vector errors map to HTTP before SSE starts."""
+    engine = _engine_for_request(request, engine)
     try:
         with span(SpanName.RETRIEVAL, {"stage": "retrieve"}):
             return engine.retriever.retrieve(
@@ -592,6 +595,7 @@ def iter_query_sse_events(
     engine: RAGEngine,
     contexts: list[dict[str, Any]],
 ) -> Iterator[dict[str, Any]]:
+    engine = _engine_for_request(request, engine)
     t0 = time.perf_counter()
     logger.info(
         "query_start model=%s n_results=%s question_chars=%s",
@@ -647,3 +651,15 @@ def iter_query_sse_events(
             "event": "error",
             "data": json.dumps({"detail": "LLM provider request failed."}),
         }
+
+
+def _engine_for_request(request: QueryRequest, engine: RAGEngine) -> RAGEngine:
+    if request.collection is None or request.collection == engine.settings.chroma_collection_name:
+        return engine
+    try:
+        return engine.for_collection(request.collection)
+    except NotFoundError as exc:
+        raise QueryError(
+            ApplicationErrorKind.NOT_FOUND,
+            f"Collection '{request.collection}' not found.",
+        ) from exc

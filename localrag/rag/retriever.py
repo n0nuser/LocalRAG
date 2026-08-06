@@ -66,6 +66,17 @@ class Retriever:
     reranker: CrossEncoderReranker | None = None
     last_hyde: HydeObservation | None = None
 
+    def for_collection(self, collection: str) -> Retriever:
+        """Create a request-scoped retriever for another collection."""
+        store = self.vector_store.for_collection(collection)
+        return type(self)(
+            settings=self.settings.with_overrides(chroma_collection_name=collection),
+            embedder=self.embedder,
+            vector_store=store,
+            bm25_index=Bm25Index.from_vector_store(store) if self.bm25_index is not None else None,
+            reranker=self.reranker,
+        )
+
     def retrieve(
         self,
         question: str,
