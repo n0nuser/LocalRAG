@@ -7,6 +7,7 @@ import typer
 
 from localrag.application.container import get_ingestion_service
 from localrag.ingestion.service import IngestProgress
+from localrag.storage.persist_lock import ConcurrentIngestError
 
 logger = logging.getLogger(__name__)
 
@@ -32,10 +33,17 @@ def ingest(path: str, recursive: bool | None = None, *, quiet: bool = False) -> 
     # run is indistinguishable from a hung one.
     on_progress = None if quiet else _echo_progress
 
-    if target.is_dir():
-        result = service.ingest_directory(path=target, recursive=recursive, on_progress=on_progress)
-    else:
-        result = service.ingest_file(path=target, on_progress=on_progress)
+    try:
+        if target.is_dir():
+            result = service.ingest_directory(
+                path=target, recursive=recursive, on_progress=on_progress
+            )
+        else:
+            result = service.ingest_file(path=target, on_progress=on_progress)
+    except ConcurrentIngestError as exc:
+        logger.error("cli_ingest_conflict error=%s", exc)
+        typer.echo(f"status=error reason=concurrent_ingest detail={exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
     failed_count = len(result.failed_sources)
     logger.info(

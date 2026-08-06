@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from http import HTTPStatus
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -16,6 +17,7 @@ from localrag.api.dependencies import (
 from localrag.api.main import app
 from localrag.ingestion.service import IngestionResult
 from localrag.settings import Settings, get_settings
+from localrag.storage.persist_lock import ConcurrentIngestError
 
 _STUB_CONTEXTS = [{"source": "doc.md", "chunk_index": 1, "text": "chunk"}]
 
@@ -339,4 +341,24 @@ def test_ingest_upload_retention_quota_removes_oldest(tmp_path: Path) -> None:
     assert response.status_code == 200
     assert old.exists() is False
     assert len(list(tmp_path.iterdir())) == 1
+    app.dependency_overrides.clear()
+
+
+def test_ingest_returns_409_when_another_process_holds_the_persist_lock(tmp_path: Path) -> None:
+    doc = tmp_path / "notes.txt"
+    doc.write_text("hello", encoding="utf-8")
+
+    @dataclass
+    class ContendedIngestionService:
+        def ingest_file(self, path: Path, embed_model: str | None = None) -> IngestionResult:
+            _ = embed_model
+            raise ConcurrentIngestError(str(path))
+
+    app.dependency_overrides[get_ingestion_service] = lambda: ContendedIngestionService()
+    client = TestClient(app, raise_server_exceptions=False)
+
+    response = client.post("/ingest", json={"path": str(doc)})
+
+    assert response.status_code == HTTPStatus.CONFLICT
+    assert str(doc) in response.json()["detail"]
     app.dependency_overrides.clear()

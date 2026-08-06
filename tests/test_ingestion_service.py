@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Sequence
+import subprocess
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -11,6 +12,9 @@ from localrag.embedding.cache import EmbeddingCache
 from localrag.ingestion import service as service_module
 from localrag.ingestion.service import FailedSource, IngestionResult, IngestionService
 from localrag.settings import Settings
+from localrag.storage.persist_lock import ConcurrentIngestError
+
+IngestLockHolder = Callable[[Path, float], "subprocess.Popen[str]"]
 
 
 @dataclass
@@ -577,3 +581,66 @@ def test_ingestion_service_progress_reports_failures(tmp_path: Path) -> None:
 
     assert ("a.md", None) in events
     assert any(name == "b.md" and error is not None for name, error in events)
+
+
+@pytest.mark.parametrize(
+    "call_name",
+    ["ingest_file", "ingest_directory", "ingest_paths", "rebuild_collection"],
+)
+def test_ingest_entry_points_reject_a_concurrent_process(
+    tmp_path: Path, call_name: str, ingest_lock_holder: IngestLockHolder
+) -> None:
+    document = tmp_path / "a.md"
+    document.write_text("hello world", encoding="utf-8")
+    persist_path = tmp_path / "chroma"
+    settings = Settings(
+        ingest_roots=[str(tmp_path)],
+        chroma_persist_path=str(persist_path),
+        chunk_chars=100,
+        chunk_overlap_chars=0,
+    )
+    service = IngestionService(
+        settings=settings,
+        embedder=StubEmbedder(seen_texts_batches=[]),  # type: ignore[arg-type]
+        vector_store=StubVectorStore(deleted_sources=[], added=[]),  # type: ignore[arg-type]
+    )
+    calls: dict[str, Callable[[], object]] = {
+        "ingest_file": lambda: service.ingest_file(document),
+        "ingest_directory": lambda: service.ingest_directory(tmp_path),
+        "ingest_paths": lambda: service.ingest_paths([document]),
+        "rebuild_collection": service.rebuild_collection,
+    }
+
+    ingest_lock_holder(persist_path, 30.0)
+
+    with pytest.raises(ConcurrentIngestError):
+        calls[call_name]()
+
+
+def test_ingest_succeeds_once_the_competing_process_has_finished(
+    tmp_path: Path, ingest_lock_holder: IngestLockHolder
+) -> None:
+    document = tmp_path / "a.md"
+    document.write_text("hello world", encoding="utf-8")
+    persist_path = tmp_path / "chroma"
+    settings = Settings(
+        ingest_roots=[str(tmp_path)],
+        chroma_persist_path=str(persist_path),
+        chunk_chars=100,
+        chunk_overlap_chars=0,
+    )
+    vector_store = StubVectorStore(deleted_sources=[], added=[])
+    service = IngestionService(
+        settings=settings,
+        embedder=StubEmbedder(seen_texts_batches=[]),  # type: ignore[arg-type]
+        vector_store=vector_store,  # type: ignore[arg-type]
+    )
+
+    ingest_lock_holder(persist_path, 0.0).wait(timeout=10)
+
+    first = service.ingest_file(document)
+    second = service.ingest_file(document)
+
+    assert first.files_processed == 1
+    assert second.files_processed == 1
+    assert len(vector_store.added) == 2

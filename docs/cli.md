@@ -58,6 +58,36 @@ Files that no parser can handle — and binary content in a file with a textual
 extension — are reported and skipped rather than being read as text. See
 [document-formats.md](document-formats.md).
 
+`ingest` accepts a file or a directory and writes into the configured Chroma
+persist path:
+
+```bash
+uv run localrag ingest ./docs
+uv run localrag ingest ./docs/guide.md
+```
+
+**One writer per persist path.** Chroma's embedded client keeps its HNSW
+segments in per-process memory with no cross-process invalidation, so two
+processes writing the same `CHROMA_PERSIST_PATH` corrupt each other's view —
+the boundary [ADR 035](adr/035-atomic-ingestion-replacement.md) already declares
+out of contract. Every ingest therefore takes an exclusive `flock` on
+`<CHROMA_PERSIST_PATH>/.ingest.lock` for the duration of the run, and the same
+lock covers collection rebuilds.
+
+A second concurrent ingest **fails immediately** rather than queueing — an
+ingest can run for minutes, so a caller is better told to retry than left
+hanging:
+
+```
+status=error reason=concurrent_ingest detail=another ingest is already running against ./data/chroma; wait for it to finish or use a different collection
+```
+
+The message goes to stderr and the command exits `1`. The equivalent HTTP
+ingest endpoints return `409 Conflict` with the same detail. Query and other
+read paths are never locked. The lock is advisory: if the persist directory
+cannot be opened, or the filesystem does not support `flock` (some network
+mounts) the ingest proceeds unguarded and logs a warning.
+
 ## Inspect
 
 `inspect` is read-only and never creates a missing collection, calls an LLM, or

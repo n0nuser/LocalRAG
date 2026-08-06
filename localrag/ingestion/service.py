@@ -21,6 +21,7 @@ from localrag.ingestion.structural_chunker import chunk_document
 from localrag.observability.tracing import SpanName, span
 from localrag.rag.bm25_index import Bm25Index
 from localrag.settings import Settings, is_path_allowed
+from localrag.storage.persist_lock import ingest_lock
 from localrag.storage.vector_store import VectorStore
 
 logger = logging.getLogger(__name__)
@@ -108,7 +109,9 @@ class IngestionService:
         return self.ingest_paths(files, embed_model=embed_model, on_progress=on_progress)
 
     def rebuild_collection(self, embed_model: str | None = None) -> RebuildCollectionResult:
-        with self._write_lock:
+        # Rebuild deletes and re-embeds every source, so it needs the same cross-process
+        # ownership of the persist path that a plain ingest does (ADR 035).
+        with ingest_lock(self.settings.chroma_persist_path), self._write_lock:
             sources = self.vector_store.list_distinct_sources()
             stored_hashes = self._stored_content_hashes()
             missing_sources: list[str] = []
@@ -152,7 +155,9 @@ class IngestionService:
         embed_model: str | None = None,
         on_progress: ProgressCallback | None = None,
     ) -> IngestionResult:
-        with self._write_lock:
+        # The file lock coordinates separate processes; the RLock handles writers
+        # within this process and remains reentrant for rebuild delegation.
+        with ingest_lock(self.settings.chroma_persist_path), self._write_lock:
             return self._ingest_paths_locked(paths, embed_model, on_progress=on_progress)
 
     def _ingest_paths_locked(
