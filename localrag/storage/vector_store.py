@@ -15,6 +15,10 @@ from localrag.embedding.base import EmbeddingIncompatibilityError, EmbeddingProv
 
 logger = logging.getLogger(__name__)
 
+# Used only when the client cannot report its own cap. Below every Chroma limit
+# seen in practice, so a wrong guess costs an extra round trip, not a failure.
+_DEFAULT_MAX_BATCH_SIZE = 1000
+
 
 @dataclass
 class VectorStore:
@@ -112,11 +116,20 @@ class VectorStore:
                     old_embeddings = old.get("embeddings")
                     old_metadatas = old.get("metadatas") or []
                     if old_ids:
-                        self.collection.upsert(
-                            ids=old_ids,
-                            documents=old_documents,
-                            embeddings=(old_embeddings if old_embeddings is not None else []),  # type: ignore[arg-type]
-                            metadatas=old_metadatas,  # type: ignore[arg-type]
+                        # Batched too: restoring a source large enough to trip the
+                        # cap must not fail the rollback itself.
+                        # Chroma types these more loosely than the write path
+                        # accepts; the values are already the shape it returned.
+                        self._upsert_batched(
+                            ids=[str(chunk_id) for chunk_id in old_ids],
+                            documents=[str(document) for document in old_documents],
+                            embeddings=[
+                                [float(value) for value in embedding]
+                                for embedding in (
+                                    old_embeddings if old_embeddings is not None else []
+                                )
+                            ],
+                            metadatas=[dict(metadata) for metadata in old_metadatas],
                         )
                 except Exception:
                     logger.exception("vector_replace_rollback_failed source=%s", source)
@@ -133,12 +146,41 @@ class VectorStore:
             str(metadata.get("chunk_id") or self._chunk_id(source=source, chunk_index=index))
             for index, metadata in enumerate(metadatas)
         ]
-        self.collection.upsert(
-            ids=ids,
-            documents=chunks,
-            embeddings=embeddings,  # type: ignore[arg-type]
-            metadatas=metadatas,  # type: ignore[arg-type]
-        )
+        self._upsert_batched(ids=ids, documents=chunks, embeddings=embeddings, metadatas=metadatas)
+
+    def _upsert_batched(
+        self,
+        ids: list[str],
+        documents: list[str],
+        embeddings: list[list[float]],
+        metadatas: list[dict[str, Any]],
+    ) -> None:
+        """Write in backend-sized batches.
+
+        Chroma rejects a batch larger than its own cap, which would fail the whole
+        document after every embedding has already been paid for.
+        """
+        batch_size = self._max_batch_size()
+        for start in range(0, len(ids), batch_size):
+            stop = start + batch_size
+            self.collection.upsert(
+                ids=ids[start:stop],
+                documents=documents[start:stop],
+                embeddings=embeddings[start:stop],  # type: ignore[arg-type]
+                metadatas=metadatas[start:stop],  # type: ignore[arg-type]
+            )
+
+    def _max_batch_size(self) -> int:
+        """Return the backend's write cap, falling back to a conservative default."""
+        get_limit = getattr(self.client, "get_max_batch_size", None)
+        if get_limit is None:
+            return _DEFAULT_MAX_BATCH_SIZE
+        try:
+            limit = int(get_limit())
+        except Exception:
+            logger.debug("vector_max_batch_size_unavailable", exc_info=True)
+            return _DEFAULT_MAX_BATCH_SIZE
+        return max(1, limit)
 
     def _source_ids(self, source: str) -> set[str]:
         raw = self.collection.get(where={"source": source}, include=[])
