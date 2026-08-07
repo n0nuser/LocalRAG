@@ -127,7 +127,7 @@ destination. See [data-lifecycle.md](data-lifecycle.md) and [ocr.md](ocr.md).
 | `FRESHNESS_WEIGHT` | `0.15` | Recency share of the relevance budget |
 | `PARENT_EXPANSION_ENABLED` | `true` | Expand hits to their full section |
 | `RAG_MIN_CONTEXT_SCORE` | `0.0` | Refuse to generate below this score; `0` disables |
-| `RAG_SYSTEM_PROMPT` | _(built-in)_ | System message for the answering model |
+| `RAG_SYSTEM_PROMPT` | _(built-in, see below)_ | System message for the answering model |
 | `RERANK_ENABLED` | `false` | Cross-encoder reranking (`rerank` extra) |
 | `RERANK_MODEL` / `RERANK_FETCH_K` | `ms-marco-MiniLM-L-6-v2` / `20` | Rerank model and candidate depth |
 | `QUERY_REWRITE_ENABLED` | `false` | Bounded query rewriting |
@@ -136,6 +136,28 @@ destination. See [data-lifecycle.md](data-lifecycle.md) and [ocr.md](ocr.md).
 | `ADAPTIVE_ENABLED` | `false` | Bounded adaptive retrieval policy |
 | `QUERY_CACHE_TTL_SECONDS` | `0.0` | Query cache TTL; `0` disables |
 | `LLM_CONTEXT_WINDOW_TOKENS` | `4096` | Budget used by compression planning |
+
+### The default system prompt
+
+`RAG_SYSTEM_PROMPT` defaults to `DEFAULT_SYSTEM_PROMPT`
+(`localrag/rag/prompt.py`), which is the single source the settings default,
+both cloud provider fallbacks, and `.env.example` all derive from:
+
+> You are a helpful assistant. Answer only based on the provided context.
+> Preserve the scope each source states: if a passage describes repeated,
+> habitual, or long-term exposure, do not present it as the result of a single
+> occurrence. When the question asks about one instance and the context only
+> supports long-term findings, say so instead of answering as if it did.
+
+The scope sentences exist because constraining the model to the retrieved
+context is not by itself enough. A passage about habitual exposure measured
+over years and one about a single occurrence are both just context, and the
+model will otherwise flatten them together — restating a long-term
+epidemiological finding as the consequence of one event, while staying
+technically grounded in real retrieved text.
+
+Overriding this variable **replaces** the scope instruction rather than adding
+to it. A custom prompt that needs the same guarantee has to restate it.
 
 Ranking math and the full option set for each experiment live in
 [rag-retrieval.md](rag-retrieval.md); the bounded experiments each have an ADR

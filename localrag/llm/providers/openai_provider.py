@@ -11,6 +11,7 @@ from openai import OpenAI
 from localrag.llm.costs import estimate_cost_usd
 from localrag.llm.providers.base import BaseLLMProvider
 from localrag.llm.types import LLMResponse
+from localrag.rag.prompt import DEFAULT_SYSTEM_PROMPT
 
 
 class OpenAIProvider(BaseLLMProvider):
@@ -18,9 +19,7 @@ class OpenAIProvider(BaseLLMProvider):
         self,
         api_key: str,
         default_model: str = "gpt-4o-mini",
-        system_prompt: str = (
-            "You are a helpful assistant. Answer only based on the provided context."
-        ),
+        system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     ) -> None:
         self._client = OpenAI(api_key=api_key)
         self._default_model = default_model

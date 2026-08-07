@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, model_validator
 
+from localrag.rag.prompt import DEFAULT_SYSTEM_PROMPT
+
 # Defaults for Ollama model tags (`ollama pull` / `ollama list`).
 # Keep in sync with docs and API examples.
 DEFAULT_OLLAMA_EMBED_MODEL = "nomic-embed-text"
@@ -271,7 +273,7 @@ class RetrievalSettings(BaseModel):
     parent_expansion_enabled: bool = True
     query_rewrite_enabled: bool = False
     experiment_mode: str = "auto"
-    system_prompt: str = "You are a helpful assistant. Answer only based on the provided context."
+    system_prompt: str = DEFAULT_SYSTEM_PROMPT
 
     expansion: QueryExpansionSettings = QueryExpansionSettings()
     hyde: HydeSettings = HydeSettings()
