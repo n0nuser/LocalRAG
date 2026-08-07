@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from localrag.rag.compressor import CompressionBudget, compress_contexts, count_tokens
+from localrag.rag.prompt import build_prompt
 
 
 def _context(text: str, source: str = "a.md", index: int = 0) -> dict[str, object]:
@@ -94,3 +95,20 @@ def test_scorer_failure_uses_bounded_fallback() -> None:
     assert result.output_tokens <= 1
     assert result.output_chars <= 10
     assert result.contexts[0]["compression"]["status"] == "fallback"
+
+
+def test_compression_keeps_heading_path_reaching_the_prompt() -> None:
+    """Compression runs before prompt building, so it must not strip provenance.
+
+    The prompt reads ``heading_path`` off the context metadata; if compression
+    dropped metadata the section marker would silently disappear from the prompt
+    while still appearing in the API sources list.
+    """
+    result = compress_contexts(
+        [_context("Python setup uses uv.")],
+        "How does Python setup use uv?",
+        CompressionBudget(),
+    )
+
+    prompt = build_prompt(system_prompt="SYS", question="Q", contexts=result.contexts)
+    assert "section=Guide > Setup" in prompt
