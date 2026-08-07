@@ -11,6 +11,7 @@ import anthropic
 from localrag.llm.costs import estimate_cost_usd
 from localrag.llm.providers.base import BaseLLMProvider
 from localrag.llm.types import LLMResponse
+from localrag.rag.prompt import DEFAULT_SYSTEM_PROMPT
 
 _MAX_TOKENS = 4096
 
@@ -20,9 +21,7 @@ class AnthropicProvider(BaseLLMProvider):
         self,
         api_key: str,
         default_model: str = "claude-haiku-4-5",
-        system_prompt: str = (
-            "You are a helpful assistant. Answer only based on the provided context."
-        ),
+        system_prompt: str = DEFAULT_SYSTEM_PROMPT,
     ) -> None:
         self._client = anthropic.Anthropic(api_key=api_key)
         self._default_model = default_model
