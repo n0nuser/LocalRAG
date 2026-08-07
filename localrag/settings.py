@@ -283,6 +283,12 @@ def _read_yaml(path: Path) -> dict[str, Any]:  # noqa: C901, PLR0912
             "adaptive_refinement_max_chars": "adaptive_refinement_max_chars",
             "adaptive_critique_enabled": "adaptive_critique_enabled",
             "adaptive_max_provider_calls": "adaptive_max_provider_calls",
+            "claim_filter_enabled": "claim_filter_enabled",
+            "claim_filter_model": "claim_filter_model",
+            "claim_filter_timeout_seconds": "claim_filter_timeout_seconds",
+            "claim_filter_input_max_chars": "claim_filter_input_max_chars",
+            "claim_filter_output_max_tokens": "claim_filter_output_max_tokens",
+            "claim_filter_log_content": "claim_filter_log_content",
         },
         "generation": {
             "backend": "llm_backend",
@@ -990,6 +996,36 @@ class Settings(BaseSettings):
     def adaptive_max_provider_calls(self) -> int:
         """Flat accessor for ``retrieval.adaptive.max_provider_calls``."""
         return self.retrieval.adaptive.max_provider_calls
+
+    @property
+    def claim_filter_enabled(self) -> bool:
+        """Flat accessor for ``retrieval.claim_filter.enabled``."""
+        return self.retrieval.claim_filter.enabled
+
+    @property
+    def claim_filter_model(self) -> str:
+        """Flat accessor for ``retrieval.claim_filter.model``."""
+        return self.retrieval.claim_filter.model
+
+    @property
+    def claim_filter_timeout_seconds(self) -> float:
+        """Flat accessor for ``retrieval.claim_filter.timeout_seconds``."""
+        return self.retrieval.claim_filter.timeout_seconds
+
+    @property
+    def claim_filter_input_max_chars(self) -> int:
+        """Flat accessor for ``retrieval.claim_filter.input_max_chars``."""
+        return self.retrieval.claim_filter.input_max_chars
+
+    @property
+    def claim_filter_output_max_tokens(self) -> int:
+        """Flat accessor for ``retrieval.claim_filter.output_max_tokens``."""
+        return self.retrieval.claim_filter.output_max_tokens
+
+    @property
+    def claim_filter_log_content(self) -> bool:
+        """Flat accessor for ``retrieval.claim_filter.log_content``."""
+        return self.retrieval.claim_filter.log_content
 
     @property
     def query_cache_ttl_seconds(self) -> float:

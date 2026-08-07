@@ -62,6 +62,7 @@ default.
 | [038](038-application-and-mcp-boundaries.md) | Transport-agnostic application boundary and MCP adapter | Amended by [039](039-fastmcp-sdk-adoption.md) | Architecture / MCP |
 | [039](039-fastmcp-sdk-adoption.md) | Adopt the FastMCP SDK for the MCP adapter | Accepted | Architecture / MCP |
 | [040](040-request-scoped-collection-selection.md) | Request-scoped HTTP collection selection | Accepted | API / Retrieval |
+| [041](041-claim-scope-applicability-filter.md) | Claim scope-applicability filtering | Accepted | Retrieval |
 
 ## Research spikes
 

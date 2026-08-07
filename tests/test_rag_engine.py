@@ -235,3 +235,76 @@ def test_rag_engine_compresses_shared_prompt_path_without_changing_sources() -> 
     assert events[-1]["sources"] == [
         {"source": "guide.md", "chunk_index": 4, "heading_path": "Setup", "chunk_type": None}
     ]
+
+
+@dataclass
+class ClaimFilterProvider(FakeProvider):
+    """Provider whose applicability verdict is scripted, for the claim-filter path."""
+
+    verdict: str = '{"inapplicable": []}'
+    filter_calls: list[str] = field(default_factory=list)
+
+    def generate_from_prompt(self, prompt: str, *, model: str | None = None) -> LLMResponse:
+        del model
+        self.filter_calls.append(prompt)
+        return LLMResponse(
+            answer=self.verdict,
+            model="fake",
+            tokens_used=0,
+            latency_ms=0.0,
+            estimated_cost_usd=0.0,
+        )
+
+
+def _scope_contexts() -> list[dict[str, object]]:
+    return [
+        {"text": "years of habitual short sleep", "source": "a.md", "chunk_index": 1},
+        {"text": "after a single night", "source": "a.md", "chunk_index": 2},
+    ]
+
+
+def test_claim_filter_is_inert_when_disabled() -> None:
+    """The default path must not gain a provider call or change its trace."""
+    provider = ClaimFilterProvider(tokens=["ok"])
+    engine = RAGEngine(
+        settings=Settings(rag_system_prompt="SYS"),
+        retriever=StubRetriever(contexts=_scope_contexts()),
+        provider=provider,
+    )
+
+    final = list(engine.stream_answer(question="Q", model="llm", n_results=3))[-1]
+
+    assert provider.filter_calls == []
+    assert final["trace"] is None
+    assert [source["chunk_index"] for source in final["sources"]] == [1, 2]
+
+
+def test_claim_filter_drops_context_from_prompt_sources_and_reports_on_trace() -> None:
+    provider = ClaimFilterProvider(tokens=["ok"], verdict='{"inapplicable": [1]}')
+    engine = RAGEngine(
+        settings=Settings(rag_system_prompt="SYS", claim_filter_enabled=True),
+        retriever=StubRetriever(contexts=_scope_contexts()),
+        provider=provider,
+    )
+
+    final = list(engine.stream_answer(question="Q", model="llm", n_results=3))[-1]
+
+    assert "years of habitual short sleep" not in provider.prompts_seen[0]
+    assert "after a single night" in provider.prompts_seen[0]
+    # A discarded passage did not inform the answer, so it must not be cited.
+    assert [source["chunk_index"] for source in final["sources"]] == [2]
+    assert final["trace"]["claim_filter"]["discarded"] == 1
+
+
+def test_claim_filter_failure_leaves_the_answer_path_intact() -> None:
+    provider = ClaimFilterProvider(tokens=["ok"], verdict="not json at all")
+    engine = RAGEngine(
+        settings=Settings(rag_system_prompt="SYS", claim_filter_enabled=True),
+        retriever=StubRetriever(contexts=_scope_contexts()),
+        provider=provider,
+    )
+
+    final = list(engine.stream_answer(question="Q", model="llm", n_results=3))[-1]
+
+    assert [source["chunk_index"] for source in final["sources"]] == [1, 2]
+    assert final["trace"]["claim_filter"]["status"] == "fallback"

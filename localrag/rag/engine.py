@@ -8,6 +8,11 @@ from typing import Any
 from localrag.llm.providers.base import BaseLLMProvider
 from localrag.observability.tracing import SpanName, span
 from localrag.rag.adaptive import AdaptiveRetrievalPolicy
+from localrag.rag.claim_filter import (
+    ClaimFilterObservation,
+    ClaimFilterStatus,
+    filter_inapplicable_contexts,
+)
 from localrag.rag.compressor import CompressionBudget, compress_contexts
 from localrag.rag.prompt import build_prompt
 from localrag.rag.retriever import Retriever
@@ -156,11 +161,16 @@ class RAGEngine:
         model: str | None,
     ) -> Generator[dict[str, Any]]:
         logger.debug("rag_contexts count=%s", len(contexts))
+        # Applicability filtering runs before compression so the compression budget is
+        # spent only on passages that can actually answer the question at its scope.
+        claim_filter = filter_inapplicable_contexts(
+            contexts, question, self.settings, self.provider
+        )
         # Compression is unconditional: it is deterministic, extractive, and needs no
         # provider call, so its budgets alone decide how much context survives.
-        with span(SpanName.RETRIEVAL_COMPRESSION, {"count": len(contexts)}):
+        with span(SpanName.RETRIEVAL_COMPRESSION, {"count": len(claim_filter.contexts)}):
             compression = compress_contexts(
-                contexts,
+                claim_filter.contexts,
                 question,
                 CompressionBudget(
                     max_contexts=self.settings.context_compression_max_contexts,
@@ -190,9 +200,14 @@ class RAGEngine:
         logger.info("rag_stream_done")
         yield {
             "type": "final",
-            "sources": self.extract_sources(contexts),
+            # Sources come from the filtered set: a passage the filter discarded did
+            # not inform the answer, so citing it would misattribute the response.
+            "sources": self.extract_sources(claim_filter.contexts),
             "low_confidence": False,
-            "trace": _hyde_trace(getattr(self.retriever, "last_hyde", None)),
+            "trace": _merge_trace(
+                _hyde_trace(getattr(self.retriever, "last_hyde", None)),
+                claim_filter.observation,
+            ),
         }
 
     @staticmethod
@@ -216,6 +231,21 @@ class RAGEngine:
                 }
             )
         return sources
+
+
+def _merge_trace(
+    hyde: dict[str, Any] | None, claim_filter: ClaimFilterObservation
+) -> dict[str, Any] | None:
+    """Combine stage observations into the single trace field the API exposes.
+
+    A disabled stage contributes nothing, so a query with no optional stages active
+    still reports ``None`` exactly as before.
+    """
+    if claim_filter.status is ClaimFilterStatus.DISABLED:
+        return hyde
+    merged = dict(hyde or {})
+    merged["claim_filter"] = claim_filter.to_dict()
+    return merged
 
 
 def _hyde_trace(trace: Any) -> dict[str, Any] | None:

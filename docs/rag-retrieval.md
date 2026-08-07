@@ -132,6 +132,31 @@ skip expansion and prompt with only the originally matched chunk text. Hits
 with an empty `heading_path`, or whose section has only a single chunk, are
 left unexpanded.
 
+## Claim scope-applicability filtering (optional)
+
+Retrieval ranks by topical similarity, which is blind to the qualifier that
+decides whether a passage answers the question: a question about a single
+occurrence and a passage about habitual exposure over years are the same topic.
+
+`CLAIM_FILTER_ENABLED` (default `false`) inserts
+`localrag/rag/claim_filter.py` between retrieval and compression. It makes one
+provider call regardless of context count, asking which numbered passages do
+not apply at the question's scope, and removes those. It never rewrites, adds,
+or reorders a passage — removal of an already-retrieved context is its only
+effect. The filter prompt carries each passage's `heading_path`, because scope
+usually lives in the heading rather than the sentence.
+
+Filtering runs before compression so the compression budget is spent only on
+applicable passages, and reported sources come from the filtered set — a
+discarded passage did not inform the answer, so citing it would misattribute
+the response.
+
+Every failure degrades to the unfiltered contexts: provider error, unparseable
+output, out-of-range indices, and any verdict that would discard *all* context.
+It works on all three backends, unlike HyDE. The observation (status,
+evaluated/discarded counts, latency, discarded IDs) is merged into the query
+`trace`. Contract: [ADR 041](adr/041-claim-scope-applicability-filter.md).
+
 ## Section provenance in the prompt
 
 `build_prompt` prefixes each context block with a header line naming its origin:
