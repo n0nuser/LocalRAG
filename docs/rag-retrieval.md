@@ -157,6 +157,15 @@ It works on all three backends, unlike HyDE. The observation (status,
 evaluated/discarded counts, latency, discarded IDs) is merged into the query
 `trace`. Contract: [ADR 041](adr/041-claim-scope-applicability-filter.md).
 
+> **Measure before enabling.** The filter is only as good as the judge model.
+> On `gemma3:4b` a manual check of the motivating acute-vs-chronic example
+> produced a wrong verdict (both passages marked inapplicable, caught by the
+> all-discarded guard). The safety design means a bad verdict costs a wasted
+> provider call rather than a wrong answer, but a small local model should not
+> be assumed to improve anything here. Consider pointing `CLAIM_FILTER_MODEL`
+> at a stronger model than the answering one, and compare against the disabled
+> baseline.
+
 ## Section provenance in the prompt
 
 `build_prompt` prefixes each context block with a header line naming its origin:

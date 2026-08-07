@@ -90,6 +90,26 @@ has no scope regression case yet (#174). Operators enabling this should compare
 against the disabled baseline on their own corpus using the existing benchmark
 tooling rather than assuming an improvement.
 
+### Measured judge quality is the open risk
+
+A manual check against `gemma3:4b` on the motivating example — an acute-framed
+question with one chronic passage and one acute passage — produced a **wrong
+verdict**: the model marked both passages inapplicable. The all-discarded guard
+caught it and degraded to the unfiltered contexts, so the answer path was
+unharmed, but the stage did no useful work.
+
+Rewording the instruction to bias harder toward keeping made the outcome
+**worse**, not better: the model then discarded exactly one passage, and it was
+the acute passage that actually answered the question. That reword was reverted.
+
+The conclusion is that this stage's usefulness is bounded by the judge model's
+ability to reason about scope, and a small local model does not currently clear
+that bar. The safety design holds — a bad verdict costs a wasted call, not a
+wrong answer — but the feature should not be enabled on small local models
+without measuring it first, which is what #174 exists to make possible. Whether
+the filter deserves a dedicated judge model (`CLAIM_FILTER_MODEL`) rather than
+the answering model is the first thing to test once a regression case exists.
+
 The stage is deliberately narrow: it filters retrieved contexts by scope
 applicability only. Per-claim scope markers in the answer, and claim extraction
 as a distinct representation, are explicitly **not** part of this decision.
