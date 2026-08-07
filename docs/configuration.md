@@ -134,6 +134,12 @@ destination. See [data-lifecycle.md](data-lifecycle.md) and [ocr.md](ocr.md).
 | `QUERY_EXPANSION_ENABLED` | `false` | Bounded query expansion |
 | `HYDE_ENABLED` | `false` | Hypothetical-document retrieval experiment |
 | `ADAPTIVE_ENABLED` | `false` | Bounded adaptive retrieval policy |
+| `CLAIM_FILTER_ENABLED` | `false` | Drop retrieved contexts whose scope does not match the question |
+| `CLAIM_FILTER_MODEL` | _(empty)_ | Model for the filter call; empty uses the provider default |
+| `CLAIM_FILTER_TIMEOUT_SECONDS` | `30.0` | Filter call timeout |
+| `CLAIM_FILTER_INPUT_MAX_CHARS` | `1000` | Total passage text sent to the filter |
+| `CLAIM_FILTER_OUTPUT_MAX_TOKENS` | `256` | Bound on the filter verdict |
+| `CLAIM_FILTER_LOG_CONTENT` | `false` | Log which passages were discarded |
 | `QUERY_CACHE_TTL_SECONDS` | `0.0` | Query cache TTL; `0` disables |
 | `LLM_CONTEXT_WINDOW_TOKENS` | `4096` | Budget used by compression planning |
 
@@ -163,7 +169,8 @@ Ranking math and the full option set for each experiment live in
 [rag-retrieval.md](rag-retrieval.md); the bounded experiments each have an ADR
 (HyDE [025](adr/025-hyde-retrieval-experiment.md), compression
 [022](adr/022-context-compression-contract.md), adaptive
-[023](adr/023-bounded-adaptive-retrieval.md)).
+[023](adr/023-bounded-adaptive-retrieval.md), claim filter
+[041](adr/041-claim-scope-applicability-filter.md)).
 
 ## Audit and observability
 
