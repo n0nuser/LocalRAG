@@ -132,6 +132,28 @@ skip expansion and prompt with only the originally matched chunk text. Hits
 with an empty `heading_path`, or whose section has only a single chunk, are
 left unexpanded.
 
+## Section provenance in the prompt
+
+`build_prompt` prefixes each context block with a header line naming its origin:
+
+```
+[1] source=book.md chunk=473 section=Cancer, Heart Attacks > SLEEP LOSS AND THE CARDIOVASCULAR SYSTEM
+```
+
+The `section=` segment carries the chunk's `heading_path`, so the model can tell
+which part of a document a passage came from — whether a statistic sits under a
+chapter about long-term risk or one about immediate effects. Without it, the
+heading was retrieved and returned in the API `sources` list but never reached
+the model, which could then restate a chronic finding as an acute one.
+
+The segment is **omitted entirely** when `heading_path` is empty, which is the
+normal case for `text_block` and `code_block` chunks, so unstructured documents
+keep the previous two-field header. Heading paths are truncated to
+`MAX_SECTION_CHARS` (`localrag/rag/prompt.py`); the bound is chosen so that a
+full set of worst-case headers still fits inside
+`CONTEXT_COMPRESSION_RESERVED_PROMPT_TOKENS`, since compression budgets measure
+only chunk body text and never the scaffolding around it.
+
 ## Cross-encoder reranking (optional)
 
 Disabled by default (`RERANK_ENABLED=false`). When enabled, `Retriever.retrieve`
