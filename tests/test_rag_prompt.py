@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+import inspect
+from pathlib import Path
+
+from localrag.llm.providers.anthropic_provider import AnthropicProvider
+from localrag.llm.providers.openai_provider import OpenAIProvider
 from localrag.rag.compressor import count_tokens
-from localrag.rag.prompt import MAX_SECTION_CHARS, build_prompt
-from localrag.settings_groups import ContextCompressionSettings
+from localrag.rag.prompt import DEFAULT_SYSTEM_PROMPT, MAX_SECTION_CHARS, build_prompt
+from localrag.settings_groups import ContextCompressionSettings, RetrievalSettings
 
 
 def test_build_prompt_without_context() -> None:
@@ -129,3 +134,48 @@ def test_build_prompt_prefers_expanded_text_over_matched_text() -> None:
 
     assert "full section text including matched sentence" in out
     assert "matched sentence only" not in out
+
+
+def test_default_system_prompt_is_the_single_source_of_truth() -> None:
+    """The default prompt string had five hand-maintained copies and no test.
+
+    Nothing mechanically linked the settings default, the two provider keyword
+    defaults, and `.env.example`, so they could drift silently. Every in-code copy
+    now derives from this constant; this test fails if one is reintroduced.
+    """
+    assert RetrievalSettings().system_prompt == DEFAULT_SYSTEM_PROMPT
+    assert OpenAIProvider.__init__.__kwdefaults__ is None
+    assert (
+        inspect.signature(OpenAIProvider.__init__).parameters["system_prompt"].default
+        == DEFAULT_SYSTEM_PROMPT
+    )
+    assert (
+        inspect.signature(AnthropicProvider.__init__).parameters["system_prompt"].default
+        == DEFAULT_SYSTEM_PROMPT
+    )
+
+
+def test_default_system_prompt_constrains_scope_and_stays_short() -> None:
+    """#173: the prompt must require preserving each claim's stated scope.
+
+    Length is part of the contract, not incidental: this ships on every query and
+    small local models follow long instructions unevenly.
+    """
+    prompt = DEFAULT_SYSTEM_PROMPT.casefold()
+
+    assert "only based on the provided context" in prompt
+    assert "scope" in prompt
+    assert "single" in prompt
+    assert count_tokens(DEFAULT_SYSTEM_PROMPT) <= 80
+
+
+def test_env_example_matches_the_default_system_prompt() -> None:
+    """`.env.example` is the canonical env var list and is not generated."""
+    env_example = Path(__file__).resolve().parent.parent / ".env.example"
+    lines = [
+        line
+        for line in env_example.read_text(encoding="utf-8").splitlines()
+        if line.startswith("RAG_SYSTEM_PROMPT=")
+    ]
+
+    assert lines == [f"RAG_SYSTEM_PROMPT={DEFAULT_SYSTEM_PROMPT}"]
