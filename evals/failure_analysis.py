@@ -13,6 +13,8 @@ from typing import Any, Literal, cast
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from evals.metrics import resolve_retrieved_citations
+
 FAILURE_LABELS = (
     "retrieval_miss",
     "context_omission",
@@ -54,6 +56,10 @@ class FailureCaseArtifact(BaseModel):
     retrieved_text: list[str] = Field(default_factory=list)
     citation_ids: list[str] | None = None
     relevant_citation_ids: list[str] | None = None
+    citation_texts: dict[str, str] | None = Field(
+        default=None,
+        description="Declared citation ID to passage; lets context_omission join on text.",
+    )
     metrics: dict[str, dict[str, Any]] = Field(default_factory=dict)
     error: str | None = None
 
@@ -149,6 +155,28 @@ def _judge(artifact: FailureCaseArtifact, config: FailureAnalysisConfig) -> Judg
     return None
 
 
+def _omits_relevant_context(artifact: FailureCaseArtifact) -> bool:
+    """Whether annotated-relevant context was left out of what retrieval returned.
+
+    Joining relevant IDs against retrieved IDs directly cannot work in either
+    mode: offline the two sets were the same list by construction, so the
+    difference was always empty and this label could never fire; live they are
+    dataset citation IDs versus corpus chunk hashes, sharing no namespace, so it
+    fired for every record. ``resolve_retrieved_citations`` picks the join that
+    means something in each mode and reports ``None`` when neither does — which
+    is not evidence of omission, so it must not be labelled as one.
+    """
+    retrieved_citations = resolve_retrieved_citations(
+        artifact.relevant_citation_ids,
+        artifact.retrieved_ids,
+        artifact.citation_texts,
+        artifact.retrieved_text,
+    )
+    if retrieved_citations is None:
+        return False
+    return bool(set(artifact.relevant_citation_ids or []) - retrieved_citations)
+
+
 def classify_case(  # noqa: C901
     artifact: FailureCaseArtifact, *, config: FailureAnalysisConfig | None = None
 ) -> FailureClassification:
@@ -170,11 +198,7 @@ def classify_case(  # noqa: C901
         labels.add("retrieval_miss")
         reasons.append("no_retrieved_context")
         failed = True
-    if (
-        artifact.retrieved_ids
-        and artifact.relevant_citation_ids
-        and set(artifact.relevant_citation_ids) - set(artifact.retrieved_ids)
-    ):
+    if _omits_relevant_context(artifact):
         labels.add("context_omission")
         reasons.append("relevant_context_not_retrieved")
         failed = True

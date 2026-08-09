@@ -21,6 +21,7 @@ from evals.dataset.registry import (
     registered_datasets,
 )
 from evals.dataset.schema import DatasetManifest, DatasetRecord
+from evals.metrics import score_retrieval_recall
 from evals.run_evals import _build_rows, _select_records
 
 # --- fixture manifest builders ---
@@ -372,3 +373,42 @@ def test_bundled_fixtures_offline_mode_never_needs_network(monkeypatch: pytest.M
     records = manifest.split("smoke")
     rows = _build_rows(records, "http://unused", "", offline=True)
     assert len(rows) == len(records)
+
+
+def test_scope_fixture_encodes_the_observed_retrieval_failure() -> None:
+    """#174's regression case: the acute passage is indexed but never retrieved."""
+    discover_fixtures()
+    manifest = load_dataset("localrag-scope", "1.0.0")
+    recalls = {
+        record.record_id: score_retrieval_recall(
+            record.relevant_citation_ids(),
+            record.offline_retrieved_ids(),
+            record.citation_texts(),
+            record.offline_context_texts(),
+        ).value
+        for record in manifest.records
+    }
+    # The motivating failure, a graded partial, and a control that must not be zero.
+    assert recalls["single-overvoltage-event-effect"] == 0.0
+    assert recalls["single-event-recovery-procedure"] == 0.5
+    assert recalls["repeated-overvoltage-events-effect"] == 1.0
+
+
+def test_offline_retrieved_ids_default_to_every_citation() -> None:
+    """Existing fixtures declare no override and must keep their previous meaning."""
+    discover_fixtures()
+    record = load_dataset("localrag-core", "1.0.0").records[0]
+    assert record.offline_retrieved_ids() == [c.citation_id for c in record.citations]
+
+
+def test_offline_retrieved_ids_must_reference_declared_citations() -> None:
+    with pytest.raises(ValidationError, match="offline_retrieved_citation_ids"):
+        DatasetRecord.model_validate(
+            {
+                "record_id": "r1",
+                "question": "q",
+                "reference_answer": "a",
+                "citations": [{"citation_id": "c1", "source": "s", "text": "t"}],
+                "offline_retrieved_citation_ids": ["nope"],
+            }
+        )
