@@ -38,6 +38,35 @@ IDs from the #82 dataset judgments. Missing or malformed citation annotations
 are `unavailable`/missing, never zero or perfect. Citation IDs are scoped to a
 record and validated against its declared citations before evaluation.
 
+`retrieval_recall` is the recall counterpart: the fraction of
+annotation-relevant citations that retrieval actually surfaced. Threshold 0.8.
+`citation_accuracy` scores precision over what the *answer* cited, so neither it
+nor the LLM-judged `context_recall` could catch retrieval quietly returning
+topically similar passages instead of the ones that answer the question — this
+metric is identity-level and needs no judge.
+
+It joins the two sides two ways, because the run modes name chunks differently:
+
+| Mode | Retrieved IDs are | Join |
+| --- | --- | --- |
+| Offline | Dataset citation IDs (`offline_retrieved_citation_ids`) | Exact, on ID |
+| Live | Corpus chunk hashes | Citation text against retrieved context text |
+
+The namespace is proven by overlap with the record's declared citation IDs, not
+assumed. The text join accepts normalized containment or 60% token coverage
+(`RETRIEVAL_RECALL_TOKEN_COVERAGE`), because chunk boundaries cut passages and
+an annotated citation is usually a subset of a larger retrieved chunk. When
+neither join is possible the case is `unavailable` — never zero, which would be
+indistinguishable from retrieval genuinely finding nothing.
+
+The `context_omission` failure label uses the same join
+(`evals.metrics.resolve_retrieved_citations`), so the metric and the label can
+never disagree. Before that was shared, the label was joined on IDs alone and
+was wrong in both modes: offline the retrieved IDs *were* the citation list, so
+the difference was always empty and the label could never fire; live they were
+corpus hashes sharing no namespace with citation IDs, so it fired for every
+record.
+
 ## Results and thresholds
 
 Every metric stores an aggregate value, direction, threshold, per-case value,

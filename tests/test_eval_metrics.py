@@ -7,8 +7,10 @@ from evals.metrics import (
     aggregate_cases,
     exact_match,
     f1,
+    resolve_retrieved_citations,
     score_citation_accuracy,
     score_judge_metric,
+    score_retrieval_recall,
 )
 
 
@@ -68,3 +70,50 @@ def test_citation_accuracy_scores_annotation_ids() -> None:
     result = score_citation_accuracy("answer", ["c1", "missing"], ["c1", "c2"])
     assert result.value == 0.5
     assert result.status == "complete"
+
+
+def test_retrieval_recall_prefers_the_id_join_when_namespaces_are_shared() -> None:
+    """Offline the retrieved IDs are dataset citation IDs, so the join is exact."""
+    result = score_retrieval_recall(
+        ["c1", "c2"],
+        ["c2", "c3"],
+        {"c1": "acute passage", "c2": "chronic passage", "c3": "other passage"},
+        ["chronic passage", "other passage"],
+    )
+    assert result.value == 0.5
+    assert result.status == "complete"
+
+
+def test_retrieval_recall_falls_back_to_text_when_ids_share_no_namespace() -> None:
+    """A live run returns corpus chunk hashes; comparing them to citation IDs is meaningless."""
+    result = score_retrieval_recall(
+        ["c1", "c2"],
+        ["sha256:aaaa", "sha256:bbbb"],
+        {"c1": "the clamp cools for ninety seconds", "c2": "calibration drift accumulates"},
+        ["Section 4. The clamp cools for ninety seconds, then readings resume."],
+    )
+    assert result.value == 0.5
+
+
+def test_retrieval_recall_matches_a_citation_inside_a_larger_chunk() -> None:
+    """Chunk boundaries cut passages, so exact containment alone would under-count."""
+    hits = resolve_retrieved_citations(
+        ["c1"],
+        None,
+        {"c1": "readings are unavailable for approximately ninety seconds"},
+        ["Readings are unavailable, in practice, for ninety seconds or so while it cools."],
+    )
+    assert hits == {"c1"}
+
+
+def test_retrieval_recall_is_unavailable_rather_than_zero_without_annotations() -> None:
+    result = score_retrieval_recall(None, ["c1"], {"c1": "text"}, ["text"])
+    assert result.status == "unavailable"
+    assert result.value is None
+
+
+def test_retrieval_recall_is_unavailable_when_neither_join_can_be_made() -> None:
+    """No shared IDs and no retrieved text is undecidable, not a score of zero."""
+    result = score_retrieval_recall(["c1"], ["sha256:aaaa"], {"c1": "text"}, [])
+    assert result.status == "unavailable"
+    assert result.value is None

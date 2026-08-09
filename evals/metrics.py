@@ -112,3 +112,83 @@ def score_citation_accuracy(
         return MetricCase(status="unavailable", warning="citation annotation is missing")
     relevant = set(relevant_ids)
     return MetricCase(value=len(set(cited_ids) & relevant) / len(set(cited_ids)))
+
+
+#: Fraction of a citation's tokens that must appear in a retrieved context for the
+#: text join to count it as retrieved. Deliberately below 1.0: chunk boundaries cut
+#: passages, so an annotated citation is often a subset of a larger retrieved chunk.
+RETRIEVAL_RECALL_TOKEN_COVERAGE = 0.6
+
+
+def _context_contains_citation(citation_text: str, contexts: list[str]) -> bool:
+    """Whether any retrieved context carries this citation's passage."""
+    needle = normalize_answer(citation_text)
+    if not needle:
+        return False
+    needle_tokens = set(needle.split())
+    for context in contexts:
+        haystack = normalize_answer(context)
+        if needle in haystack:
+            return True
+        if needle_tokens:
+            covered = len(needle_tokens & set(haystack.split())) / len(needle_tokens)
+            if covered >= RETRIEVAL_RECALL_TOKEN_COVERAGE:
+                return True
+    return False
+
+
+def resolve_retrieved_citations(
+    relevant_ids: list[str] | None,
+    retrieved_ids: list[str] | None,
+    citation_texts: dict[str, str] | None,
+    retrieved_texts: list[str] | None,
+) -> set[str] | None:
+    """Return which relevant citations retrieval actually surfaced.
+
+    ``None`` means undecidable — the caller must not read that as "none were
+    retrieved". This is the single join both ``retrieval_recall`` and the
+    ``context_omission`` failure label use, so they can never disagree.
+
+    Two joins, because the two run modes name chunks differently. When the
+    retrieved IDs live in the dataset's own citation namespace the ID join is
+    exact and is preferred. A live run returns corpus chunk hashes instead,
+    which share no namespace with dataset citation IDs, so comparing them is
+    meaningless; there the citation's *text* is matched against the retrieved
+    context text.
+    """
+    if not relevant_ids:
+        return None
+    known = citation_texts or {}
+    relevant = set(relevant_ids)
+    # Overlap with the declared citation IDs is what proves a shared namespace.
+    # With no citation text supplied there is nothing to prove it against and
+    # nothing to fall back to, so the ID join is taken at face value.
+    if retrieved_ids and (not known or set(retrieved_ids) & set(known)):
+        return relevant & set(retrieved_ids)
+    if not retrieved_texts:
+        return None
+    if any(not known.get(citation_id) for citation_id in relevant):
+        return None
+    return {
+        citation_id
+        for citation_id in relevant
+        if _context_contains_citation(known[citation_id], retrieved_texts)
+    }
+
+
+def score_retrieval_recall(
+    relevant_ids: list[str] | None,
+    retrieved_ids: list[str] | None,
+    citation_texts: dict[str, str] | None,
+    retrieved_texts: list[str] | None,
+) -> MetricCase:
+    """Score the fraction of annotated-relevant citations that were retrieved.
+
+    Complements ``citation_accuracy``, which is set *precision* over what the
+    answer cited. Neither could previously catch retrieval silently returning
+    topically-similar passages instead of the ones that answer the question.
+    """
+    hits = resolve_retrieved_citations(relevant_ids, retrieved_ids, citation_texts, retrieved_texts)
+    if hits is None:
+        return MetricCase(status="unavailable", warning="retrieval recall join is unavailable")
+    return MetricCase(value=len(hits) / len(set(relevant_ids or [])))
