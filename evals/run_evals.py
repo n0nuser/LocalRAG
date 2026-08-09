@@ -64,7 +64,7 @@ from evals.dataset.registry import load_dataset
 from evals.dataset.schema import DatasetRecord
 from evals.environment import capture_run_metadata, resolve_seed
 from evals.failure_analysis import FailureCaseArtifact, classify_cases
-from evals.metrics import exact_match, f1, score_citation_accuracy
+from evals.metrics import exact_match, f1, score_citation_accuracy, score_retrieval_recall
 from evals.results.schema import (
     EvaluationCaseResult,
     MetricCaseResult,
@@ -80,11 +80,25 @@ DEFAULT_DATASET_ID = "localrag-core"
 DEFAULT_SPLIT = "default"
 JUDGE_EMBED_MODEL = "nomic-embed-text"
 
+#: Metrics scored from dataset annotations rather than by a judge. A non-finite
+#: value means the annotation or the retrieval join was unavailable -- which is
+#: not a judge error and must not be reported as one.
+ANNOTATION_METRICS = frozenset({"citation_accuracy", "retrieval_recall"})
+
+#: Metrics computed locally, so a non-finite value can never be a judge failure.
+DETERMINISTIC_METRICS = ANNOTATION_METRICS | frozenset({"exact_match", "f1"})
+
+_ANNOTATION_WARNINGS = {
+    "citation_accuracy": "citation annotation is missing",
+    "retrieval_recall": "retrieval recall join is unavailable",
+}
+
 PASS_THRESHOLDS = {
     "exact_match": 1.0,
     "f1": 0.5,
     "hallucination_rate": 0.4,
     "citation_accuracy": 0.8,
+    "retrieval_recall": 0.8,
     "faithfulness": 0.6,
     "answer_relevancy": 0.6,
     "context_precision": 0.5,
@@ -155,17 +169,14 @@ def _build_rows(
                 "question": rec.question,
                 "answer": answer,
                 "contexts": contexts,
-                "retrieved_ids": (
-                    retrieved_ids
-                    if not offline
-                    else [citation.citation_id for citation in rec.citations]
-                ),
+                "retrieved_ids": (retrieved_ids if not offline else rec.offline_retrieved_ids()),
                 "answering_provider": provider if not offline else None,
                 "answering_model": model if not offline else None,
                 "ground_truth": rec.reference_answer,
                 "ground_truths": rec.reference_answers_or_default(),
                 "answer_citation_ids": rec.answer_citation_ids,
                 "relevant_citation_ids": rec.relevant_citation_ids(),
+                "citation_texts": rec.citation_texts(),
             }
         )
     return rows
@@ -222,17 +233,14 @@ async def _build_rows_async(
                 "question": record.question,
                 "answer": answer,
                 "contexts": contexts,
-                "retrieved_ids": (
-                    retrieved_ids
-                    if not offline
-                    else [citation.citation_id for citation in record.citations]
-                ),
+                "retrieved_ids": (retrieved_ids if not offline else record.offline_retrieved_ids()),
                 "answering_provider": provider if not offline else None,
                 "answering_model": model if not offline else None,
                 "ground_truth": record.reference_answer,
                 "ground_truths": record.reference_answers_or_default(),
                 "answer_citation_ids": record.answer_citation_ids,
                 "relevant_citation_ids": record.relevant_citation_ids(),
+                "citation_texts": record.citation_texts(),
             }
 
         outcomes = await run_cases(
@@ -319,7 +327,7 @@ def _failure_analysis(
                 "status": (
                     "complete"
                     if math.isfinite(value)
-                    else ("unavailable" if name == "citation_accuracy" else "error")
+                    else ("unavailable" if name in ANNOTATION_METRICS else "error")
                 ),
                 "threshold": PASS_THRESHOLDS[name],
                 "direction": "lower_is_better"
@@ -339,6 +347,7 @@ def _failure_analysis(
                 retrieved_text=row.get("contexts", []),
                 citation_ids=row.get("answer_citation_ids"),
                 relevant_citation_ids=row.get("relevant_citation_ids"),
+                citation_texts=row.get("citation_texts"),
                 metrics=metrics,
                 error=failed_execution.get("error") if failed_execution else None,
             )
@@ -382,6 +391,7 @@ async def _score_rows_parallel(
         "f1": [],
         "hallucination_rate": [],
         "citation_accuracy": [],
+        "retrieval_recall": [],
         "faithfulness": [],
         "answer_relevancy": [],
         "context_precision": [],
@@ -409,6 +419,13 @@ async def _score_rows_parallel(
             response, row["answer_citation_ids"], row["relevant_citation_ids"]
         )
         result["citation_accuracy"] = citation.value if citation.value is not None else math.nan
+        recall = score_retrieval_recall(
+            row["relevant_citation_ids"],
+            row.get("retrieved_ids"),
+            row.get("citation_texts"),
+            retrieved_contexts,
+        )
+        result["retrieval_recall"] = recall.value if recall.value is not None else math.nan
 
         judge_results = await asyncio.gather(
             judge_call(
@@ -648,7 +665,7 @@ def main() -> None:  # noqa: PLR0915 — length is flat argparse flag declaratio
                             else "higher_is_better",
                             "threshold": PASS_THRESHOLDS[name],
                             "missing_value": "not_applicable"
-                            if name == "citation_accuracy"
+                            if name in ANNOTATION_METRICS
                             else "missing",
                         }
                     ),
@@ -670,17 +687,17 @@ def main() -> None:  # noqa: PLR0915 — length is flat argparse flag declaratio
                                 "status": (
                                     "complete"
                                     if math.isfinite(value)
-                                    else ("unavailable" if name == "citation_accuracy" else "error")
+                                    else ("unavailable" if name in ANNOTATION_METRICS else "error")
                                 ),
                                 "input_ids": row.get("relevant_citation_ids", []),
                                 "warning": (
-                                    "citation annotation is missing"
-                                    if name == "citation_accuracy" and not math.isfinite(value)
+                                    _ANNOTATION_WARNINGS[name]
+                                    if name in ANNOTATION_METRICS and not math.isfinite(value)
                                     else None
                                 ),
                                 "error": (
                                     "judge returned a non-finite value"
-                                    if name not in {"citation_accuracy", "exact_match", "f1"}
+                                    if name not in DETERMINISTIC_METRICS
                                     and not math.isfinite(value)
                                     else None
                                 ),
@@ -690,10 +707,10 @@ def main() -> None:  # noqa: PLR0915 — length is flat argparse flag declaratio
                     },
                     valid_count=sum(math.isfinite(value) for value in per_metric[name]),
                     missing_count=sum(not math.isfinite(value) for value in per_metric[name])
-                    if name == "citation_accuracy"
+                    if name in ANNOTATION_METRICS
                     else 0,
                     error_count=sum(not math.isfinite(value) for value in per_metric[name])
-                    if name != "citation_accuracy"
+                    if name not in ANNOTATION_METRICS
                     else 0,
                 )
                 for name, score in scores.items()

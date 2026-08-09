@@ -123,3 +123,29 @@ def test_redaction_does_not_export_answer_or_context() -> None:
     payload = result.model_dump_json()
     assert "SECRET DOCUMENT" not in payload
     assert "PRIVATE CONTENT" not in payload
+
+
+def test_context_omission_can_fire_when_offline_ids_exclude_a_relevant_citation() -> None:
+    """Offline this label could never fire: retrieved IDs were the citation list itself."""
+    result = classify_case(
+        artifact(
+            retrieved_ids=["c-chronic"],
+            relevant_citation_ids=["c-acute"],
+            citation_texts={"c-acute": "acute passage", "c-chronic": "chronic passage"},
+            retrieved_text=["chronic passage"],
+        )
+    )
+    assert "context_omission" in result.labels
+
+
+def test_context_omission_does_not_fire_when_live_ids_are_corpus_hashes() -> None:
+    """Live this label fired for every record: chunk hashes never equal citation IDs."""
+    result = classify_case(
+        artifact(
+            retrieved_ids=["sha256:aaaa"],
+            relevant_citation_ids=["c-acute"],
+            citation_texts={"c-acute": "the clamp cools for ninety seconds"},
+            retrieved_text=["Section 4. The clamp cools for ninety seconds, then readings resume."],
+        )
+    )
+    assert "context_omission" not in result.labels

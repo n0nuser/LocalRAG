@@ -47,6 +47,15 @@ scoring happens.
 
 - **Answer**: `offline_answer` if set, else `reference_answer`.
 - **Contexts**: `offline_contexts` if set, else each citation's `text`.
+- **Retrieved IDs**: `offline_retrieved_citation_ids` if set, else every
+  declared `citation_id`.
+
+The default for retrieved IDs asserts that retrieval returned everything the
+record declares — perfect recall. That is the right default for a record whose
+citations *are* its context, but it is an assertion, not a measurement, and it
+makes retrieval failure inexpressible. A record whose point is that retrieval
+missed something must list what was actually retrieved in
+`offline_retrieved_citation_ids`; see the `localrag-scope` fixture.
 
 A record with no citations and no `offline_contexts` override has nothing to
 score context-based metrics against — `_build_rows` raises
@@ -74,11 +83,40 @@ enough to tell whether two runs actually evaluated the same inputs.
 | --- | --- | --- | --- |
 | `localrag-core` | binary | 23 | `default` (all), `smoke` (first 3) |
 | `localrag-graded` | graded | 2 | `default` |
+| `localrag-scope` | binary | 4 | `default` |
 
 `localrag-core` is the project's main fixture, migrated from the legacy flat
 `evals/dataset.json` (now removed). `localrag-graded` is a minimal
 second dataset that exists to prove the registry supports more than one
 dataset and judgment type without runner changes.
+
+`localrag-scope` is the regression fixture for
+[#174](https://github.com/n0nuser/LocalRAG/issues/174): questions whose
+temporal qualifier — a single occurrence versus repeated exposure — decides
+which passage answers them. Embedding similarity keys on topic, so a question
+about one occurrence retrieves the passages about cumulative effects; both are
+topically "effects of X".
+
+**It is expected to fail, and that is the point.** `retrieval_recall` scores
+**0.375** against a threshold of 0.8. The fixture exists to make the failure a
+number a later retrieval-tuning change can be judged against, and to catch a
+fix that helps this shape of query while hurting others.
+
+Its corpus is synthetic and authored for the fixture, describing a fictional
+device. The motivating evidence came from a copyrighted book; the bundled
+fixtures are CC0, and shipping excerpts to reproduce a ranking bug is not worth
+the licensing question when an authored corpus reproduces the same shape.
+
+| Record | Shape | `retrieval_recall` |
+| --- | --- | --- |
+| `single-overvoltage-event-effect` | Acute question, only chronic passages retrieved | 0.0 |
+| `repeated-overvoltage-events-effect` | Chronic question, chronic passages retrieved | 1.0 |
+| `clamp-cooldown-interval` | Front matter and legal boilerplate outrank the answer | 0.0 |
+| `single-event-recovery-procedure` | One of two relevant passages retrieved | 0.5 |
+
+The control record matters as much as the failing ones: without it a metric
+that returned zero unconditionally would look like a successful reproduction.
+The partial record proves the metric is graded rather than binary.
 
 ## Metric annotations
 

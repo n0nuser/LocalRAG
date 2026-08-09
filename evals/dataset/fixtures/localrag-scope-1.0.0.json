@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "dataset_id": "localrag-scope",
+  "dataset_version": "1.0.0",
+  "description": "Regression fixture for issue #174: questions whose temporal qualifier (a single occurrence vs. repeated exposure) decides which passage answers them. The corpus is synthetic and authored for this fixture; the passages describe a fictional device so that no real-world claim is asserted and no copyrighted text is redistributed. Each record's offline artifacts encode the retrieval behaviour actually observed, so the fixture reproduces the failure deterministically without a live stack.",
+  "source": "authored",
+  "license": "CC0-1.0",
+  "judgment_type": "binary",
+  "records": [
+    {
+      "record_id": "single-overvoltage-event-effect",
+      "question": "What happens if a Kestrel-3 sensor is exposed to overvoltage one time?",
+      "reference_answer": "A single overvoltage event trips the input clamp and forces a reset. The sensor reports no readings for about ninety seconds while the clamp cools, after which calibration is unaffected.",
+      "citations": [
+        {
+          "citation_id": "single-overvoltage-event-effect-acute",
+          "source": "kestrel-3-field-manual",
+          "text": "Single-Exposure Response. One overvoltage event trips the input clamp and forces a sensor reset. Readings are unavailable for approximately ninety seconds while the clamp cools. Calibration is unaffected by an isolated event and no service action is required."
+        },
+        {
+          "citation_id": "single-overvoltage-event-effect-chronic-drift",
+          "source": "kestrel-3-field-manual",
+          "text": "Cumulative Degradation Over Service Life. Overvoltage events accumulate. Units that have absorbed more than fifty such events across their service life show a 400% higher rate of permanent calibration drift than units that have absorbed none."
+        },
+        {
+          "citation_id": "single-overvoltage-event-effect-chronic-failure",
+          "source": "kestrel-3-field-manual",
+          "text": "Cumulative Degradation Over Service Life. Sustained operation under overvoltage conditions across many months is the strongest single predictor of eventual sensor failure and of materially shortened service life."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "single-overvoltage-event-effect-acute",
+          "relevant": true
+        },
+        {
+          "citation_id": "single-overvoltage-event-effect-chronic-drift",
+          "relevant": false
+        },
+        {
+          "citation_id": "single-overvoltage-event-effect-chronic-failure",
+          "relevant": false
+        }
+      ],
+      "offline_answer": "Exposure to overvoltage causes a 400% higher rate of permanent calibration drift and is the strongest predictor of eventual sensor failure and shortened service life.",
+      "offline_contexts": [
+        "Cumulative Degradation Over Service Life. Overvoltage events accumulate. Units that have absorbed more than fifty such events across their service life show a 400% higher rate of permanent calibration drift than units that have absorbed none.",
+        "Cumulative Degradation Over Service Life. Sustained operation under overvoltage conditions across many months is the strongest single predictor of eventual sensor failure and of materially shortened service life."
+      ],
+      "offline_retrieved_citation_ids": [
+        "single-overvoltage-event-effect-chronic-drift",
+        "single-overvoltage-event-effect-chronic-failure"
+      ]
+    },
+    {
+      "record_id": "repeated-overvoltage-events-effect",
+      "question": "What happens to a Kestrel-3 sensor after many overvoltage events across its service life?",
+      "reference_answer": "Overvoltage events accumulate: units that have absorbed more than fifty of them show a 400% higher rate of permanent calibration drift, and sustained exposure across months is the strongest predictor of eventual failure.",
+      "citations": [
+        {
+          "citation_id": "repeated-overvoltage-events-effect-chronic-drift",
+          "source": "kestrel-3-field-manual",
+          "text": "Cumulative Degradation Over Service Life. Overvoltage events accumulate. Units that have absorbed more than fifty such events across their service life show a 400% higher rate of permanent calibration drift than units that have absorbed none."
+        },
+        {
+          "citation_id": "repeated-overvoltage-events-effect-chronic-failure",
+          "source": "kestrel-3-field-manual",
+          "text": "Cumulative Degradation Over Service Life. Sustained operation under overvoltage conditions across many months is the strongest single predictor of eventual sensor failure and of materially shortened service life."
+        },
+        {
+          "citation_id": "repeated-overvoltage-events-effect-acute",
+          "source": "kestrel-3-field-manual",
+          "text": "Single-Exposure Response. One overvoltage event trips the input clamp and forces a sensor reset. Readings are unavailable for approximately ninety seconds while the clamp cools. Calibration is unaffected by an isolated event and no service action is required."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "repeated-overvoltage-events-effect-chronic-drift",
+          "relevant": true
+        },
+        {
+          "citation_id": "repeated-overvoltage-events-effect-chronic-failure",
+          "relevant": true
+        },
+        {
+          "citation_id": "repeated-overvoltage-events-effect-acute",
+          "relevant": false
+        }
+      ],
+      "offline_answer": "Overvoltage events accumulate: units that have absorbed more than fifty of them show a 400% higher rate of permanent calibration drift, and sustained exposure across many months is the strongest predictor of eventual sensor failure.",
+      "offline_contexts": [
+        "Cumulative Degradation Over Service Life. Overvoltage events accumulate. Units that have absorbed more than fifty such events across their service life show a 400% higher rate of permanent calibration drift than units that have absorbed none.",
+        "Cumulative Degradation Over Service Life. Sustained operation under overvoltage conditions across many months is the strongest single predictor of eventual sensor failure and of materially shortened service life."
+      ],
+      "offline_retrieved_citation_ids": [
+        "repeated-overvoltage-events-effect-chronic-drift",
+        "repeated-overvoltage-events-effect-chronic-failure"
+      ]
+    },
+    {
+      "record_id": "clamp-cooldown-interval",
+      "question": "What is the clamp cooldown interval after a single overvoltage trip?",
+      "reference_answer": "About ninety seconds, during which the sensor reports no readings.",
+      "citations": [
+        {
+          "citation_id": "clamp-cooldown-interval-acute",
+          "source": "kestrel-3-field-manual",
+          "text": "Single-Exposure Response. One overvoltage event trips the input clamp and forces a sensor reset. Readings are unavailable for approximately ninety seconds while the clamp cools. Calibration is unaffected by an isolated event and no service action is required."
+        },
+        {
+          "citation_id": "clamp-cooldown-interval-front-matter",
+          "source": "kestrel-3-field-manual",
+          "text": "Kestrel-3 Field Manual. Revision 4. Published by the Instrumentation Documentation Group. All measurements in this manual are given in SI units unless otherwise noted. Printed on acid-free paper."
+        },
+        {
+          "citation_id": "clamp-cooldown-interval-legal",
+          "source": "kestrel-3-field-manual",
+          "text": "Notice. This manual is provided for reference only. Specifications are subject to change without notice. Contact your regional service representative before performing any procedure described in this document."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "clamp-cooldown-interval-acute",
+          "relevant": true
+        },
+        {
+          "citation_id": "clamp-cooldown-interval-front-matter",
+          "relevant": false
+        },
+        {
+          "citation_id": "clamp-cooldown-interval-legal",
+          "relevant": false
+        }
+      ],
+      "offline_answer": "The manual does not state a specific cooldown interval; it advises contacting your regional service representative before performing any procedure.",
+      "offline_contexts": [
+        "Kestrel-3 Field Manual. Revision 4. Published by the Instrumentation Documentation Group. All measurements in this manual are given in SI units unless otherwise noted. Printed on acid-free paper.",
+        "Notice. This manual is provided for reference only. Specifications are subject to change without notice. Contact your regional service representative before performing any procedure described in this document."
+      ],
+      "offline_retrieved_citation_ids": [
+        "clamp-cooldown-interval-front-matter",
+        "clamp-cooldown-interval-legal"
+      ]
+    },
+    {
+      "record_id": "single-event-recovery-procedure",
+      "question": "After one overvoltage event, what must an operator do before the sensor reads normally again?",
+      "reference_answer": "Nothing beyond waiting: the clamp cools in about ninety seconds and calibration is unaffected, so no service action is required. Recalibration is only called for once a unit has accumulated repeated events.",
+      "citations": [
+        {
+          "citation_id": "single-event-recovery-procedure-acute-wait",
+          "source": "kestrel-3-field-manual",
+          "text": "Single-Exposure Response. One overvoltage event trips the input clamp and forces a sensor reset. Readings are unavailable for approximately ninety seconds while the clamp cools."
+        },
+        {
+          "citation_id": "single-event-recovery-procedure-acute-noaction",
+          "source": "kestrel-3-field-manual",
+          "text": "Single-Exposure Response, continued. Calibration is unaffected by an isolated event and no service action is required. Recalibration is indicated only after a unit has accumulated repeated overvoltage events."
+        },
+        {
+          "citation_id": "single-event-recovery-procedure-chronic",
+          "source": "kestrel-3-field-manual",
+          "text": "Cumulative Degradation Over Service Life. Units that have absorbed more than fifty overvoltage events show a 400% higher rate of permanent calibration drift and must be returned for bench recalibration."
+        }
+      ],
+      "judgments": [
+        {
+          "citation_id": "single-event-recovery-procedure-acute-wait",
+          "relevant": true
+        },
+        {
+          "citation_id": "single-event-recovery-procedure-acute-noaction",
+          "relevant": true
+        },
+        {
+          "citation_id": "single-event-recovery-procedure-chronic",
+          "relevant": false
+        }
+      ],
+      "offline_answer": "The unit must be returned for bench recalibration, because overvoltage events cause a 400% higher rate of permanent calibration drift.",
+      "offline_contexts": [
+        "Single-Exposure Response. One overvoltage event trips the input clamp and forces a sensor reset. Readings are unavailable for approximately ninety seconds while the clamp cools.",
+        "Cumulative Degradation Over Service Life. Units that have absorbed more than fifty overvoltage events show a 400% higher rate of permanent calibration drift and must be returned for bench recalibration."
+      ],
+      "offline_retrieved_citation_ids": [
+        "single-event-recovery-procedure-acute-wait",
+        "single-event-recovery-procedure-chronic"
+      ]
+    }
+  ],
+  "splits": [
+    {
+      "name": "default",
+      "record_ids": [
+        "single-overvoltage-event-effect",
+        "repeated-overvoltage-events-effect",
+        "clamp-cooldown-interval",
+        "single-event-recovery-procedure"
+      ]
+    }
+  ]
+}
