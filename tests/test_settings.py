@@ -120,6 +120,10 @@ def test_configuration_precedence_is_defaults_yaml_dotenv_environment_cli(
     )
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("RAG_TOP_K", "5")
+    # The suite disables the .env layer by default (see the _isolate_configuration
+    # fixture); this test is about that layer, so it opts back in. The chdir above
+    # makes tmp_path's .env the only one reachable.
+    monkeypatch.setitem(Settings.model_config, "env_file", ".env")
 
     settings = load_settings(config, cli_overrides={"rag_top_k": 6})
 

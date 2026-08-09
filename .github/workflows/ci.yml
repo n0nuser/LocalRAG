@@ -36,6 +36,20 @@ jobs:
       - name: Validate help task
         run: task help
 
+      - name: Validate docker-up stamps the real build SHA
+        # The image identity that `task docker-check` compares against is built
+        # here; a shell-expansion slip stamps something else and the check can
+        # never pass, silently defeating the stale-image guard.
+        run: |
+          sha="$(git rev-parse HEAD)"
+          # `task --dry` prints the resolved command on stderr, not stdout.
+          resolved="$(task --dry docker-up 2>&1)"
+          echo "$resolved"
+          case "$resolved" in
+            *"LOCALRAG_BUILD_SHA=\"$sha\""*) ;;
+            *) echo "docker-up did not stamp $sha"; exit 1 ;;
+          esac
+
   lint:
     name: Lint
     runs-on: ubuntu-latest
