@@ -83,6 +83,14 @@ class DatasetRecord(BaseModel):
     # falls back to reference_answer as the answer and cited texts as context.
     offline_answer: str | None = None
     offline_contexts: list[str] | None = None
+    offline_retrieved_citation_ids: list[str] | None = Field(
+        default=None,
+        description=(
+            "Citation IDs offline mode should treat as retrieved. Absent means every "
+            "declared citation, which asserts perfect retrieval — state this explicitly "
+            "for records whose point is that retrieval missed something."
+        ),
+    )
 
     @field_validator("record_id")
     @classmethod
@@ -102,6 +110,13 @@ class DatasetRecord(BaseModel):
                     f"citation_id {judgment.citation_id!r}"
                 )
                 raise ValueError(message)
+        for citation_id in self.offline_retrieved_citation_ids or []:
+            if citation_id not in known_ids:
+                message = (
+                    f"record {self.record_id!r}: offline_retrieved_citation_ids references "
+                    f"unknown citation_id {citation_id!r}"
+                )
+                raise ValueError(message)
         return self
 
     def offline_context_texts(self) -> list[str]:
@@ -117,6 +132,16 @@ class DatasetRecord(BaseModel):
     def relevant_citation_ids(self) -> list[str]:
         """Return citation IDs marked relevant by the #82 annotation contract."""
         return [judgment.citation_id for judgment in self.judgments if judgment.relevant]
+
+    def citation_texts(self) -> dict[str, str]:
+        """Map declared citation IDs to their passages, for the retrieval-recall join."""
+        return {citation.citation_id: citation.text for citation in self.citations}
+
+    def offline_retrieved_ids(self) -> list[str]:
+        """IDs offline mode reports as retrieved: explicit override, else every citation."""
+        if self.offline_retrieved_citation_ids is not None:
+            return self.offline_retrieved_citation_ids
+        return [citation.citation_id for citation in self.citations]
 
 
 class DatasetSplit(BaseModel):
