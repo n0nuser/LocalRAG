@@ -33,7 +33,7 @@ dependencies = [
     "ragas>=0.4.3",
     "langchain-community<0.4",  # ragas hard-imports langchain_community.chat_models.vertexai, dropped in 0.4
     "rank-bm25>=0.2.2",
-    "python-multipart>=0.0.20",
+    "python-multipart>=0.0.32",
     "tenacity>=9",
     "pybreaker>=1",
     "cachetools>=5",
