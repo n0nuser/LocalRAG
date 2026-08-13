@@ -71,6 +71,7 @@ optional because every task maps to a plain `uv run …` command.
 | Retriever plugin contract / discovery | `localrag/plugins/retriever.py`, [plugin-author-guide.md](plugin-author-guide.md), [ADR 032](adr/032-retriever-plugin-contract.md) |
 | Bounded adaptive retrieval policy / trace | `localrag/rag/adaptive.py`, `localrag/rag/engine.py`, adaptive settings, [ADR 023](adr/023-bounded-adaptive-retrieval.md) |
 | Context compression contract and budgets | `localrag/rag/compressor.py`, `localrag/rag/engine.py`, `localrag/settings.py`, `docs/adr/022-context-compression-contract.md` |
+| Claim scope-applicability filtering / prompt block format | `localrag/rag/claim_filter.py`, `localrag/rag/prompt.py`, `localrag/rag/engine.py`, [ADR 041](adr/041-claim-scope-applicability-filter.md) |
 | Ollama HTTP request/response shapes | `localrag/ollama/schemas.py` (used by embedder, RAG engine, health, setup) |
 | Embedding collection compatibility | `localrag/storage/vector_store.py`, [ADR 019](adr/019-embedding-provider-contract.md), embedding settings in `localrag/settings.py` |
 | Generation sampling (temperature/seed) | `localrag/ollama/schemas.py` (`OllamaChatOptions`), `localrag/llm/providers/ollama.py`, `LLM_TEMPERATURE` / `LLM_SEED` in `localrag/settings.py` |
