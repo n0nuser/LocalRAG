@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel, model_validator
 
+from localrag.rag.prompt import DEFAULT_SYSTEM_PROMPT
+
 # Defaults for Ollama model tags (`ollama pull` / `ollama list`).
 # Keep in sync with docs and API examples.
 DEFAULT_OLLAMA_EMBED_MODEL = "nomic-embed-text"
@@ -257,6 +259,28 @@ class AdaptiveSettings(BaseModel):
         return self
 
 
+class ClaimFilterSettings(BaseModel):
+    """Bounded scope-applicability filtering of retrieved contexts (ADR 041).
+
+    Off by default: it costs one extra provider call per query, and the prompt-level
+    scope instruction already covers the common case without one.
+    """
+
+    enabled: bool = False
+    model: str = ""
+    timeout_seconds: float = 30.0
+    input_max_chars: int = 1000
+    output_max_tokens: int = 256
+    log_content: bool = False
+
+    @model_validator(mode="after")
+    def _validate(self) -> ClaimFilterSettings:
+        limits = (self.timeout_seconds, self.input_max_chars, self.output_max_tokens)
+        if min(limits) <= 0:
+            raise ValueError("claim filter limits must be positive")
+        return self
+
+
 class RetrievalSettings(BaseModel):
     """Ranking, fusion, recency, and the retrieval feature sub-models."""
 
@@ -271,13 +295,14 @@ class RetrievalSettings(BaseModel):
     parent_expansion_enabled: bool = True
     query_rewrite_enabled: bool = False
     experiment_mode: str = "auto"
-    system_prompt: str = "You are a helpful assistant. Answer only based on the provided context."
+    system_prompt: str = DEFAULT_SYSTEM_PROMPT
 
     expansion: QueryExpansionSettings = QueryExpansionSettings()
     hyde: HydeSettings = HydeSettings()
     rerank: RerankSettings = RerankSettings()
     compression: ContextCompressionSettings = ContextCompressionSettings()
     adaptive: AdaptiveSettings = AdaptiveSettings()
+    claim_filter: ClaimFilterSettings = ClaimFilterSettings()
 
     @model_validator(mode="after")
     def _validate(self) -> RetrievalSettings:

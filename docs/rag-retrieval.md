@@ -132,6 +132,62 @@ skip expansion and prompt with only the originally matched chunk text. Hits
 with an empty `heading_path`, or whose section has only a single chunk, are
 left unexpanded.
 
+## Claim scope-applicability filtering (optional)
+
+Retrieval ranks by topical similarity, which is blind to the qualifier that
+decides whether a passage answers the question: a question about a single
+occurrence and a passage about habitual exposure over years are the same topic.
+
+`CLAIM_FILTER_ENABLED` (default `false`) inserts
+`localrag/rag/claim_filter.py` between retrieval and compression. It makes one
+provider call regardless of context count, asking which numbered passages do
+not apply at the question's scope, and removes those. It never rewrites, adds,
+or reorders a passage — removal of an already-retrieved context is its only
+effect. The filter prompt carries each passage's `heading_path`, because scope
+usually lives in the heading rather than the sentence.
+
+Filtering runs before compression so the compression budget is spent only on
+applicable passages, and reported sources come from the filtered set — a
+discarded passage did not inform the answer, so citing it would misattribute
+the response.
+
+Every failure degrades to the unfiltered contexts: provider error, unparseable
+output, out-of-range indices, and any verdict that would discard *all* context.
+It works on all three backends, unlike HyDE. The observation (status,
+evaluated/discarded counts, latency, discarded IDs) is merged into the query
+`trace`. Contract: [ADR 041](adr/041-claim-scope-applicability-filter.md).
+
+> **Measure before enabling.** The filter is only as good as the judge model.
+> On `gemma3:4b` a manual check of the motivating acute-vs-chronic example
+> produced a wrong verdict (both passages marked inapplicable, caught by the
+> all-discarded guard). The safety design means a bad verdict costs a wasted
+> provider call rather than a wrong answer, but a small local model should not
+> be assumed to improve anything here. Consider pointing `CLAIM_FILTER_MODEL`
+> at a stronger model than the answering one, and compare against the disabled
+> baseline.
+
+## Section provenance in the prompt
+
+`build_prompt` prefixes each context block with a header line naming its origin:
+
+```
+[1] source=book.md chunk=473 section=Cancer, Heart Attacks > SLEEP LOSS AND THE CARDIOVASCULAR SYSTEM
+```
+
+The `section=` segment carries the chunk's `heading_path`, so the model can tell
+which part of a document a passage came from — whether a statistic sits under a
+chapter about long-term risk or one about immediate effects. Without it, the
+heading was retrieved and returned in the API `sources` list but never reached
+the model, which could then restate a chronic finding as an acute one.
+
+The segment is **omitted entirely** when `heading_path` is empty, which is the
+normal case for `text_block` and `code_block` chunks, so unstructured documents
+keep the previous two-field header. Heading paths are truncated to
+`MAX_SECTION_CHARS` (`localrag/rag/prompt.py`); the bound is chosen so that a
+full set of worst-case headers still fits inside
+`CONTEXT_COMPRESSION_RESERVED_PROMPT_TOKENS`, since compression budgets measure
+only chunk body text and never the scaffolding around it.
+
 ## Cross-encoder reranking (optional)
 
 Disabled by default (`RERANK_ENABLED=false`). When enabled, `Retriever.retrieve`

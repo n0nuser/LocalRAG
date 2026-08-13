@@ -126,8 +126,13 @@ tasks:
 
   docker-up:
     desc: Start the Compose stack in the background without removing volumes
+    vars:
+      # Resolved by Task, not the shell: '$$' there expands to the shell's PID,
+      # which stamped the image with a SHA `docker-check` could never match.
+      BUILD_SHA:
+        sh: git rev-parse HEAD
     cmds:
-      - 'LOCALRAG_BUILD_SHA="$$(git rev-parse HEAD)" {{.COMPOSE}} --project-name "{{.PROJECT}}" -f "{{.COMPOSE_FILE}}" {{if .COMPOSE_OVERRIDE}}-f "{{.COMPOSE_OVERRIDE}}" {{end}}up --build -d'
+      - 'LOCALRAG_BUILD_SHA="{{.BUILD_SHA}}" {{.COMPOSE}} --project-name "{{.PROJECT}}" -f "{{.COMPOSE_FILE}}" {{if .COMPOSE_OVERRIDE}}-f "{{.COMPOSE_OVERRIDE}}" {{end}}up --build -d'
 
   docker-check:
     desc: Compare the running API image identity with the current Git revision
