@@ -75,7 +75,7 @@ remain follow-up work. The latter must not be confused with the existing
 retrieval-time parent-section expansion below.
 
 `CHUNK_OVERLAP_CHARS` (default 150, ~12.5% of `CHUNK_MAX_CHARS=1200`) only applies
-where `localrag/ingestion/structural_chunker.py::_split_long_paragraph` must
+where `localrag/chunks/structural.py::_split_long_paragraph` must
 hard-split a single paragraph that exceeds `chunk_max_chars`. Adjacent
 *packed* structural chunks (the common case — `_pack_blocks`) are
 deliberately disjoint with zero overlap: boundary-awareness (never splitting

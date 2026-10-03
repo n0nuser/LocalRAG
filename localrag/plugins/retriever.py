@@ -11,13 +11,16 @@ import logging
 from collections.abc import Iterable
 from importlib.metadata import EntryPoint
 from importlib.metadata import entry_points as metadata_entry_points
-from typing import Any, Protocol, TypedDict, cast
+from typing import Any, Protocol, cast
 
 from localrag.application.runtime import (
     get_bm25_index,
     get_embedder,
     get_reranker,
     get_vector_store,
+)
+from localrag.chunks.record import (
+    RetrievalContext as RetrievalContext,  # noqa: PLC0414 — explicit re-export for plugins
 )
 from localrag.rag.retriever import Retriever
 from localrag.settings import Settings
@@ -30,19 +33,6 @@ ENTRY_POINT_GROUP = "localrag.retrievers"
 
 def _message(template: str, *values: object) -> str:
     return template.format(*values)
-
-
-class RetrievalContext(TypedDict, total=False):
-    """Stable context returned by a retriever plugin."""
-
-    text: str
-    source: str
-    chunk_index: int
-    score: float
-    distance: float
-    ingested_at: str | None
-    metadata: dict[str, Any]
-    freshness_factor: float
 
 
 class RetrieverPlugin(Protocol):

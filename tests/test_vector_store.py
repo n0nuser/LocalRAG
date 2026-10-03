@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import dataclass, field
-from hashlib import sha1
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -114,7 +113,16 @@ class FakeNameCollection:
         return self.count_value
 
 
-def test_vector_store_add_chunks_validates_lengths() -> None:
+@pytest.mark.parametrize(
+    ("ids", "embeddings"),
+    [
+        pytest.param(["1", "2"], [[0.1]], id="embeddings-short"),
+        pytest.param(["1"], [[0.1], [0.2]], id="ids-short"),
+    ],
+)
+def test_vector_store_replace_source_validates_lengths(
+    ids: list[str], embeddings: list[list[float]]
+) -> None:
     collection = FakeCollection(
         upsert_calls=[],
         delete_calls=[],
@@ -126,15 +134,16 @@ def test_vector_store_add_chunks_validates_lengths() -> None:
     store = VectorStore(client=client, collection=collection)  # type: ignore[arg-type]
 
     with pytest.raises(ValueError, match="same length"):
-        store.add_chunks(
+        store.replace_source(
             source="s",
+            ids=ids,
             chunks=["a", "b"],
-            embeddings=[[0.1]],
+            embeddings=embeddings,
             metadatas=[{"x": 1}, {"y": 2}],
         )
 
 
-def test_vector_store_add_chunks_rejects_empty_embeddings() -> None:
+def test_vector_store_replace_source_rejects_empty_embeddings() -> None:
     collection = FakeCollection(
         upsert_calls=[],
         delete_calls=[],
@@ -146,8 +155,9 @@ def test_vector_store_add_chunks_rejects_empty_embeddings() -> None:
     store = VectorStore(client=client, collection=collection)  # type: ignore[arg-type]
 
     with pytest.raises(ValueError, match="non-empty"):
-        store.add_chunks(
+        store.replace_source(
             source="s",
+            ids=["1"],
             chunks=["a"],
             embeddings=[[]],
             metadatas=[{"x": 1}],
@@ -174,8 +184,9 @@ def test_vector_store_splits_upserts_above_the_backend_batch_limit() -> None:
     client = FakeClient(collections=[], deleted_collections=[], max_batch_size=max_batch)
     store = VectorStore(client=client, collection=collection)  # type: ignore[arg-type]
 
-    store.add_chunks(
+    store.replace_source(
         source="big.epub",
+        ids=[f"id-{index}" for index in range(total)],
         chunks=[f"chunk-{index}" for index in range(total)],
         embeddings=[[float(index)] for index in range(total)],
         metadatas=[{"chunk_index": index} for index in range(total)],
@@ -214,15 +225,15 @@ def test_vector_store_upsert_delete_query_and_list_collections() -> None:
         {"source": source, "file_type": ".md", "chunk_index": 1},
     ]
 
-    store.add_chunks(source=source, chunks=chunks, embeddings=embeddings, metadatas=metadatas)
+    store.replace_source(
+        source=source,
+        ids=["id-0", "id-1"],
+        chunks=chunks,
+        embeddings=embeddings,
+        metadatas=metadatas,
+    )
     assert len(collection.upsert_calls) == 1
-
-    ids = collection.upsert_calls[0]["ids"]  # type: ignore[index]
-    expected_ids = [
-        sha1(f"{source}:{chunk_index}".encode(), usedforsecurity=False).hexdigest()
-        for chunk_index in range(2)
-    ]
-    assert ids == expected_ids
+    assert collection.upsert_calls[0]["ids"] == ["id-0", "id-1"]
 
     store.delete_by_source(source=source)
     assert collection.delete_calls == [{"where": {"source": source}, "ids": None}]
@@ -279,7 +290,13 @@ def test_vector_store_replace_source_restores_old_version_after_failure() -> Non
 
     collection.upsert = fail_new_upsert  # type: ignore[method-assign]
     with pytest.raises(RuntimeError, match="write failed"):
-        store.replace_source("src", ["new document"], [[0.2]], [{"source": "src"}])
+        store.replace_source(
+            source="src",
+            ids=["new-id"],
+            chunks=["new document"],
+            embeddings=[[0.2]],
+            metadatas=[{"source": "src"}],
+        )
 
     assert collection.upsert_calls[-1]["documents"] == ["old document"]
 

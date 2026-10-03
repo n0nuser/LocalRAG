@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from localrag.chunks.record import ChunkMetadata
+
 # Constraining the model to the context is not enough on its own: a passage about
 # habitual exposure measured over years and one about a single occurrence are both
 # just "context", and the model will flatten them together unless told not to. The
@@ -56,7 +58,7 @@ def _section(metadata: Any) -> str:
     """
     if not isinstance(metadata, dict):
         return ""
-    heading_path = str(metadata.get("heading_path") or "").strip()
+    heading_path = ChunkMetadata.from_stored(metadata).heading_path.strip()
     if len(heading_path) > MAX_SECTION_CHARS:
         return heading_path[: MAX_SECTION_CHARS - 1] + "…"
     return heading_path

@@ -50,7 +50,7 @@ position and repetition, not size.
 "Heading detection is heuristic (font-size ratios), so unusual typography can
 produce spurious heading levels." The ADR also records that `.pdf` is absent from
 `MARKDOWN_EXTENSIONS` (`localrag/ingestion/loader.py:12`), so
-`chunk_document()` (`localrag/ingestion/structural_chunker.py:25`) routes PDFs
+`chunk_document()` (`localrag/chunks/structural.py`) routes PDFs
 down `_chunk_non_markdown` and every PDF chunk carries `heading_path=''`. That in
 turn disables parent-section expansion for PDFs entirely, since
 `_expand_to_parent_section` skips hits with an empty `heading_path`

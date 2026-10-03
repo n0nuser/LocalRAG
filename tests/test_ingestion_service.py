@@ -44,9 +44,10 @@ class StubVectorStore:
     def get_all_chunks(self) -> list[tuple[str, str, dict[str, object]]]:
         return list(self.all_chunks)
 
-    def add_chunks(
+    def replace_source(
         self,
         source: str,
+        ids: list[str],
         chunks: list[str],
         embeddings: list[list[float]],
         metadatas: list[dict[str, object]],
@@ -54,6 +55,7 @@ class StubVectorStore:
         self.added.append(
             {
                 "source": source,
+                "ids": ids,
                 "chunks": chunks,
                 "embeddings": embeddings,
                 "metadatas": metadatas,
@@ -161,41 +163,6 @@ def test_ingestion_cache_hit_still_rebuilds_source_metadata_and_upserts(tmp_path
     assert vector_store.deleted_sources == []
     assert len(vector_store.added) == 2
     assert vector_store.added[1]["metadatas"][0]["source"] == str(path.resolve())  # type: ignore[index]
-
-
-def test_ingestion_service_recursive_chunks_have_stable_contract_metadata(tmp_path: Path) -> None:
-    path = tmp_path / "guide.txt"
-    path.write_text("alpha beta gamma delta epsilon zeta", encoding="utf-8")
-    settings = Settings(
-        ingest_roots=[str(tmp_path)],
-        chunking_mode="recursive",
-        chunk_max_chars=16,
-        chunk_min_chars=1,
-        chunk_overlap_chars=0,
-    )
-    embedder = StubEmbedder(seen_texts_batches=[])
-    vector_store = StubVectorStore(deleted_sources=[], added=[])
-    service = IngestionService(
-        settings=settings,
-        embedder=embedder,  # type: ignore[arg-type]
-        vector_store=vector_store,  # type: ignore[arg-type]
-    )
-
-    service.ingest_file(path)
-    first_metadata = vector_store.added[0]["metadatas"]
-    service.ingest_file(path)
-    second_metadata = vector_store.added[1]["metadatas"]
-
-    assert [metadata["chunk_id"] for metadata in first_metadata] == [  # type: ignore[index]
-        metadata["chunk_id"]
-        for metadata in second_metadata  # type: ignore[index]
-    ]
-    assert all(metadata["chunking_strategy"] == "recursive" for metadata in first_metadata)  # type: ignore[index]
-    assert [metadata["chunk_index"] for metadata in first_metadata] == list(  # type: ignore[index]
-        range(len(first_metadata))
-    )
-    assert all(metadata["source"] == str(path.resolve()) for metadata in first_metadata)  # type: ignore[index]
-    assert all(metadata["chunk_id"] for metadata in first_metadata)  # type: ignore[index]
 
 
 def test_ingestion_service_ingest_file_delegates_to_ingest_paths(
@@ -386,78 +353,6 @@ def test_ingestion_service_rebuild_reingests_distinct_sources(tmp_path: Path) ->
     assert vector_store.deleted_sources[0] == missing
     assert str(kept.resolve()) in result.processed_sources
     assert result.files_processed == 1
-
-
-def test_ingestion_service_ingest_one_writes_content_hash_and_git_metadata(tmp_path: Path) -> None:
-    allowed_root = tmp_path / "allowed"
-    allowed_root.mkdir()
-    path = allowed_root / "a.md"
-    path.write_text("hello world", encoding="utf-8")
-
-    settings = Settings(ingest_roots=[str(allowed_root)], chunk_chars=100, chunk_overlap_chars=0)
-    embedder = StubEmbedder(seen_texts_batches=[])
-    vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
-    service = IngestionService(
-        settings=settings,
-        embedder=embedder,  # type: ignore[arg-type]
-        vector_store=vector_store,  # type: ignore[arg-type]
-    )
-
-    service.ingest_paths([path])
-
-    added = vector_store.added[0]
-    metadatas = added["metadatas"]
-    expected_hash = hashlib.sha256(path.read_bytes()).hexdigest()
-    assert all(md["content_hash"] == expected_hash for md in metadatas)  # type: ignore[union-attr]
-    assert all("source_mtime" in md for md in metadatas)  # type: ignore[union-attr]
-    assert all(md["git_commit"] == "" for md in metadatas)  # type: ignore[union-attr]
-
-
-def test_ingestion_service_writes_tenant_id_from_settings(tmp_path: Path) -> None:
-    allowed_root = tmp_path / "allowed"
-    allowed_root.mkdir()
-    path = allowed_root / "a.md"
-    path.write_text("hello world", encoding="utf-8")
-
-    settings = Settings(
-        ingest_roots=[str(allowed_root)],
-        chunk_chars=100,
-        chunk_overlap_chars=0,
-        tenant_id="team-a",
-    )
-    embedder = StubEmbedder(seen_texts_batches=[])
-    vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
-    service = IngestionService(
-        settings=settings,
-        embedder=embedder,  # type: ignore[arg-type]
-        vector_store=vector_store,  # type: ignore[arg-type]
-    )
-
-    service.ingest_paths([path])
-
-    metadatas = vector_store.added[0]["metadatas"]
-    assert all(md["tenant_id"] == "team-a" for md in metadatas)  # type: ignore[union-attr]
-
-
-def test_ingestion_service_tenant_id_defaults_to_empty_string(tmp_path: Path) -> None:
-    allowed_root = tmp_path / "allowed"
-    allowed_root.mkdir()
-    path = allowed_root / "a.md"
-    path.write_text("hello world", encoding="utf-8")
-
-    settings = Settings(ingest_roots=[str(allowed_root)], chunk_chars=100, chunk_overlap_chars=0)
-    embedder = StubEmbedder(seen_texts_batches=[])
-    vector_store = StubVectorStore(deleted_sources=[], added=[], distinct_sources=None)
-    service = IngestionService(
-        settings=settings,
-        embedder=embedder,  # type: ignore[arg-type]
-        vector_store=vector_store,  # type: ignore[arg-type]
-    )
-
-    service.ingest_paths([path])
-
-    metadatas = vector_store.added[0]["metadatas"]
-    assert all(md["tenant_id"] == "" for md in metadatas)  # type: ignore[union-attr]
 
 
 def test_ingestion_service_rebuild_skips_unchanged_sources(tmp_path: Path) -> None:

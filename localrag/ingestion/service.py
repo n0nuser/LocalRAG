@@ -11,13 +11,11 @@ from pathlib import Path
 from typing import Any
 
 from localrag import metrics as app_metrics
+from localrag.chunks.record import ChunkMetadata, SourceProvenance
+from localrag.chunks.strategies import chunk_source
 from localrag.embedding.base import EmbeddingProvider
 from localrag.embedding.cache import EmbeddingCache
-from localrag.ingestion.chunker import chunk_text
-from localrag.ingestion.contract import Chunk, stable_chunk_id
 from localrag.ingestion.loader import detect_file_type, list_supported_files, parse_file
-from localrag.ingestion.recursive_chunker import chunk_document as recursive_chunk_document
-from localrag.ingestion.structural_chunker import chunk_document
 from localrag.observability.tracing import SpanName, span
 from localrag.rag.bm25_index import Bm25Index
 from localrag.settings import Settings, is_path_allowed
@@ -142,11 +140,14 @@ class IngestionService:
 
     def _stored_content_hashes(self) -> dict[str, str]:
         hashes: dict[str, str] = {}
-        for _chunk_id, _document, metadata in self.vector_store.get_all_chunks():
-            source = metadata.get("source")
-            content_hash = metadata.get("content_hash")
-            if isinstance(source, str) and isinstance(content_hash, str) and source not in hashes:
-                hashes[source] = content_hash
+        for _chunk_id, _document, stored in self.vector_store.get_all_chunks():
+            metadata = ChunkMetadata.from_stored(stored)
+            if (
+                metadata.source is not None
+                and metadata.content_hash
+                and metadata.source not in hashes
+            ):
+                hashes[metadata.source] = metadata.content_hash
         return hashes
 
     def ingest_paths(
@@ -298,10 +299,8 @@ class IngestionService:
             text = parse_file(resolved_path)
         source = str(resolved_path)
         with span(SpanName.INGEST_CHUNK, {"file_type": detected_file_type}):
-            structural_chunks = self._build_chunks(
-                text=text, file_type=detected_file_type, source=source
-            )
-        chunks = [chunk.text for chunk in structural_chunks]
+            placed_chunks = chunk_source(text, detected_file_type, source, self.settings)
+        chunks = [chunk.text for chunk in placed_chunks]
         if not chunks:
             logger.warning("ingest_skipped_no_chunks path=%s", resolved_path)
             return None
@@ -339,63 +338,23 @@ class IngestionService:
         record = getattr(self.vector_store, "record_embedding_compatibility", None)
         if record is not None:
             record(self.embedder, len(embeddings[0]), model=embed_model)
-        created_at = datetime.now(UTC).isoformat()
-        content_hash = _file_content_hash(resolved_path)
-        source_mtime = resolved_path.stat().st_mtime
-        git_commit = _git_commit_for_path(resolved_path) or ""
-        metadatas = [
-            {
-                **chunk.metadata,
-                "source": source,
-                "file_type": detected_file_type,
-                "chunk_index": chunk.chunk_index,
-                "chunk_id": chunk.chunk_id or "",
-                "heading_path": chunk.heading_path,
-                "chunk_type": chunk.chunk_type,
-                "ingested_at": created_at,
-                "content_hash": content_hash,
-                "source_mtime": source_mtime,
-                "git_commit": git_commit,
-                "tenant_id": self.settings.tenant_id,
-            }
-            for index, chunk in enumerate(structural_chunks)
-        ]
-        replace_source = getattr(self.vector_store, "replace_source", self.vector_store.add_chunks)
-        replace_source(
+        provenance = SourceProvenance(
+            file_type=detected_file_type,
+            ingested_at=datetime.now(UTC).isoformat(),
+            content_hash=_file_content_hash(resolved_path),
+            source_mtime=resolved_path.stat().st_mtime,
+            git_commit=_git_commit_for_path(resolved_path) or "",
+            tenant_id=self.settings.tenant_id,
+        )
+        self.vector_store.replace_source(
             source=source,
+            ids=[chunk.chunk_id for chunk in placed_chunks],
             chunks=chunks,
             embeddings=embeddings,
-            metadatas=metadatas,
+            metadatas=[ChunkMetadata.of(chunk, provenance).to_stored() for chunk in placed_chunks],
         )
         logger.info("ingest_file_success path=%s chunks=%s", resolved_path, len(chunks))
         return len(chunks)
-
-    def _build_chunks(self, text: str, file_type: str, source: str = "") -> list[Chunk]:
-        if self.settings.chunking_mode == "fixed":
-            fixed_chunks = chunk_text(
-                text=text,
-                chunk_chars=self.settings.chunk_chars,
-                overlap_chars=self.settings.chunk_overlap_chars,
-            )
-            chunks = [Chunk(text=chunk, chunk_type="fixed") for chunk in fixed_chunks]
-            strategy = "fixed"
-        elif self.settings.chunking_mode == "recursive":
-            chunks = recursive_chunk_document(
-                text=text,
-                max_chars=self.settings.chunk_max_chars,
-                overlap_chars=self.settings.chunk_overlap_chars,
-            )
-            strategy = "recursive"
-        else:
-            chunks = chunk_document(text=text, file_type=file_type, settings=self.settings)
-            strategy = "structural"
-
-        for index, chunk in enumerate(chunks):
-            chunk.chunk_index = index
-            chunk.source = source or None
-            chunk.chunk_id = stable_chunk_id(source, strategy, index, chunk.text)
-            chunk.metadata.setdefault("chunking_strategy", strategy)
-        return chunks
 
 
 def _file_content_hash(path: Path) -> str:

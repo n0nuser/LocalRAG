@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 
+from localrag.chunks.record import ChunkMetadata, retrieval_context
 from localrag.embedding.base import EmbeddingError, EmbeddingProvider
 from localrag.observability.tracing import SpanName, span
 from localrag.rag.bm25_index import Bm25Index
@@ -246,15 +247,11 @@ class Retriever:
             return []
         with span(SpanName.RETRIEVAL_BM25, {"count": per_variant_k}):
             return [
-                {
-                    "text": hit.text,
-                    "chunk_id": hit.chunk_id,
-                    "source": hit.metadata.get("source", "unknown"),
-                    "chunk_index": hit.metadata.get("chunk_index", -1),
-                    "score": hit.score,
-                    "ingested_at": hit.metadata.get("ingested_at"),
-                    "metadata": hit.metadata,
-                }
+                dict(
+                    retrieval_context(
+                        hit.text, hit.metadata, score=hit.score, chunk_id=hit.chunk_id
+                    )
+                )
                 for hit in self.bm25_index.query(variant, top_k=per_variant_k)
                 if _matches_filter(hit.metadata, metadata_filter)
             ]
@@ -286,18 +283,13 @@ class Retriever:
         contexts: list[dict[str, Any]] = []
         for document, metadata, distance in zip(documents, metadatas, distances, strict=False):
             metadata_map = metadata if isinstance(metadata, dict) else {}
-            context = {
-                "text": document,
-                "source": metadata_map.get("source", "unknown"),
-                "chunk_index": metadata_map.get("chunk_index", -1),
-                "score": 1.0 / (1.0 + float(distance)),
-                "distance": float(distance),
-                "ingested_at": metadata_map.get("ingested_at"),
-                "metadata": metadata_map,
-            }
-            if metadata_map.get("chunk_id"):
-                context["chunk_id"] = metadata_map["chunk_id"]
-            contexts.append(context)
+            context = retrieval_context(
+                document,
+                metadata_map,
+                score=1.0 / (1.0 + float(distance)),
+                distance=float(distance),
+            )
+            contexts.append(dict(context))
         logger.debug("retrieve_vector_hits count=%s", len(contexts))
         return contexts
 
@@ -460,12 +452,9 @@ class Retriever:
         if not self.settings.parent_expansion_enabled:
             return contexts
         parent_keys = {
-            (
-                str(context.get("source", "unknown")),
-                str((context.get("metadata") or {}).get("heading_path")),
-            )
+            (str(context.get("source", "unknown")), heading_path)
             for context in contexts
-            if (context.get("metadata") or {}).get("heading_path")
+            if (heading_path := _heading_path(context))
         }
         if not parent_keys:
             return contexts
@@ -473,13 +462,12 @@ class Retriever:
         sections = bulk_lookup(list(parent_keys), metadata_filter) if bulk_lookup else {}
         expanded: list[dict[str, Any]] = []
         for context in contexts:
-            metadata = context.get("metadata") or {}
-            heading_path = metadata.get("heading_path", "")
+            heading_path = _heading_path(context)
             source = context.get("source", "unknown")
             if not heading_path:
                 expanded.append(context)
                 continue
-            siblings = sections.get((str(source), str(heading_path)), [])
+            siblings = sections.get((str(source), heading_path), [])
             if len(siblings) <= 1:
                 expanded.append(context)
                 continue
@@ -488,3 +476,7 @@ class Retriever:
             new_context["expanded_text"] = merged_text
             expanded.append(new_context)
         return expanded
+
+
+def _heading_path(context: dict[str, Any]) -> str:
+    return ChunkMetadata.from_stored(context.get("metadata") or {}).heading_path

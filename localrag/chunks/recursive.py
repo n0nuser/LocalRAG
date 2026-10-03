@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from localrag.ingestion.contract import Chunk
+from localrag.chunks.record import ChunkDraft
 
 _SEPARATORS = ("\n\n", "\n", " ", "")
 
 
-def chunk_document(text: str, max_chars: int, overlap_chars: int) -> list[Chunk]:
+def chunk_document(text: str, max_chars: int, overlap_chars: int) -> list[ChunkDraft]:
     """Split text recursively on paragraph, line, word, then character boundaries.
 
     A non-empty atomic token that exceeds ``max_chars`` is emitted intact and
     marked ``oversized`` rather than silently discarded. Empty input emits no
-    chunks. Results retain source order; duplicate text remains distinct by index.
+    chunks. Results retain source order.
     """
     cleaned = text.strip()
     if not cleaned:
@@ -32,13 +32,8 @@ def chunk_document(text: str, max_chars: int, overlap_chars: int) -> list[Chunk]
         packed.append(current)
 
     return [
-        Chunk(
-            text=piece,
-            chunk_type="recursive",
-            chunk_index=index,
-            metadata={"oversized": len(piece) > limit},
-        )
-        for index, piece in enumerate(packed)
+        ChunkDraft(text=piece, chunk_type="recursive", oversized=len(piece) > limit)
+        for piece in packed
     ]
 
 

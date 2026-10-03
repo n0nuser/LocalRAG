@@ -27,6 +27,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
 
+from localrag.chunks.record import ChunkMetadata
 from localrag.llm.providers.base import BaseLLMProvider
 from localrag.rag.prompt import MAX_SECTION_CHARS
 from localrag.settings import Settings
@@ -186,7 +187,7 @@ def _build_prompt(contexts: list[dict[str, Any]], question: str, settings: Setti
         metadata = context.get("metadata")
         heading = ""
         if isinstance(metadata, dict):
-            heading = str(metadata.get("heading_path") or "").strip()[:MAX_SECTION_CHARS]
+            heading = ChunkMetadata.from_stored(metadata).heading_path.strip()[:MAX_SECTION_CHARS]
         header = f"[{index}]"
         if heading:
             # Scope usually lives in the heading, not the sentence; judging without

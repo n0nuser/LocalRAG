@@ -4,6 +4,8 @@ LocalRAG keeps **human-oriented** docs in the [README](README.md) and **machine-
 
 **Start here:** [`docs/agent-navigation.md`](docs/agent-navigation.md) is the maintained "I'm changing X — open Y" table and read order. It is more detailed than this file and is kept current; consult it before opening modules. This file covers the rules that table does not: Git policy, layering contracts, and what you must update when you change things.
 
+**Vocabulary:** [`CONTEXT.md`](CONTEXT.md) is the domain glossary (source, chunk, chunk metadata, retrieval context, group, citation, …). Use its terms in code, docs, and issues, and add a term there when a new one settles.
+
 ## Toolchain
 
 Python **3.13+**, dependencies and commands through **uv**. [`Taskfile.yml`](Taskfile.yml) is the portable wrapper contract (`task install`, `task test`, `task lint`, `task format`, `task ingest`, `task benchmark`, `task docker-up`, …); `task --list` enumerates it. Installing Task, uv, Docker, and Ollama is covered in [CONTRIBUTING](CONTRIBUTING.md#prerequisites-and-installation); every task also has a plain `uv run …` equivalent, so Task is optional.
@@ -53,7 +55,8 @@ Non-obvious Python constraints are **not** duplicated here. Read them before edi
 | `localrag/api/` | FastAPI HTTP adapter — see the DDD split below |
 | `localrag/mcp/` | MCP adapter (FastMCP SDK) over stdio and HTTP |
 | `localrag/cli/` | Typer app (`localrag.cli.app:app`); one module per command in `cli/commands/` |
-| `localrag/ingestion/` | Loader, parsers (`anydoc`, `pdf`, `docx`, `markdown`, `code`, `text`), chunking (`contract`, `structural_chunker`, `chunker`, `recursive_chunker`), embedder, `service` |
+| `localrag/ingestion/` | Loader, parsers (`anydoc`, `pdf`, `docx`, `markdown`, `code`, `text`), embedder, `service` |
+| `localrag/chunks/` | The chunk record (`record`: chunk identity, stored metadata codec, retrieval-context shape) and chunking strategies (`strategies` dispatch, `fixed`, `structural`, `recursive`) |
 | `localrag/rag/` | `engine`, `retriever`, `bm25_index`, `reranker`, `adaptive`, `compressor`, `hyde`, `query_rewrite`, `query_cache`, `prompt` |
 | `localrag/embedding/` | Provider abstraction (`base`, `factory`, `sentence_transformers`) and ingestion `cache` |
 | `localrag/llm/` | `factory`, `providers/` (ollama, openai, anthropic), `resilience`, `costs`, `types` |
