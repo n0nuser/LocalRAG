@@ -17,6 +17,14 @@ _Avoid_: file metadata
 A set of people sharing one deployment whose queries are answered from the sources they are allowed to see, such as the members of a household.
 _Avoid_: tenant, team, organization
 
+**Access list**:
+The groups allowed to see a source, inherited from its ingest folder's rule or from its uploaders; a source with no access list is visible to no restricted principal.
+_Avoid_: ACL, owner, permissions
+
+**Admin**:
+The one principal, named in configuration, who may rebuild or delete collections and reassign access lists.
+_Avoid_: superuser, root
+
 **Collection**:
 A named store of chunks built with one embedding model.
 _Avoid_: index, database
@@ -54,5 +62,9 @@ A chunk returned for a question, carrying its text, chunk metadata, and ranking 
 _Avoid_: hit, result, match
 
 **Citation**:
-A pointer from an answer to the exact span of a source that supports it, not merely to the source or section around it.
+A pointer from an answer to the most exact location in a source that its format allows: a character range for text, Markdown, and code; a page and quote for PDF; a quote for other converted formats.
 _Avoid_: reference, source link
+
+**Stale citation**:
+A citation into a source that has changed since it was indexed; it is shown with its stored quote rather than resolved against the current file.
+_Avoid_: broken link
