@@ -16,8 +16,9 @@ group with `plugin_id`, `contract_version`,
 `retrieve(question, n_results=None, metadata_filter=None) -> list[RetrievalContext]`.
 
 Each context contains stable `text`, `source`, `chunk_index`, `score`, and
-`metadata` fields; `distance`, `ingested_at`, and `freshness_factor` are
-optional. `close()` is required for resource ownership and is called once when
+`metadata` fields; `chunk_id`, `distance`, `ingested_at`, and `freshness_factor` are
+optional.
+`RetrievalContext` is defined by the chunk record in `localrag/chunks/record.py`; importing it from `localrag.plugins.retriever` keeps working. `close()` is required for resource ownership and is called once when
 the API shuts down. Plugin failures, including missing optional dependencies,
 are reported as typed plugin errors.
 

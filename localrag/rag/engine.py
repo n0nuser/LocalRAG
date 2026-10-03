@@ -5,6 +5,7 @@ from collections.abc import Generator
 from dataclasses import dataclass
 from typing import Any
 
+from localrag.chunks.record import ChunkMetadata
 from localrag.llm.providers.base import BaseLLMProvider
 from localrag.observability.tracing import SpanName, span
 from localrag.rag.adaptive import AdaptiveRetrievalPolicy
@@ -221,13 +222,13 @@ class RAGEngine:
             if key in seen:
                 continue
             seen.add(key)
-            metadata = context.get("metadata") or {}
+            metadata = ChunkMetadata.from_stored(context.get("metadata") or {})
             sources.append(
                 {
                     "source": source,
                     "chunk_index": chunk_index,
-                    "heading_path": metadata.get("heading_path") or None,
-                    "chunk_type": metadata.get("chunk_type") or None,
+                    "heading_path": metadata.heading_path or None,
+                    "chunk_type": metadata.chunk_type or None,
                 }
             )
         return sources

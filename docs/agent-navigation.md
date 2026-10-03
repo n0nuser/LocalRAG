@@ -61,7 +61,8 @@ optional because every task maps to a plain `uv run …` command.
 | Structured configuration | `localrag/settings.py`, `localrag/cli/app.py`, `localrag/api/main.py`, `config.example.yaml` |
 | Parsing a file type | `localrag/ingestion/parsers/`, `localrag/ingestion/loader.py`, [document-formats.md](document-formats.md); anydoc handles content-detected office formats and `pdf_inspector` remains the PDF path |
 | PDF OCR (scanned/image-only pages) | `localrag/ingestion/parsers/pdf.py`, `OCR_*` in `localrag/settings.py`, [ocr.md](ocr.md) |
-| Chunking strategy and boundaries | `localrag/ingestion/contract.py`, `localrag/ingestion/structural_chunker.py`, `localrag/ingestion/chunker.py`, `localrag/ingestion/recursive_chunker.py`, `localrag/settings.py`, `docs/adr/021-chunking-strategy-contract.md` |
+| Chunking strategy and boundaries | `localrag/chunks/strategies.py`, `localrag/chunks/structural.py`, `localrag/chunks/fixed.py`, `localrag/chunks/recursive.py`, `localrag/settings.py`, `docs/adr/021-chunking-strategy-contract.md` |
+| Chunk metadata, chunk IDs, retrieval-context shape | `localrag/chunks/record.py` (the only module that knows stored metadata keys), `tests/test_stored_chunk_format.py`, `tests/integration/test_chunk_record_round_trip.py`, `docs/adr/021-chunking-strategy-contract.md` |
 | Embeddings / provider contract and factory | `localrag/embedding/`, `localrag/ingestion/embedder.py` |
 | Ingestion embedding cache | `localrag/embedding/cache.py`, embedding cache settings, [ADR 024](adr/024-embedding-cache-contract.md), `benchmarks/embedding_cache_benchmark.py` |
 | Ingest orchestration | `localrag/ingestion/service.py` |

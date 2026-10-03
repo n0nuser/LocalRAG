@@ -7,6 +7,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from localrag.chunks.record import ChunkMetadata
+
 COMPRESSOR_VERSION = "extractive-v1"
 _SENTENCE_RE = re.compile(r"[^.!?\n]+(?:[.!?]+|$)|[^\n]+$", re.UNICODE)
 _FENCE_RE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
@@ -161,9 +163,8 @@ def _context_text(context: dict[str, Any]) -> str:
 
 
 def _parent_id(context: dict[str, Any]) -> str | None:
-    metadata = context.get("metadata") or {}
-    value = metadata.get("parent_id") or metadata.get("heading_path")
-    return str(value) if value else None
+    # Chunks sharing a heading path form one section, so it identifies the parent.
+    return ChunkMetadata.from_stored(context.get("metadata") or {}).heading_path or None
 
 
 def _lexical_score(question: str, text: str) -> float:
