@@ -7,13 +7,13 @@ import sqlite3
 import threading
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
-from hashlib import sha1
 from pathlib import Path
 from typing import Any
 
 import chromadb
 from chromadb.api.models.Collection import Collection
 
+from localrag.chunks.record import ChunkField, ChunkMetadata
 from localrag.embedding.base import EmbeddingIncompatibilityError, EmbeddingProvider
 
 try:  # pragma: no cover - exercised implicitly; absent only on non-Unix hosts.
@@ -145,58 +145,29 @@ class VectorStore:
             persist_path=self.persist_path,
         )
 
-    def add_chunks(
-        self,
-        source: str,
-        chunks: list[str],
-        embeddings: list[list[float]],
-        metadatas: list[dict[str, Any]],
-    ) -> None:
-        if len(chunks) != len(embeddings) or len(chunks) != len(metadatas):
-            logger.error(
-                "vector_upsert_length_mismatch source=%s chunks=%s embeddings=%s metadatas=%s",
-                source,
-                len(chunks),
-                len(embeddings),
-                len(metadatas),
-            )
-            raise ValueError("chunks, embeddings, and metadatas must have the same length")
-        if any(len(emb) == 0 for emb in embeddings):
-            logger.error("vector_upsert_empty_embedding source=%s", source)
-            raise ValueError("embeddings must be non-empty vectors")
-
-        with self._write_lock:
-            self._upsert(source, chunks, embeddings, metadatas)
-            self._bump_revision()
-        logger.debug(
-            "vector_upsert source=%s chunk_count=%s",
-            source,
-            len(chunks),
-        )
-
     def replace_source(
         self,
         source: str,
+        ids: list[str],
         chunks: list[str],
         embeddings: list[list[float]],
         metadatas: list[dict[str, Any]],
     ) -> None:
         """Replace one source while readers see either the old or new version."""
-        if len(chunks) != len(embeddings) or len(chunks) != len(metadatas):
-            raise ValueError("chunks, embeddings, and metadatas must have the same length")
+        if not len(ids) == len(chunks) == len(embeddings) == len(metadatas):
+            raise ValueError("ids, chunks, embeddings, and metadatas must have the same length")
         if any(len(embedding) == 0 for embedding in embeddings):
             raise ValueError("embeddings must be non-empty vectors")
         with self._write_lock:
             old = self.collection.get(
-                where={"source": source},
+                where={ChunkField.SOURCE: source},
                 include=["documents", "metadatas", "embeddings"],
             )
             try:
-                self._upsert(source, chunks, embeddings, metadatas)
-                new_ids = {
-                    str(metadata.get("chunk_id") or self._chunk_id(source, index))
-                    for index, metadata in enumerate(metadatas)
-                }
+                self._upsert_batched(
+                    ids=ids, documents=chunks, embeddings=embeddings, metadatas=metadatas
+                )
+                new_ids = set(ids)
                 old_id_set = {str(chunk_id) for chunk_id in old.get("ids") or []}
                 obsolete = old_id_set - new_ids
                 if obsolete:
@@ -206,7 +177,7 @@ class VectorStore:
                 # Chroma has no multi-operation transaction. Restore the complete
                 # previous source so a failed replacement cannot destroy it.
                 try:
-                    self.collection.delete(where={"source": source})
+                    self.collection.delete(where={ChunkField.SOURCE: source})
                     old_ids = old.get("ids") or []
                     old_documents = old.get("documents") or []
                     old_embeddings = old.get("embeddings")
@@ -230,19 +201,6 @@ class VectorStore:
                 except Exception:
                     logger.exception("vector_replace_rollback_failed source=%s", source)
                 raise
-
-    def _upsert(
-        self,
-        source: str,
-        chunks: list[str],
-        embeddings: list[list[float]],
-        metadatas: list[dict[str, Any]],
-    ) -> None:
-        ids = [
-            str(metadata.get("chunk_id") or self._chunk_id(source=source, chunk_index=index))
-            for index, metadata in enumerate(metadatas)
-        ]
-        self._upsert_batched(ids=ids, documents=chunks, embeddings=embeddings, metadatas=metadatas)
 
     def _upsert_batched(
         self,
@@ -279,7 +237,7 @@ class VectorStore:
         return max(1, limit)
 
     def _source_ids(self, source: str) -> set[str]:
-        raw = self.collection.get(where={"source": source}, include=[])
+        raw = self.collection.get(where={ChunkField.SOURCE: source}, include=[])
         return {str(chunk_id) for chunk_id in raw.get("ids") or []}
 
     def ensure_embedding_compatibility(
@@ -345,7 +303,7 @@ class VectorStore:
 
     def delete_by_source(self, source: str) -> None:
         with self._write_lock:
-            self.collection.delete(where={"source": source})
+            self.collection.delete(where={ChunkField.SOURCE: source})
             self._bump_revision()
         logger.debug("vector_delete_by_source source=%s", source)
 
@@ -379,7 +337,7 @@ class VectorStore:
             return {}
 
         clauses = [
-            {"$and": [{"source": source}, {"heading_path": heading_path}]}
+            {"$and": [{ChunkField.SOURCE: source}, {ChunkField.HEADING_PATH: heading_path}]}
             for source, heading_path in headings
         ]
         where: dict[str, Any] = {"$or": clauses} if len(clauses) > 1 else clauses[0]
@@ -395,15 +353,16 @@ class VectorStore:
             if not isinstance(document, str):
                 continue
             metadata_map = metadata if isinstance(metadata, dict) else {}
-            key = (str(metadata_map.get("source", "")), str(metadata_map.get("heading_path", "")))
+            chunk = ChunkMetadata.from_stored(metadata_map)
+            if chunk.source is None or chunk.chunk_index is None:
+                continue
+            key = (chunk.source, chunk.heading_path)
             if key not in requested or any(
                 metadata_map.get(filter_key) != filter_value
                 for filter_key, filter_value in (metadata_filter or {}).items()
             ):
                 continue
-            chunk_index = metadata_map.get("chunk_index")
-            if isinstance(chunk_index, int):
-                grouped.setdefault(key, []).append((chunk_index, document))
+            grouped.setdefault(key, []).append((chunk.chunk_index, document))
         for pairs in grouped.values():
             pairs.sort(key=lambda pair: pair[0])
         return grouped
@@ -419,9 +378,10 @@ class VectorStore:
         if not metadatas:
             return []
         sources: set[str] = set()
-        for md in metadatas:
-            if md and isinstance(md, dict) and "source" in md:
-                sources.add(str(md["source"]))
+        for stored in metadatas:
+            source = ChunkMetadata.from_stored(stored or {}).source
+            if source is not None:
+                sources.add(source)
         return sorted(sources)
 
     def list_collections(self) -> list[str]:
@@ -478,10 +438,6 @@ class VectorStore:
             normalized_metadata = metadata if isinstance(metadata, dict) else {}
             all_chunks.append((chunk_id, document, normalized_metadata))
         return all_chunks
-
-    @staticmethod
-    def _chunk_id(source: str, chunk_index: int) -> str:
-        return sha1(f"{source}:{chunk_index}".encode(), usedforsecurity=False).hexdigest()
 
 
 def _remove_directory(path: Path) -> None:

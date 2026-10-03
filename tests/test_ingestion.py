@@ -4,24 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from localrag.ingestion.chunker import chunk_text
 from localrag.ingestion.loader import (
     UnsupportedFileTypeError,
     list_supported_files,
     parse_file,
 )
-
-
-def test_chunk_text_returns_overlap_chunks() -> None:
-    chunks = chunk_text("abcdefghijklmnopqrstuvwxyz", chunk_chars=10, overlap_chars=2)
-    assert chunks
-    assert chunks[0] == "abcdefghij"
-    assert chunks[1].startswith("ijklmnop")
-
-
-def test_chunk_text_with_non_positive_chunk_chars_returns_single_chunk() -> None:
-    chunks = chunk_text("  abc  ", chunk_chars=0, overlap_chars=10)
-    assert chunks == ["abc"]
 
 
 def test_list_supported_files_non_recursive(tmp_path: Path) -> None:

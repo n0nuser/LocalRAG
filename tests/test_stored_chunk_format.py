@@ -43,19 +43,18 @@ class ConstantEmbedder:
 
 @dataclass
 class CapturingVectorStore:
-    writes: list[tuple[list[str], list[dict[str, Any]]]] = field(default_factory=list)
+    writes: list[tuple[list[str], list[str], list[dict[str, Any]]]] = field(default_factory=list)
 
     def replace_source(
         self,
         source: str,
+        ids: list[str],
         chunks: list[str],
         embeddings: list[list[float]],
         metadatas: list[dict[str, Any]],
     ) -> None:
         _ = (source, embeddings)
-        self.writes.append((chunks, metadatas))
-
-    add_chunks = replace_source
+        self.writes.append((ids, chunks, metadatas))
 
 
 def _chunk_id(source: str, strategy: str, index: int, text: str) -> str:
@@ -177,6 +176,7 @@ def test_ingestion_writes_the_established_stored_chunk_format(
         )
         for index, (chunk_text, heading_path, chunk_type, oversized) in enumerate(expected_chunks)
     ]
-    [(documents, metadatas)] = store.writes
+    [(ids, documents, metadatas)] = store.writes
+    assert ids == [row["chunk_id"] for row in expected_rows]
     assert documents == [chunk_text for chunk_text, *_ in expected_chunks]
     assert [_typed(row) for row in metadatas] == [_typed(row) for row in expected_rows]

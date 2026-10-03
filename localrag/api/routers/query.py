@@ -11,6 +11,7 @@ from localrag.api.schemas import (
     QueryRequest,
     QueryResponse,
 )
+from localrag.chunks.record import ChunkMetadata
 from localrag.rag.engine import RAGEngine
 from localrag.rag.query_cache import QueryCache
 
@@ -36,10 +37,10 @@ def query_contexts(
     contexts = api_service.get_query_contexts(request, engine)
     payload: list[BenchmarkContext] = []
     for context in contexts:
-        metadata = context.get("metadata") or {}
+        metadata = ChunkMetadata.from_stored(context.get("metadata") or {})
         payload.append(
             BenchmarkContext(
-                chunk_id=str(context.get("chunk_id") or metadata.get("chunk_id", "")),
+                chunk_id=str(context.get("chunk_id") or metadata.chunk_id),
                 # Keep each returned ID aligned with the exact text sent to the evaluator.
                 text=str(context.get("text", "")),
                 source=str(context.get("source", "unknown")),

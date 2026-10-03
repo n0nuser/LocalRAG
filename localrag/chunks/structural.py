@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 
-from localrag.ingestion.contract import Chunk
+from localrag.chunks.record import ChunkDraft
 from localrag.ingestion.loader import (
     ANYDOC_EXTENSIONS,
     CODE_EXTENSIONS,
@@ -15,7 +15,7 @@ _HEADING_PATTERN = re.compile(r"^(#{1,6})\s+(.*)$")
 _SENTENCE_BOUNDARY_PATTERN = re.compile(r"(?<=[.!?])\s+")
 
 
-def chunk_document(text: str, file_type: str, settings: Settings) -> list[Chunk]:
+def chunk_document(text: str, file_type: str, settings: Settings) -> list[ChunkDraft]:
     cleaned_text = text.strip()
     if not cleaned_text:
         return []
@@ -48,7 +48,9 @@ def chunk_document(text: str, file_type: str, settings: Settings) -> list[Chunk]
     )
 
 
-def _chunk_markdown(text: str, min_chars: int, max_chars: int, overlap_chars: int) -> list[Chunk]:
+def _chunk_markdown(
+    text: str, min_chars: int, max_chars: int, overlap_chars: int
+) -> list[ChunkDraft]:
     lines = text.splitlines()
     heading_stack: list[str] = []
     sections: list[tuple[str, str]] = []
@@ -84,13 +86,13 @@ def _chunk_markdown(text: str, min_chars: int, max_chars: int, overlap_chars: in
             is_code=False,
         )
 
-    chunks: list[Chunk] = []
+    chunks: list[ChunkDraft] = []
     for section_text, heading_path in sections:
         for item in _pack_blocks(
             section_text, min_chars=min_chars, max_chars=max_chars, overlap_chars=overlap_chars
         ):
             chunk_type = _classify_markdown_chunk(item, heading_path)
-            chunks.append(Chunk(text=item, heading_path=heading_path, chunk_type=chunk_type))
+            chunks.append(ChunkDraft(text=item, heading_path=heading_path, chunk_type=chunk_type))
     return chunks
 
 
@@ -109,13 +111,13 @@ def _classify_markdown_chunk(text: str, heading_path: str) -> str:
 
 def _chunk_non_markdown(
     text: str, min_chars: int, max_chars: int, overlap_chars: int, *, is_code: bool
-) -> list[Chunk]:
-    chunks: list[Chunk] = []
+) -> list[ChunkDraft]:
+    chunks: list[ChunkDraft] = []
     for item in _pack_blocks(
         text, min_chars=min_chars, max_chars=max_chars, overlap_chars=overlap_chars, is_code=is_code
     ):
         chunk_type = "code_block" if is_code else "text_block"
-        chunks.append(Chunk(text=item, heading_path="", chunk_type=chunk_type))
+        chunks.append(ChunkDraft(text=item, heading_path="", chunk_type=chunk_type))
     return chunks
 
 
