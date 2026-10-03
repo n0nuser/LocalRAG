@@ -40,6 +40,7 @@ Non-obvious Python constraints are **not** duplicated here. Read them before edi
 | [`.cursor/rules/critical-rules.mdc`](.cursor/rules/critical-rules.mdc) | Non-negotiable: no logic in `__init__` (use `@classmethod` factories), imports top-level only, no `__all__` outside `__init__.py`, no `Field()` in non-FastAPI models, no isolated model/`__init__` tests |
 | [`.cursor/rules/python-conventions.mdc`](.cursor/rules/python-conventions.mdc) | SOLID + YAGNI, dependency injection, snake_case Pydantic fields with `alias_generator`, specific exceptions, business-decision comments |
 | [`.cursor/rules/testing.mdc`](.cursor/rules/testing.mdc) | Test layout and expectations |
+| [`.cursor/rules/python-review-checklist.mdc`](.cursor/rules/python-review-checklist.mdc) | **Before merging new Python.** Itemized review ledger: copy it, fill every row `PASS`/`FAIL`/`N/A`, derive findings from the `FAIL` rows |
 | [`.cursor/rules/code-review.mdc`](.cursor/rules/code-review.mdc), [`.cursor/rules/grug.mdc`](.cursor/rules/grug.mdc), [`.cursor/rules/agent-communication.mdc`](.cursor/rules/agent-communication.mdc) | Review posture, simplicity preference, agent reporting style |
 
 ## Package map
