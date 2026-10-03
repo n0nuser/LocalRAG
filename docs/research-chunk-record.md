@@ -82,6 +82,7 @@ So a `None` field must be omitted from the stored dict (or encoded as a sentinel
 `where={"k": None}` is rejected by `validate_where` ("Expected where value to be a str, int, float, or operator expression").
 
 Type round-trip, verified locally: a stored `3` comes back as `int` and `3.0` comes back as `float`, so the writer's Python type is preserved.
+Float precision is not exact: CI observed a stored `1791064866.5932233` (a nanosecond-precision `st_mtime`) read back as `1791064866.593223`, so float metadata survives to about 16 significant digits and must not be compared for exact equality.
 `where={"n": 1.0}` matched a stored int `1`, so equality filters compare numerically.
 Booleans are checked before ints in the validator because `isinstance(True, int)` is true, so a bool stays a bool.
 

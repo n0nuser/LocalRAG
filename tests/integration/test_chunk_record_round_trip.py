@@ -31,6 +31,13 @@ def _typed(row: dict[str, Any]) -> dict[str, tuple[type, Any]]:
     return {key: (type(value), value) for key, value in row.items()}
 
 
+def _typed_without_mtime(row: dict[str, Any]) -> dict[str, tuple[type, Any]]:
+    # Chroma round-trips float metadata to about 16 significant digits, so a
+    # nanosecond-precision mtime comes back off in its last digit; it is
+    # compared separately, within a microsecond.
+    return {key: typed for key, typed in _typed(row).items() if key != "source_mtime"}
+
+
 def _reset_runtime() -> None:
     get_retriever.cache_clear()
     get_ingestion_service.cache_clear()
@@ -84,7 +91,10 @@ def test_ingested_metadata_round_trips_through_chroma_into_retrieval_contexts(
             git_commit="",
             tenant_id=settings.tenant_id,
         )
-        assert _typed(row) == _typed(ChunkMetadata.of(chunk, provenance).to_stored())
+        expected = ChunkMetadata.of(chunk, provenance).to_stored()
+        assert _typed_without_mtime(row) == _typed_without_mtime(expected)
+        assert type(row["source_mtime"]) is float
+        assert row["source_mtime"] == pytest.approx(expected["source_mtime"], abs=1e-6)
 
     contexts = get_retriever().retrieve("alpha beta gamma", n_results=5)
 
