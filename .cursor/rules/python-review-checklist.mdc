@@ -1,0 +1,194 @@
+---
+description: Itemized pre-merge review ledger for new Python code — copy it, fill every row, derive findings from the FAIL rows
+globs: **/*.py
+alwaysApply: false
+---
+
+# Python review checklist
+
+Ported from the deadchannel project's `docs/agents/python-review-checklist.md`, which is itself a port of the author's shared checklist.
+The ledger (§1–§12) is carried over verbatim; the repo adaptations are rewritten for LocalRAG.
+It complements the other rules in `.cursor/rules/` rather than replacing them: `critical-rules.mdc`, `python-conventions.mdc` and `testing.mdc` are the baseline conventions, and this file is the deeper, itemized pass.
+
+Walk it before merging any new Python code in `localrag/`, `evals/` or `tests/`.
+
+## How to use this file (read before reviewing)
+
+1. **Copy, don't regenerate.** Copy this file to a working path for the diff
+   under review — e.g. `.review/<branch-or-pr>-checklist.md`. Never rebuild
+   the list from memory: the completeness guarantee lives in *this file*,
+   not in attention on any given run.
+2. **Fill every row.** For each rule set `Verdict` to `PASS`, `FAIL`, or `N/A`:
+   - `PASS` — the rule applies to this diff and the code satisfies it. Cite
+     the strongest `file:line` you checked in `Evidence`.
+   - `FAIL` — the rule applies and the code violates it. Cite `file:line`
+     and state the fix in `Note`.
+   - `N/A` — the rule cannot apply to this diff (no code of that kind
+     changed) **or** it is a `[RUFF]` rule already covered by a green Ruff
+     gate. Say which in `Note`. `N/A` is a conscious decision, never a
+     silent skip.
+3. **Completion gate — do not produce findings until zero `Verdict` cells
+   are blank.** A blank cell means the rule was not considered.
+4. **Derive the findings from the ledger, not from memory.** The review
+   summary is built by filtering the `FAIL` rows into `[CRITICAL]` then
+   `[STANDARD]`. If a rule is not in the ledger as `FAIL`, it is not a
+   finding.
+
+`[RUFF]` rows: LocalRAG's Ruff gate runs `select = ["ALL"]`, so mark a `[RUFF]` rule `N/A` with note `ruff-gate-green` when the gate is green and the rule is not in the `pyproject.toml` ignore list.
+Only flag a `[RUFF]` rule `FAIL` when the gate does not cover it.
+
+IDs are stable (`R<section>.<n>`). If a rule here changes, keep the ID.
+
+## Repo adaptations
+
+Standing exceptions for this repository.
+Apply them without re-litigating, and add to this list (with evidence) when a review surfaces another one.
+
+- **R1.2 / R1.10 / R1.11 (canonical module names, three-layer layout)**: LocalRAG's layout is the one recorded in `AGENTS.md` ("Package map" and "Basic DDD layout"): the HTTP entry is `localrag/api/main.py`, config is `localrag/settings.py`, use cases live in `localrag/application/`, and domain packages (`ingestion/`, `rag/`, `storage/`, …) are organized by RAG concern rather than as `controller/` / `service/` / `repository/`.
+  New code follows that layout; the rules still bind *within* it (thin adapters, no `helpers.py` / `utils.py`, no leading-underscore module names).
+- **R5.9 (`Protocol` only as a runtime seam)**: `localrag/plugins/retriever.py`'s `RetrieverPlugin` / `RetrieverContract` pass — third-party retriever plugins are the real runtime implementations (ADR-recorded plugin contract).
+- **R7.3 (custom exceptions in a dedicated module)**: application-level errors live in `localrag/application/errors.py`; HTTP-mapped ones are `HttpMappedError` subclasses in `localrag/api/exceptions.py`.
+- **R5.7 / R9.4 (no work-item numbers in code)**: doesn't bind an ADR cited as the settled design record for a decision.
+  It does bind GitHub issue numbers, "see the owning PR", and point-in-time status words ("yet", "today", "currently", "not yet built") — encode issue numbers in the commit message or the ADR, as `change-discipline.mdc` already requires.
+
+## §1 Module structure & architecture [REVIEW]
+
+| ID | Sev | Rule | Verdict | Evidence (file:line) | Note |
+|---|---|---|---|---|---|
+| R1.1 | STANDARD | DDD layering: controller / service / repository separated; endpoints delegate to a service, no inline business logic | | | |
+| R1.2 | STANDARD | The transport entry module (`api.py`) stays thin - bootstrap / wiring / lifespan only | | | |
+| R1.3 | STANDARD | Large literals extracted to a dedicated module (`system_prompt.py` for the system prompt), not inlined | | | |
+| R1.4 | STANDARD | Reusable helpers extracted into their own modules, not scattered | | | |
+| R1.5 | STANDARD | One class / cohesive unit per module; over-large packages split into subpackages; a re-export facade `__init__.py` ONLY at a distribution boundary (i.e: a lib) — inside a service, empty `__init__.py` + absolute module imports | | | |
+| R1.6 | STANDARD | Dependencies point inward: service never touches transport types; controller never skips service to reach repository | | | |
+| R1.7 | STANDARD | SOLID; composition over inheritance; single responsibility per unit | | | |
+| R1.8 | STANDARD | YAGNI bounds abstraction - no generalization until reused/non-trivial; trivial single-use logic stays inline | | | |
+| R1.9 | STANDARD | Behavior lives with the state it owns: self-contained state transitions / invariants / calculations go on the domain model (anemic model is an anti-pattern); logic moves to a service only when it spans aggregates or needs an injected collaborator (repo/HTTP/AWS) | | | |
+| R1.10 | STANDARD | Canonical module names — `api.py` (transport entry, never `main.py`), `settings.py` (config, never `config.py`), `system_prompt.py` (never `prompts.py`); no leading-underscore module names inside a package | | | |
+| R1.11 | STANDARD | Three-layer package layout named after the layers: `controller/` (every exposed surface - HTTP endpoints and LLM-facing `@tool` in `controller/tools/`; declares and delegates only), `service/` (logic in by-capability subpackages, never `helpers.py`/`utils.py`), `repository/` (every outbound boundary - persistence, object stores, SDK/HTTP peers; no separate `gateway/`/`infrastructure/`). Bounded by R1.8 - no ceremonial empty layers | | | |
+| R1.12 | STANDARD | No pass-through wrapper — a method whose whole body forwards to a collaborator's identically-named method is deleted and the caller calls the owner; validating/adapting/narrowing wrappers are fine | | | |
+
+## §2 Configuration & typing [REVIEW]
+
+| ID | Sev | Rule | Verdict | Evidence (file:line) | Note |
+|---|---|---|---|---|---|
+| R2.1 | STANDARD | Pydantic settings for env config (not `os.environ.get`); import `BaseSettings` from `pydantic_settings`, never from `pydantic` | | | |
+| R2.2 | STANDARD | Config values (secret IDs, resource names, toggles) live in the settings module, not scattered through business code | | | |
+| R2.3 | **CRITICAL** | Strong typing over runtime casts — no `cast(...)`; validate boundaries with a typed model | | | |
+| R2.4 | STANDARD | Typed structure (model/dataclass/`TypedDict`) whenever the key set is known & fixed; `dict[str, X]` only for open/dynamic keys with uniform `X` | | | |
+| R2.5 | STANDARD | No stringly-typed returns — structured results return a typed object/enum, not a bare `str` the caller must parse | | | |
+
+## §3 Imports [RUFF]
+
+| ID | Sev | Rule | Verdict | Evidence (file:line) | Note |
+|---|---|---|---|---|---|
+| R3.1 | **CRITICAL** | Runtime-dependent (§3): every repo defaults to imports at module top. | | | |
+| R3.2 | **CRITICAL** | No relative imports - always absolute (`TID252`) | | | |
+
+## §4 State & `__init__` [mixed]
+
+| ID | Sev | Rule | Verdict | Evidence (file:line) | Note |
+|---|---|---|---|---|---|
+| R4.1 | **CRITICAL** | No module-level global mutable state, and no singleton used to dodge DI for a collaborator that can vary (`PLW0603` + DI principle) | | | |
+| R4.1a | STANDARD | Frozen, load-once startup constant (e.g. `Settings`) may be a module singleton - but check the 4-point bright-line test and confirm access stays injected, not `imported` | | | |
+| R4.2 | **CRITICAL** | No logic in `__init__` - attribute assignment only; move I/O / API / parsing / heavy compute to a `@classmethod` factory | | | |
+| R4.3 | STANDARD | Instantiate at point of use, or cache on the owning object; inject boundary collaborators (DB/HTTP/AWS) as constructor params | | | |
+
+## §5 Classes & naming [REVIEW]
+
+| ID | Sev | Rule | Verdict | Evidence (file:line) | Note |
+|---|---|---|---|---|---|
+| R5.1 | STANDARD | Group into a class when it earns its instance (real state / injected collaborator / substitutable abstraction); no all-`@staticmethod` "utility class"; don't wrap one trivial helper. *(provisional - pending coding-patterns re-sign-off)* | | | |
+| R5.2 | **CRITICAL** | Auto-explicative code - names carry meaning; a reviewer understands intent without comments; prefer renaming over commenting | | | |
+| R5.3 | STANDARD | Everything the code says is in English - identifiers, comments, docstrings, log messages, user-/LLM-facing output; only genuine domain proper nouns stay in the domain language | | | |
+| R5.4 | STANDARD | Access data by field name, not index, when both are available | | | |
+| R5.5 | STANDARD | No `getattr` / `setattr` - explicit attribute access (`hasattr` is fine). | | | |
+| R5.6 | STANDARD | Blank line before and after a conditional block (skip the leading blank line for a first-statement guard clause). | | | |
+| R5.7 | STANDARD | Code speaks capability language - no initiative codenames, work-item numbers, sprint/phase labels or planning jargon in identifiers, comments, docstrings, or test names; traceability = commit message + PR work-item link. See "Repo adaptations" above for the ADR/issue-citation exception. | | | |
+| R5.8 | STANDARD | No term borrowed from another trade meaning - every identifier checked against its established industry meaning (`profile` = performance profiling, so column/dtype/null inspection is `discover_structure`) | | | |
+| R5.9 | STANDARD | A `Protocol` in production code earns its place only as a runtime substitution seam - 2+ real implementations swapped at runtime (shipping or concretely planned). A test-only seam lives in the test suite; production annotates the concrete class (constructor injection unaffected - R4.3/§10). Not justified by a falsely "optional" dependency (R9.7); no `@runtime_checkable` without a real `isinstance` call; docstring names the implementations | | | |
+
+## §6 Validation [REVIEW]
+
+| ID | Sev | Rule | Verdict | Evidence (file:line) | Note |
+|---|---|---|---|---|---|
+| R6.1 | STANDARD | Hand-rolled validation replaced by Pydantic models + `@field_validator` / `@model_validator` | | | |
+
+## §7 Error handling [RUFF]
+
+| ID | Sev | Rule | Verdict | Evidence (file:line) | Note |
+|---|---|---|---|---|---|
+| R7.1 | **CRITICAL** | Specific exceptions; never catch bare `Exception` (`BLE001`) | | | |
+| R7.2 | STANDARD | Propagate, don't swallow - `raise NewError(...) from err` | | | |
+| R7.3 | STANDARD | Custom exceptions in a dedicated module (RFC 9457 types where the code is an HTTP service) — see "Repo adaptations" above for where they live here; never declared inline at the raise site | | | |
+
+## §8 Type annotations [mixed]
+
+| ID | Sev | Rule | Verdict | Evidence (file:line) | Note |
+|---|---|---|---|---|---|
+| R8.1 | **CRITICAL** | `\|` union syntax; never `Optional` / `Union` (`UP007` / `UP045`) | | | |
+| R8.2 | STANDARD | Plain defaults set directly; no `Field(default=...)` *just* to set a default. `Field(...)` still required for metadata/constraints; mutable defaults use `Field(default_factory=...)` | | | |
+
+## §9 Docstrings & comments [mixed]
+
+| ID | Sev | Rule | Verdict | Evidence (file:line) | Note |
+|---|---|---|---|---|---|
+| R9.1 | STANDARD | No forced docstrings on auto-explicative code; write one only when it adds what code can't say; when present it follows **Google style**. The gate enforces format (`D2xx`/`D4xx`), never presence - `D1xx` (`D100`-`D107`) must be in the repo's `ignore`; a repo where `D1xx` is active is misconfigured | | | |
+| R9.2 | STANDARD | Comments explain the *why* (a decision/tradeoff), never the *what*; no AI-filler narration | | | |
+| R9.3 | **CRITICAL** | `__init__.py` is empty **or** a pure re-export facade - never logic/side-effects; re-exports linter-clean (`__all__` / redundant alias, no `F401`) and eager-import-cheap. `__all__` appears ONLY in such a facade, never in a regular module | | | |
+| R9.4 | **CRITICAL** | Comments/docstrings survive loss of context - no gap/spike/plan ids, "see the owning PR", work-item numbers, sprint/phase labels, or point-in-time status ("as of this writing", "currently unresolved", "decided", "not yet built"). See "Repo adaptations" above for the ADR/issue-citation exception | | | |
+| R9.5 | STANDARD | Plain prose, Google style, no Sphinx roles (`:class:`/`:mod:`/`:meth:`/`:func:`/`:attr:`/`:data:`/`:exc:`) - nothing renders reST; `Args:`/`Returns:`/`Raises:` proper Google style and only where the signature can't say it | | | |
+| R9.6 | STANDARD | No section-banner comments (`# ---- Public surface ----`, decorative rules in a settings class) - ordering/naming carry it; a banner usually means the module does too much | | | |
+| R9.7 | STANDARD | Every stated rationale checked against the artifact it claims (`pyproject.toml` for a dependency claim, the signature, the settings module) — a false reason (e.g. `# noqa: PLC0415 - optional heavy dependency` on an unconditional dep) is worse than none | | | |
+| R9.8 | RUFF | No `# -*- coding: utf-8 -*-` source-encoding declaration (UTF-8 is the default since Python 3.0) - `UP009`; check the gate actually selects it | | | |
+
+## §10 Testing [REVIEW]
+
+| ID | Sev | Rule | Verdict | Evidence (file:line) | Note |
+|---|---|---|---|---|---|
+| R10.1 | **CRITICAL** | `@pytest.mark.parametrize` for variations, not near-duplicate `test_with_500` / `test_with_502` functions | | | |
+| R10.2 | **CRITICAL** | No isolated `__init__` or model tests - no `test_init_*`, no test files for Pydantic models/dataclasses | | | |
+| R10.3 | STANDARD | Whole-object assertions over field-picking (field-level only when one field is the behavior under test) | | | |
+| R10.4 | STANDARD | Mock at the boundary (external services/DB/HTTP/AWS/I/O); real objects for internal structures; stub over mock when behavior is simple | | | |
+| R10.5 | STANDARD | No AAA comments (`# Arrange/# Act/# Assert`) - separate sections with blank lines | | | |
+| R10.6 | STANDARD | Deterministic tests - `freezegun` for dates; no outbound HTTP (autouse conftest blocks network; `@pytest.mark.no_requests` only when needed) | | | |
+| R10.7 | STANDARD | Test layout mirrors source (`app/controller/tools/search.py` -> `tests/controller/tools/test_search.py`) | | | |
+| R10.8 | STANDARD | Reusable fixtures in `tests/fixtures/` scoped by reach; general ones registered in `conftest.py`; a once-used fixture stays local | | | |
+
+## §11 Concurrency & race conditions [REVIEW]
+
+| ID | Sev | Rule | Verdict | Evidence (file:line) | Note |
+|---|---|---|---|---|---|
+| R11.1 | **CRITICAL** | Any change touching shared state (requests/APIs, DB transactions, caches, queues, files, counters) is explicitly reasoned about for race conditions | | | |
+| R11.2 | **CRITICAL** | In-process async races checked: no check-then-act split across an `await`; request-scoped state kept local or guarded | | | |
+| R11.3 | **CRITICAL** | Every other reader/writer of the same state identified and the interaction confirmed | | | |
+| R11.4 | **CRITICAL** | Atomic ops / transaction isolation / idempotency / optimistic concurrency preferred over read-modify-write & check-then-act; concurrency boundary named, not hand-waved | | | |
+
+## §12 Resource lifecycle: caches, connections & buffering [REVIEW]
+
+| ID | Sev | Rule | Verdict | Evidence (file:line) | Note |
+|---|---|---|---|---|---|
+| R12.1 | **CRITICAL** | Any cache/registry keyed by request/session/conversation id is bounded (LRU/TTL) and evicted on a terminal lifecycle event - applies to module-global *and* DI-held dicts | | | |
+| R12.2 | **CRITICAL** | Pooled boundary clients (`httpx`, DB pool) built once and reused via `lifespan`/`app.state`; a scoped client is `with`/`async with`-scoped or explicitly `close()`'d | | | |
+| R12.3 | STANDARD | No full materialization of a stream/file/response when incremental handling is possible; "relay"/pass-through code flushes in bounded chunks; held payloads capped with a truncation marker | | | |
+| R12.4 | STANDARD | Every awaited external I/O has explicit timeouts on both legs (connect and read/idle); no `read=None` | | | |
+| R12.5 | STANDARD | Background/detached tasks holding large payloads are concurrency-bounded (semaphore or total-bytes cap) | | | |
+
+---
+
+## §13 LLM-facing guidance
+
+Not available: the deadchannel copy this file was ported from dropped §13, because that project has no LLM-facing surface.
+LocalRAG does have one (`localrag/mcp/` tools, `localrag/agent/` tool-use agent, prompts in `localrag/rag/prompt.py`), so §13 applies here — restore it from the original shared checklist.
+
+## Findings summary (build only after the ledger is complete)
+
+Filter the `FAIL` rows above into the two groups below, preserving `ID`, `file:line`, and fix.
+
+### [CRITICAL] - must fix
+
+_(one bullet per CRITICAL FAIL, with rule ID and file:line)_
+
+### [STANDARD] - should fix / discuss
+
+_(one bullet per STANDARD FAIL, with rule ID and file:line)_
