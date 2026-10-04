@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any
+
+import pytest
 
 from localrag.rag.bm25_index import Bm25Index, tokenize
 
@@ -71,3 +74,56 @@ def test_refresh_publishes_complete_snapshot_during_concurrent_queries() -> None
         refresh_future.result()
         observed = query_future.result()
     assert observed <= {"old", "new"}
+
+
+def _corpus_with_outranked_minority() -> StubStore:
+    # Every "public" row repeats the query term, so all of them outrank every
+    # "private" row; a filter applied after top-k would see no private rows.
+    public = [
+        (f"public-{n}", "lantern lantern lantern lantern", {"source": "public.md"})
+        for n in range(10)
+    ]
+    private = [
+        ("private-0", "a lantern by the door and a coat", {"source": "private.md"}),
+        ("private-1", "the lantern was lit at dusk", {"source": "private.md"}),
+        ("private-2", "nothing relevant here", {"source": "private.md"}),
+    ]
+    return StubStore(chunks=public + private)
+
+
+def _is_private(metadata: Mapping[str, Any]) -> bool:
+    return metadata.get("source") == "private.md"
+
+
+def _never(_metadata: Mapping[str, Any]) -> bool:
+    return False
+
+
+@pytest.mark.parametrize(
+    ("matches", "top_k", "expected_ids"),
+    [
+        (_is_private, 2, ["private-1", "private-0"]),
+        (_is_private, 5, ["private-1", "private-0", "private-2"]),
+        (_never, 5, []),
+        (None, 2, ["public-0", "public-1"]),
+    ],
+)
+def test_query_restricts_ranking_to_matching_rows_before_top_k(
+    matches: Callable[[Mapping[str, Any]], bool] | None,
+    top_k: int,
+    expected_ids: list[str],
+) -> None:
+    index = Bm25Index.from_vector_store(_corpus_with_outranked_minority())  # type: ignore[arg-type]
+
+    hits = index.query("lantern", top_k=top_k, matches=matches)
+
+    assert [hit.chunk_id for hit in hits] == expected_ids
+
+
+def test_masked_query_keeps_corpus_wide_scores_and_order() -> None:
+    index = Bm25Index.from_vector_store(_corpus_with_outranked_minority())  # type: ignore[arg-type]
+
+    unmasked = index.query("lantern", top_k=13)
+    masked = index.query("lantern", top_k=13, matches=_is_private)
+
+    assert masked == [hit for hit in unmasked if _is_private(hit.metadata)]

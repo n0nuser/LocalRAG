@@ -101,9 +101,15 @@ paths:
    `VectorStore.query(embedding, top_k, where=...)`
    (`localrag/storage/vector_store.py`), so Chroma itself excludes
    non-matching chunks before the HNSW search returns results.
-2. **BM25 search** (hybrid mode only) — applied client-side as an equality
-   check against each BM25 hit's metadata via the `_matches_filter` helper in
-   `localrag/rag/retriever.py`, since `rank_bm25` has no native filter concept.
+2. **BM25 search** (hybrid mode only) — `rank_bm25` has no native filter concept,
+   so the retriever passes `Bm25Index.query` (`localrag/rag/bm25_index.py`) a
+   predicate built from the same equality check (`_matches_filter` in
+   `localrag/rag/retriever.py`).
+   The index masks out non-matching chunks before scoring and before taking the
+   top-k, so a selective filter still gets a full lexical candidate list instead
+   of silently degrading to vector-only.
+   IDF and average document length stay corpus-wide: the filter changes which
+   chunks compete, never how a chunk scores.
 
 This is **equality-only** — it is not a full Chroma `$and`/`$or`/`$in` query
 DSL. Every key/value pair in `metadata_filter` must match exactly

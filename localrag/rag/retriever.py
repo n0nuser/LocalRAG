@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from functools import partial
 from http import HTTPStatus
 from typing import Any
 
@@ -35,9 +37,7 @@ def _parse_ingested_at(value: Any) -> datetime | None:
     return parsed.replace(tzinfo=UTC) if parsed.tzinfo is None else parsed
 
 
-def _matches_filter(metadata: dict[str, Any], metadata_filter: dict[str, Any] | None) -> bool:
-    if not metadata_filter:
-        return True
+def _matches_filter(metadata: Mapping[str, Any], metadata_filter: dict[str, Any]) -> bool:
     return all(metadata.get(key) == value for key, value in metadata_filter.items())
 
 
@@ -245,6 +245,9 @@ class Retriever:
     ) -> list[dict[str, Any]]:
         if self.bm25_index is None:
             return []
+        matches = (
+            partial(_matches_filter, metadata_filter=metadata_filter) if metadata_filter else None
+        )
         with span(SpanName.RETRIEVAL_BM25, {"count": per_variant_k}):
             return [
                 dict(
@@ -252,8 +255,7 @@ class Retriever:
                         hit.text, hit.metadata, score=hit.score, chunk_id=hit.chunk_id
                     )
                 )
-                for hit in self.bm25_index.query(variant, top_k=per_variant_k)
-                if _matches_filter(hit.metadata, metadata_filter)
+                for hit in self.bm25_index.query(variant, top_k=per_variant_k, matches=matches)
             ]
 
     def _rerank(
