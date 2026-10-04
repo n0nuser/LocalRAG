@@ -75,12 +75,13 @@ Calling `collection.query(query_texts=[...])` makes Chroma embed the query with
 a test exercises a pipeline that does not exist in production, and it fails in the
 container anyway because the model cache is read-only.
 
-Drive retrieval through `get_retriever()` so queries embed via the configured
-provider and go through the real fusion and rerank path:
+Drive retrieval through the container's retriever so queries embed via the
+configured provider and go through the real fusion and rerank path:
 
 ```python
-set_current_settings(load_settings().with_overrides(chroma_collection_name=NAME))
-chunks = get_retriever().retrieve(question, n_results=5)
+settings = load_settings().with_overrides(chroma_collection_name=NAME)
+with Container.build(settings) as container:
+    chunks = container.retriever.retrieve(question, n_results=5)
 ```
 
 Assert on returned text and metadata. Do not assert on raw Chroma distances —

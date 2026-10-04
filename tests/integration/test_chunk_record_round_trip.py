@@ -14,8 +14,7 @@ from typing import Any
 
 import pytest
 
-from localrag.application.container import get_ingestion_service, get_retriever
-from localrag.application.runtime import clear_runtime_caches, get_vector_store
+from localrag.application.container import Container
 from localrag.chunks.record import ChunkMetadata, SourceProvenance
 from localrag.chunks.strategies import chunk_source
 from localrag.settings import Settings, get_settings, load_settings, set_current_settings
@@ -38,12 +37,6 @@ def _typed_without_mtime(row: dict[str, Any]) -> dict[str, tuple[type, Any]]:
     return {key: typed for key, typed in _typed(row).items() if key != "source_mtime"}
 
 
-def _reset_runtime() -> None:
-    get_retriever.cache_clear()
-    get_ingestion_service.cache_clear()
-    clear_runtime_caches()
-
-
 @pytest.fixture
 def settings(tmp_path: Path) -> Iterator[Settings]:
     previous = get_settings()
@@ -58,22 +51,26 @@ def settings(tmp_path: Path) -> Iterator[Settings]:
         chunk_overlap_chars=0,
     )
     set_current_settings(configured)
-    _reset_runtime()
     yield configured
-    _reset_runtime()
     set_current_settings(previous)
 
 
+@pytest.fixture
+def container(settings: Settings) -> Iterator[Container]:
+    with Container.build(settings) as built:
+        yield built
+
+
 def test_ingested_metadata_round_trips_through_chroma_into_retrieval_contexts(
-    tmp_path: Path, settings: Settings
+    tmp_path: Path, settings: Settings, container: Container
 ) -> None:
     path = tmp_path / "notes.txt"
     path.write_text(TEXT, encoding="utf-8")
     source = str(path.resolve())
 
-    get_ingestion_service().ingest_file(path)
+    container.ingestion_service.ingest_file(path)
 
-    stored = get_vector_store().collection.get(include=["metadatas"])
+    stored = container.vector_store.collection.get(include=["metadatas"])
     rows = {
         chunk_id: dict(metadata)
         for chunk_id, metadata in zip(stored["ids"], stored["metadatas"] or [], strict=True)
@@ -96,7 +93,7 @@ def test_ingested_metadata_round_trips_through_chroma_into_retrieval_contexts(
         assert type(row["source_mtime"]) is float
         assert row["source_mtime"] == pytest.approx(expected["source_mtime"], abs=1e-6)
 
-    contexts = get_retriever().retrieve("alpha beta gamma", n_results=5)
+    contexts = container.retriever.retrieve("alpha beta gamma", n_results=5)
 
     assert contexts
     for context in contexts:

@@ -9,7 +9,6 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from localrag.api.dependencies import get_embedder, get_retriever
 from localrag.api.exceptions import ConcurrentIngestApiError, HttpMappedError, to_http_error
 from localrag.api.middleware import RequestContextMiddleware
 from localrag.api.routers.agent import router as agent_router
@@ -18,28 +17,29 @@ from localrag.api.routers.health import router as health_router
 from localrag.api.routers.ingest import router as ingest_router
 from localrag.api.routers.metrics import router as metrics_router
 from localrag.api.routers.query import router as query_router
+from localrag.application.container import Container
 from localrag.application.errors import ApplicationError
 from localrag.logging_config import configure_logging
 from localrag.observability.tracing import configure_tracing, shutdown_tracing
-from localrag.settings import get_settings, load_settings, set_current_settings
+from localrag.settings import load_settings, set_current_settings
 from localrag.storage.persist_lock import ConcurrentIngestError
 
 logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    set_current_settings(load_settings(os.environ.get("LOCALRAG_CONFIG")))
-    configure_logging(get_settings().log_level)
-    configure_tracing(get_settings())
+async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+    settings = load_settings(os.environ.get("LOCALRAG_CONFIG"))
+    set_current_settings(settings)
+    configure_logging(settings.log_level)
+    configure_tracing(settings)
+    container = Container.build(settings)
+    app.state.container = container
     logger.info("api_startup")
     try:
         yield
     finally:
-        if get_embedder.cache_info().currsize:
-            get_embedder().close()
-        if get_retriever.cache_info().currsize:
-            get_retriever().close()  # type: ignore[attr-defined]
+        container.close()
         shutdown_tracing()
         logger.info("api_shutdown")
 

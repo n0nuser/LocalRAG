@@ -1,16 +1,19 @@
 from __future__ import annotations
 
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from localrag.api.dependencies import get_api_settings, get_ingestion_service, get_job_registry
 from localrag.api.main import app
+from localrag.application.container import Container
 from localrag.application.jobs import JobRegistry
 from localrag.ingestion.service import IngestionResult
 from localrag.settings import Settings
+
+ApiContainer = Callable[..., Container]
 
 
 @dataclass
@@ -23,7 +26,9 @@ class StubIngestionService:
         return self.result
 
 
-def test_ingest_directory_async_returns_job_id_then_reports_done(tmp_path: Path) -> None:
+def test_ingest_directory_async_returns_job_id_then_reports_done(
+    tmp_path: Path, api_container: ApiContainer
+) -> None:
     allowed_root = tmp_path / "allowed"
     allowed_root.mkdir()
 
@@ -33,9 +38,7 @@ def test_ingest_directory_async_returns_job_id_then_reports_done(tmp_path: Path)
     )
     registry = JobRegistry()
 
-    app.dependency_overrides[get_api_settings] = lambda: settings
-    app.dependency_overrides[get_ingestion_service] = lambda: ingestion
-    app.dependency_overrides[get_job_registry] = lambda: registry
+    api_container(settings, ingestion_service=ingestion, job_registry=registry)
     client = TestClient(app)
 
     submitted = client.post("/ingest/directory/async", json={"path": str(allowed_root)})
@@ -56,15 +59,11 @@ def test_ingest_directory_async_returns_job_id_then_reports_done(tmp_path: Path)
     assert status_body["status"] == "done"
     assert status_body["result"]["total_chunks"] == 4  # type: ignore[index]
 
-    app.dependency_overrides.clear()
 
-
-def test_ingest_job_status_unknown_id_returns_404() -> None:
+def test_ingest_job_status_unknown_id_returns_404(api_container: ApiContainer) -> None:
     registry = JobRegistry()
-    app.dependency_overrides[get_job_registry] = lambda: registry
+    api_container(job_registry=registry)
     client = TestClient(app)
 
     response = client.get("/ingest/jobs/does-not-exist")
     assert response.status_code == 404
-
-    app.dependency_overrides.clear()

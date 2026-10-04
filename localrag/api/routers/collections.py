@@ -3,13 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from localrag.api import service as api_service
-from localrag.api.dependencies import (
-    get_collection_repository,
-    get_ingestion_service,
-    get_query_cache,
-    invalidate_retrieval_caches,
-    require_api_key,
-)
+from localrag.api.dependencies import get_collection_repository, get_container, require_api_key
 from localrag.api.schemas import (
     CollectionDeleteResponse,
     CollectionListResponse,
@@ -17,9 +11,8 @@ from localrag.api.schemas import (
     RebuildCollectionRequest,
     RebuildCollectionResponse,
 )
+from localrag.application.container import Container
 from localrag.application.repository import ChromaCollectionRepository
-from localrag.ingestion.service import IngestionService
-from localrag.rag.query_cache import QueryCache
 
 router = APIRouter(
     prefix="/collections",
@@ -38,21 +31,18 @@ def list_collections(
 @router.delete("/{name}", response_model=CollectionDeleteResponse)
 def delete_collection(
     name: CollectionNamePath,
-    collection_repo: ChromaCollectionRepository = Depends(get_collection_repository),
-    query_cache: QueryCache = Depends(get_query_cache),
+    container: Container = Depends(get_container),
 ) -> CollectionDeleteResponse:
-    response = api_service.delete_collection_response(collection_repo, name)
-    query_cache.clear()
-    invalidate_retrieval_caches()
+    response = api_service.delete_collection_response(container.collection_repository, name)
+    container.invalidate()
     return response
 
 
 @router.post("/rebuild", response_model=RebuildCollectionResponse)
 def rebuild_collection(
     request: RebuildCollectionRequest,
-    ingestion_service: IngestionService = Depends(get_ingestion_service),
-    query_cache: QueryCache = Depends(get_query_cache),
+    container: Container = Depends(get_container),
 ) -> RebuildCollectionResponse:
-    response = api_service.rebuild_collection_response(request, ingestion_service)
-    query_cache.clear()
+    response = api_service.rebuild_collection_response(request, container.ingestion_service)
+    container.invalidate()
     return response

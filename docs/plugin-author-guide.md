@@ -18,8 +18,10 @@ group with `plugin_id`, `contract_version`,
 Each context contains stable `text`, `source`, `chunk_index`, `score`, and
 `metadata` fields; `chunk_id`, `distance`, `ingested_at`, and `freshness_factor` are
 optional.
-`RetrievalContext` is defined by the chunk record in `localrag/chunks/record.py`; importing it from `localrag.plugins.retriever` keeps working. `close()` is required for resource ownership and is called once when
-the API shuts down. Plugin failures, including missing optional dependencies,
+`RetrievalContext` is defined by the chunk record in `localrag/chunks/record.py`; importing it from `localrag.plugins.retriever` keeps working. `close()` is required for resource ownership and is called exactly once per
+instance: when the process shuts down, or when an ingest, rebuild, or collection
+delete invalidates retrieval. LocalRAG then calls `create(settings)` again, so a
+plugin that caches corpus state starts from the current collection. Plugin failures, including missing optional dependencies,
 are reported as typed plugin errors.
 
 ## Installation And Selection

@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Amended by [ADR 039](039-fastmcp-sdk-adoption.md): the MCP wire implementation described below (a hand-rolled JSON-RPC dispatcher, no SDK dependency) was replaced with the FastMCP SDK. The application-boundary decision — `localrag/application/`, transports depending on it instead of `localrag.api`, the four tool names, and the `INGEST_ROOTS`/API-key contracts — is still in force.
+Accepted. Amended by #224: `localrag/application/container.py::Container` is the sole composition root, built once per process, and the API, MCP, CLI, and retriever plugin registry depend on it; `application/runtime.py` and the API's own `lru_cache` factories are gone. Amended by [ADR 039](039-fastmcp-sdk-adoption.md): the MCP wire implementation described below (a hand-rolled JSON-RPC dispatcher, no SDK dependency) was replaced with the FastMCP SDK. The application-boundary decision — `localrag/application/`, transports depending on it instead of `localrag.api`, the four tool names, and the `INGEST_ROOTS`/API-key contracts — is still in force.
 
 ## Context
 

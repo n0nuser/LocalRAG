@@ -220,8 +220,8 @@ reuse across requests, in contrast to top-level per-request APIs —
 
 **Impact:** low-medium. **Effort:** low (hold one client on the dataclass).
 **Risk:** the embedder becomes stateful and needs deliberate lifecycle/cleanup;
-`OllamaEmbedder` is currently an `lru_cache`d singleton
-(`localrag/api/dependencies.py`), so a long-lived pooled client fits, but thread
+the embedder is built once per process by the composition root
+(`localrag/application/container.py`) and closed on shutdown, so a long-lived pooled client fits, but thread
 safety across the ingest `ThreadPoolExecutor` (`max_workers=2`,
 `localrag/application/jobs.py:48`) should be confirmed.
 

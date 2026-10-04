@@ -75,6 +75,9 @@ async def test_api_startup_uses_the_same_yaml_resolver(
     monkeypatch.setenv("LOCALRAG_CONFIG", str(config))
 
     async with lifespan(app):
-        assert get_settings().tenant_id == "api-tenant"
+        assert (get_settings().tenant_id, app.state.container.settings.tenant_id) == (
+            "api-tenant",
+            "api-tenant",
+        )
 
     clear_current_settings()

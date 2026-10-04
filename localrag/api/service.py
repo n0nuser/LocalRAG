@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any, BinaryIO
 
 from localrag.api import schemas
@@ -101,6 +101,8 @@ def ingest_directory_async(
     settings: Settings,
     ingestion_service: IngestionService,
     job_registry: JobRegistry,
+    *,
+    on_ingested: Callable[[], None],
 ) -> schemas.IngestJobResponse:
     result = application_service.ingest_directory_async(
         IngestDirectoryRequest(
@@ -111,6 +113,7 @@ def ingest_directory_async(
         settings,
         ingestion_service,
         job_registry,
+        on_ingested=on_ingested,
     )
     return schemas.IngestJobResponse(job_id=result.job_id, status=result.status)
 

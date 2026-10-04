@@ -7,9 +7,13 @@ import subprocess
 import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from localrag.api.dependencies import get_container
+from localrag.api.main import app
+from localrag.application.container import Container
 from localrag.settings import Settings
 from localrag.settings_map import FLAT_TO_PATH, UNGROUPED_FIELDS
 
@@ -78,3 +82,23 @@ def ingest_lock_holder() -> Iterator[IngestLockHolder]:
     for process in processes:
         process.kill()
         process.wait(timeout=10)
+
+
+ApiContainer = Callable[..., Container]
+
+
+@pytest.fixture
+def api_container() -> Iterator[ApiContainer]:
+    """Serve the API app from a container built for this test: its settings plus any fakes.
+
+    ``TestClient(app)`` without a ``with`` block skips the lifespan that normally puts
+    the container on ``app.state``, so this is the one override API tests need.
+    """
+
+    def install(settings: Settings | None = None, **objects: Any) -> Container:
+        container = Container.build(settings or Settings(), **objects)
+        app.dependency_overrides[get_container] = lambda: container
+        return container
+
+    yield install
+    app.dependency_overrides.clear()
