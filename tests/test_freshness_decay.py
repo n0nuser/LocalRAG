@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Mapping
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
 
@@ -204,8 +206,10 @@ def test_hybrid_retrieve_does_not_rescore_by_freshness_end_to_end() -> None:
 
     class Bm25:
         @staticmethod
-        def query(text: str, top_k: int) -> list[Bm25Hit]:
-            _ = (text, top_k)
+        def query(
+            text: str, top_k: int, matches: Callable[[Mapping[str, Any]], bool] | None = None
+        ) -> list[Bm25Hit]:
+            _ = (text, top_k, matches)
             return [
                 Bm25Hit(
                     chunk_id="best.md:0",

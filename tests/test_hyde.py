@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -113,7 +113,10 @@ class Store:
 class Bm25:
     inputs: list[str] = field(default_factory=list)
 
-    def query(self, text: str, top_k: int) -> list[Any]:
+    def query(
+        self, text: str, top_k: int, matches: Callable[[Mapping[str, Any]], bool] | None = None
+    ) -> list[Any]:
+        _ = (top_k, matches)
         self.inputs.append(text)
         return []
 
