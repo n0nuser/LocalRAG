@@ -47,7 +47,7 @@ optional because every task maps to a plain `uv run …` command.
 | HTTP multipart file upload ingest (`POST /ingest/upload`) | `localrag/api/routers/ingest.py` (`ingest_upload`, Swagger limitations in `_UPLOAD_DESCRIPTION`), `localrag/application/service.py` (`ingest_upload`, cleanup), upload lifecycle settings in `localrag/settings.py`, [data-lifecycle.md](data-lifecycle.md) |
 | Query audit lifecycle | `localrag/audit.py`, audit lifecycle settings in `localrag/settings.py`, [data-lifecycle.md](data-lifecycle.md) |
 | Background ingest jobs | `localrag/application/jobs.py`, `localrag/api/routers/ingest.py` (async routes), `localrag/application/service.py` (`ingest_directory_async`, `get_ingest_job`) |
-| DI / shared service instances | `localrag/api/dependencies.py` |
+| Composition root / shared runtime objects (construction, invalidation, shutdown) | `localrag/application/container.py`; adapters: `localrag/api/main.py` (lifespan), `localrag/api/dependencies.py` (`get_container`), `localrag/mcp/server.py` (server lifespan), `localrag/cli/commands/*.py`; tests: `tests/test_application_container.py`, `api_container` in `tests/conftest.py` |
 | Log format, levels, request ID | `localrag/logging_config.py`, `localrag/api/middleware.py`, `LOG_LEVEL` in `localrag/settings.py` |
 | Optional tracing / observability | `localrag/observability/tracing.py`, `OTEL_*` in `localrag/settings.py`, [observability.md](observability.md), [ADR 030](adr/030-optional-otel-observability-boundary.md) |
 | API key auth | `localrag/api/dependencies.py` (`require_api_key`), `API_KEY` in `localrag/settings.py` |

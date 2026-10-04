@@ -14,11 +14,12 @@ Skipped unless that collection exists and is populated.
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
 
-from localrag.application.container import get_retriever
+from localrag.application.container import Container
 from localrag.settings import load_settings, set_current_settings
 
 pytestmark = pytest.mark.integration
@@ -54,7 +55,7 @@ def collection() -> Any:
 
 
 @pytest.fixture(scope="module")
-def retriever(collection: Any) -> Any:
+def retriever(collection: Any) -> Iterator[Any]:
     """LocalRAG's own retriever, so queries embed through the configured provider.
 
     Querying Chroma with raw ``query_texts`` would make it download and run its
@@ -64,8 +65,10 @@ def retriever(collection: Any) -> Any:
     # Depends on `collection` so these tests skip, rather than error, when the
     # corpus is absent. Assert on it here so the dependency is not dead weight.
     assert collection.count() > 0
-    set_current_settings(load_settings().with_overrides(chroma_collection_name=COLLECTION))
-    return get_retriever()
+    settings = load_settings().with_overrides(chroma_collection_name=COLLECTION)
+    set_current_settings(settings)
+    with Container.build(settings) as container:
+        yield container.retriever
 
 
 def _joined_text(chunks: list[dict[str, Any]]) -> str:

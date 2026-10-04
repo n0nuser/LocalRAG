@@ -13,8 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from localrag.application.container import get_ingestion_service, get_retriever
-from localrag.application.runtime import clear_runtime_caches, get_vector_store
+from localrag.application.container import Container
 from localrag.settings import Settings, get_settings, load_settings, set_current_settings
 
 pytestmark = pytest.mark.integration
@@ -23,12 +22,6 @@ pytestmark = pytest.mark.integration
 # holds many chunks that each outrank the private file's only relevant chunk.
 PUBLIC_TEXT = "\n\n".join(["lantern lantern lantern lantern"] * 8)
 PRIVATE_TEXT = "the lantern was lit\n\nnothing relevant here"
-
-
-def _reset_runtime() -> None:
-    get_retriever.cache_clear()
-    get_ingestion_service.cache_clear()
-    clear_runtime_caches()
 
 
 @pytest.fixture
@@ -50,15 +43,18 @@ def settings(tmp_path: Path) -> Iterator[Settings]:
         parent_expansion_enabled=False,
     )
     set_current_settings(configured)
-    _reset_runtime()
     yield configured
-    _reset_runtime()
     set_current_settings(previous)
 
 
-@pytest.mark.usefixtures("settings")
+@pytest.fixture
+def container(settings: Settings) -> Iterator[Container]:
+    with Container.build(settings) as built:
+        yield built
+
+
 def test_hybrid_filter_keeps_lexical_hits_outranked_by_filtered_out_chunks(
-    tmp_path: Path,
+    tmp_path: Path, container: Container
 ) -> None:
     public = tmp_path / "public.txt"
     public.write_text(PUBLIC_TEXT, encoding="utf-8")
@@ -66,8 +62,8 @@ def test_hybrid_filter_keeps_lexical_hits_outranked_by_filtered_out_chunks(
     private.write_text(PRIVATE_TEXT, encoding="utf-8")
     private_source = str(private.resolve())
     for path in (public, private):
-        get_ingestion_service().ingest_file(path)
-    stored = get_vector_store().collection.get(include=["documents", "metadatas"])
+        container.ingestion_service.ingest_file(path)
+    stored = container.vector_store.collection.get(include=["documents", "metadatas"])
     stored_by_source = sorted(
         (str(metadata["source"]), str(document))
         for document, metadata in zip(
@@ -79,7 +75,7 @@ def test_hybrid_filter_keeps_lexical_hits_outranked_by_filtered_out_chunks(
         + [(private_source, "the lantern was lit"), (private_source, "nothing relevant here")]
     )
 
-    contexts = get_retriever().retrieve(
+    contexts = container.retriever.retrieve(
         "lantern", n_results=2, metadata_filter={"source": private_source}
     )
 

@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass, field
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from typer.testing import CliRunner
 
+from localrag.application.container import Container
 from localrag.cli.app import app
 from localrag.llm.providers.base import BaseLLMProvider
 from localrag.llm.types import LLMResponse
@@ -178,7 +180,10 @@ def test_cli_query_surfaces_bounded_trace(monkeypatch: pytest.MonkeyPatch) -> No
                 "trace": {"mode": "hyde", "status": "generated"},
             }
 
-    monkeypatch.setattr("localrag.cli.commands.query.get_engine", lambda: Engine())
+    monkeypatch.setattr(
+        "localrag.cli.commands.query.Container",
+        SimpleNamespace(build=lambda settings: Container.build(settings, engine=Engine())),
+    )
     result = CliRunner().invoke(app, ["query", "question"])
     assert result.exit_code == 0
     assert "answer" in result.stdout

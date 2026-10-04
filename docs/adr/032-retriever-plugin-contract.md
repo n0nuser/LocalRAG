@@ -1,6 +1,6 @@
 # ADR 032: Versioned Retriever Plugin Boundary
 
-- **Status:** Accepted
+- **Status:** Accepted. Amended by #224: the composition root closes each plugin instance exactly once, either at process shutdown or when an ingest, rebuild, or collection delete invalidates retrieval, after which it calls `create(settings)` for a fresh instance. The `1.0` signatures are unchanged.
 - **Date:** 2026-08-04
 
 ## Context

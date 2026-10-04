@@ -3,13 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, File, Form, UploadFile
 
 from localrag.api import service as api_service
-from localrag.api.dependencies import (
-    get_api_settings,
-    get_ingestion_service,
-    get_job_registry,
-    get_query_cache,
-    require_api_key,
-)
+from localrag.api.dependencies import get_container, get_job_registry, require_api_key
 from localrag.api.schemas import (
     IngestDirectoryRequest,
     IngestDirectoryResponse,
@@ -18,10 +12,8 @@ from localrag.api.schemas import (
     IngestJobResponse,
     IngestJobStatusResponse,
 )
+from localrag.application.container import Container
 from localrag.application.jobs import JobRegistry
-from localrag.ingestion.service import IngestionService
-from localrag.rag.query_cache import QueryCache
-from localrag.settings import Settings
 
 router = APIRouter(prefix="", tags=["ingestion"], dependencies=[Depends(require_api_key)])
 
@@ -65,42 +57,38 @@ def ingest_upload(
         default=None,
         description="Override OLLAMA_EMBED_MODEL for this request.",
     ),
-    settings: Settings = Depends(get_api_settings),
-    ingestion_service: IngestionService = Depends(get_ingestion_service),
-    query_cache: QueryCache = Depends(get_query_cache),
+    container: Container = Depends(get_container),
 ) -> IngestFileResponse:
     response = api_service.ingest_upload(
         file_name=file.filename or "upload",
         file_obj=file.file,
         embed_model=embed_model,
-        settings=settings,
-        ingestion_service=ingestion_service,
+        settings=container.settings,
+        ingestion_service=container.ingestion_service,
     )
-    query_cache.clear()
+    container.invalidate()
     return response
 
 
 @router.post("/ingest", response_model=IngestFileResponse)
 def ingest_file(
     request: IngestFileRequest,
-    settings: Settings = Depends(get_api_settings),
-    ingestion_service: IngestionService = Depends(get_ingestion_service),
-    query_cache: QueryCache = Depends(get_query_cache),
+    container: Container = Depends(get_container),
 ) -> IngestFileResponse:
-    response = api_service.ingest_file(request, settings, ingestion_service)
-    query_cache.clear()
+    response = api_service.ingest_file(request, container.settings, container.ingestion_service)
+    container.invalidate()
     return response
 
 
 @router.post("/ingest/directory", response_model=IngestDirectoryResponse)
 def ingest_directory(
     request: IngestDirectoryRequest,
-    settings: Settings = Depends(get_api_settings),
-    ingestion_service: IngestionService = Depends(get_ingestion_service),
-    query_cache: QueryCache = Depends(get_query_cache),
+    container: Container = Depends(get_container),
 ) -> IngestDirectoryResponse:
-    response = api_service.ingest_directory(request, settings, ingestion_service)
-    query_cache.clear()
+    response = api_service.ingest_directory(
+        request, container.settings, container.ingestion_service
+    )
+    container.invalidate()
     return response
 
 
@@ -116,11 +104,15 @@ def ingest_directory(
 )
 def ingest_directory_async(
     request: IngestDirectoryRequest,
-    settings: Settings = Depends(get_api_settings),
-    ingestion_service: IngestionService = Depends(get_ingestion_service),
-    job_registry: JobRegistry = Depends(get_job_registry),
+    container: Container = Depends(get_container),
 ) -> IngestJobResponse:
-    return api_service.ingest_directory_async(request, settings, ingestion_service, job_registry)
+    return api_service.ingest_directory_async(
+        request,
+        container.settings,
+        container.ingestion_service,
+        container.job_registry,
+        on_ingested=container.invalidate,
+    )
 
 
 @router.get("/ingest/jobs/{job_id}", response_model=IngestJobStatusResponse)

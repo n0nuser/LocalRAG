@@ -5,14 +5,14 @@ import logging
 
 import typer
 
-from localrag.application.container import get_engine
+from localrag.application.container import Container
 from localrag.observability.tracing import SpanName, span
+from localrag.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
 
 def query(question: str, model: str | None = None, n_results: int | None = None) -> None:
-    engine = get_engine()
     logger.info(
         "cli_query question_chars=%s model=%s n_results=%s",
         len(question),
@@ -22,8 +22,13 @@ def query(question: str, model: str | None = None, n_results: int | None = None)
     sources: list[dict[str, object]] = []
     trace: dict[str, object] | None = None
 
-    with span(SpanName.CLI_QUERY, {"model": model or "default"}):
-        for event in engine.stream_answer(question=question, model=model, n_results=n_results):
+    with (
+        Container.build(get_settings()) as container,
+        span(SpanName.CLI_QUERY, {"model": model or "default"}),
+    ):
+        for event in container.engine.stream_answer(
+            question=question, model=model, n_results=n_results
+        ):
             if event["type"] == "token":
                 typer.echo(str(event["token"]), nl=False)
             if event["type"] == "final":

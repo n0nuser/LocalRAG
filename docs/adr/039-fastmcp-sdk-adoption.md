@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted. Amends [ADR 038](038-application-and-mcp-boundaries.md), which described the hand-rolled JSON-RPC wire implementation this ADR replaces.
+Accepted. Amends [ADR 038](038-application-and-mcp-boundaries.md), which described the hand-rolled JSON-RPC wire implementation this ADR replaces. Amended by #224: `build_mcp_server(settings, build_container)` replaces the per-dependency factories and the caller-supplied lifespan; the server's own lifespan builds the process `Container` (still lazy, so `initialize`/`tools/list` stay cheap), tools read it from the lifespan context, and it is closed on exit.
 
 ## Context
 

@@ -5,11 +5,10 @@ from http import HTTPStatus
 from fastapi import APIRouter, Depends
 
 from localrag.agent.service import run_agent
-from localrag.api.dependencies import get_api_settings, get_engine, require_api_key
+from localrag.api.dependencies import get_container, require_api_key
 from localrag.api.exceptions import AgentApiError
 from localrag.api.schemas import AgentQueryRequest, AgentQueryResponse, SourceRef
-from localrag.rag.engine import RAGEngine
-from localrag.settings import Settings
+from localrag.application.container import Container
 
 router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(require_api_key)])
 
@@ -17,13 +16,13 @@ router = APIRouter(prefix="/agent", tags=["agent"], dependencies=[Depends(requir
 @router.post("/query", response_model=AgentQueryResponse, summary="Agent query (tool-use)")
 def agent_query(
     request: AgentQueryRequest,
-    engine: RAGEngine = Depends(get_engine),
-    settings: Settings = Depends(get_api_settings),
+    container: Container = Depends(get_container),
 ) -> AgentQueryResponse:
     """Run the Anthropic tool-use agent.
 
     The agent decides whether to search documents or answer directly.
     """
+    settings = container.settings
     if not settings.anthropic_api_key:
         raise AgentApiError(
             status_code=HTTPStatus.SERVICE_UNAVAILABLE,
@@ -32,7 +31,7 @@ def agent_query(
     model = request.model or settings.agent_model
     result = run_agent(
         question=request.question,
-        engine=engine,
+        engine=container.engine,
         api_key=settings.anthropic_api_key,
         model=model,
     )

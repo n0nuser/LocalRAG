@@ -209,7 +209,7 @@ Reranking runs on the raw fused/vector candidate list — **before**
 `apply_freshness` and `_expand_to_parent_section` — so it acts as the final
 relevance step, and freshness decay / parent-section expansion still apply to
 the reranked, already-trimmed top-`k` results (matching how those two behave
-when reranking is disabled). `localrag/api/dependencies.py::get_reranker`
+when reranking is disabled). `localrag/application/container.py` (`Container.reranker`)
 builds the `CrossEncoderReranker` only when `RERANK_ENABLED=true`, mirroring
 the pluggable-provider shape in `localrag/llm/factory.py` (nothing imports
 `sentence-transformers` unless the feature is turned on).
@@ -366,9 +366,10 @@ existing RAGAS/manual-only workflow.
 
 Disabled by default (`QUERY_CACHE_TTL_SECONDS=0`). When enabled (set a positive
 TTL in seconds), `POST /query` (`localrag/api/routers/query.py`) is served
-through an in-process `QueryCache` (`localrag/rag/query_cache.py`), wired via
-`localrag/api/dependencies.py::get_query_cache` (an `lru_cache`-memoized
-singleton, so all requests within one process share the same cache) and
+through an in-process `QueryCache` (`localrag/rag/query_cache.py`), owned by
+the process container (`localrag/application/container.py`, `Container.query_cache`,
+so all requests within one process share the same cache and every ingest,
+rebuild, or collection delete clears it through `Container.invalidate()`) and
 passed into `localrag.api.service.query_json`.
 
 Cache keys are an exact-match SHA-256 hash over the normalized question

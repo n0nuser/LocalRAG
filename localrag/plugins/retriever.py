@@ -8,21 +8,15 @@ explicitly, then select one with ``retriever_plugin`` in LocalRAG settings.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from importlib.metadata import EntryPoint
 from importlib.metadata import entry_points as metadata_entry_points
-from typing import Any, Protocol, cast
+from typing import Any, Protocol, cast, runtime_checkable
 
-from localrag.application.runtime import (
-    get_bm25_index,
-    get_embedder,
-    get_reranker,
-    get_vector_store,
-)
 from localrag.chunks.record import (
     RetrievalContext as RetrievalContext,  # noqa: PLC0414 — explicit re-export for plugins
 )
-from localrag.rag.retriever import Retriever
 from localrag.settings import Settings
 
 logger = logging.getLogger(__name__)
@@ -54,6 +48,17 @@ class RetrieverContract(Protocol):
     def close(self) -> None: ...
 
 
+@runtime_checkable
+class _CollectionScoped(Protocol):
+    """A retriever that can open a request-scoped copy of itself for another collection.
+
+    Implemented by the built-in ``Retriever`` and by ``ManagedRetriever``. It names the
+    capability so this module need not import the built-in retriever's class.
+    """
+
+    def for_collection(self, collection: str) -> RetrieverContract: ...
+
+
 class PluginRegistryError(ValueError):
     """Raised when retriever plugin metadata, selection, or loading is invalid."""
 
@@ -66,23 +71,17 @@ class PluginExecutionError(PluginRegistryError):
     """Raised when a selected plugin cannot be constructed or queried."""
 
 
+@dataclass
 class _BuiltinPlugin:
-    plugin_id = "builtin"
-    contract_version = CONTRACT_VERSION
-    compatible_contract_versions: tuple[str, ...] = (CONTRACT_VERSION,)
+    """The built-in retriever, built by the factory the composition root supplies."""
 
-    @staticmethod
-    def create(settings: Settings) -> RetrieverContract:
-        return cast(
-            "RetrieverContract",
-            Retriever(
-                settings=settings,
-                embedder=get_embedder(),
-                vector_store=get_vector_store(),
-                bm25_index=get_bm25_index(),
-                reranker=get_reranker(),
-            ),
-        )
+    factory: Callable[[Settings], RetrieverContract]
+    plugin_id: str = field(default="builtin", init=False)
+    contract_version: str = field(default=CONTRACT_VERSION, init=False)
+    compatible_contract_versions: tuple[str, ...] = field(default=(CONTRACT_VERSION,), init=False)
+
+    def create(self, settings: Settings) -> RetrieverContract:
+        return self.factory(settings)
 
 
 def _validate_plugin(plugin: object, entry_name: str) -> RetrieverPlugin:
@@ -150,6 +149,9 @@ class RetrieverPluginRegistry:
         self.track(instance, plugin_id)
         return instance
 
+    def plugin_id(self, instance: RetrieverContract) -> str:
+        return self._instance_ids.get(id(instance), "unknown")
+
     def track(self, instance: RetrieverContract, plugin_id: str) -> None:
         self._instances.append(instance)
         self._instance_ids[id(instance)] = plugin_id
@@ -161,7 +163,7 @@ class RetrieverPluginRegistry:
         n_results: int | None = None,
         metadata_filter: dict[str, Any] | None = None,
     ) -> list[RetrievalContext]:
-        plugin_id = self._instance_ids.get(id(instance), "unknown")
+        plugin_id = self.plugin_id(instance)
         if plugin_id == "builtin":
             return instance.retrieve(question, n_results, metadata_filter)
         try:
@@ -198,7 +200,9 @@ class ManagedRetriever:
 
     def for_collection(self, collection: str) -> ManagedRetriever:
         """Create a tracked built-in retriever for a request-scoped collection."""
-        if not isinstance(self._instance, Retriever):
+        if self._registry.plugin_id(self._instance) != "builtin" or not isinstance(
+            self._instance, _CollectionScoped
+        ):
             raise TypeError("Per-request collections require the built-in retriever.")
         instance = self._instance.for_collection(collection)
         self._registry.track(instance, "builtin")
@@ -212,10 +216,17 @@ class ManagedRetriever:
 
 
 def discover_retriever_plugins(
-    *, entry_points: Iterable[EntryPoint] | None = None
+    *,
+    builtin_factory: Callable[[Settings], RetrieverContract],
+    entry_points: Iterable[EntryPoint] | None = None,
 ) -> RetrieverPluginRegistry:
-    """Discover installed plugins without network access, in deterministic order."""
-    discovered: list[RetrieverPlugin] = [_BuiltinPlugin()]
+    """Discover installed plugins without network access, in deterministic order.
+
+    ``builtin_factory`` builds the built-in retriever from the caller's shared
+    collaborators; the composition root supplies it, so this module never constructs
+    runtime objects itself.
+    """
+    discovered: list[RetrieverPlugin] = [_BuiltinPlugin(builtin_factory)]
     points = (
         list(entry_points)
         if entry_points is not None

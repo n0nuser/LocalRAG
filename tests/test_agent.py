@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -9,9 +10,11 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 from localrag.agent.service import AgentResponse, run_agent
-from localrag.api.dependencies import get_api_settings, get_engine
 from localrag.api.main import app
-from localrag.settings import Settings, get_settings
+from localrag.application.container import Container
+from localrag.settings import Settings
+
+ApiContainer = Callable[..., Container]
 
 
 @dataclass
@@ -100,22 +103,16 @@ def test_run_agent_answer_directly() -> None:
     assert result.sources == []
 
 
-def test_agent_endpoint_returns_503_without_api_key() -> None:
-    app.dependency_overrides[get_engine] = lambda: StubEngine()
-    app.dependency_overrides[get_api_settings] = lambda: Settings(anthropic_api_key="")
-    app.dependency_overrides[get_settings] = lambda: Settings(anthropic_api_key="")
+def test_agent_endpoint_returns_503_without_api_key(api_container: ApiContainer) -> None:
+    api_container(Settings(anthropic_api_key=""), engine=StubEngine())
     client = TestClient(app)
 
     response = client.post("/agent/query", json={"question": "Hello"})
     assert response.status_code == 503
 
-    app.dependency_overrides.clear()
 
-
-def test_agent_endpoint_calls_run_agent() -> None:
-    app.dependency_overrides[get_engine] = lambda: StubEngine()
-    app.dependency_overrides[get_api_settings] = lambda: Settings(anthropic_api_key="sk-ant-test")
-    app.dependency_overrides[get_settings] = lambda: Settings(anthropic_api_key="sk-ant-test")
+def test_agent_endpoint_calls_run_agent(api_container: ApiContainer) -> None:
+    api_container(Settings(anthropic_api_key="sk-ant-test"), engine=StubEngine())
     client = TestClient(app)
 
     with patch("localrag.api.routers.agent.run_agent") as mock_run:
@@ -134,5 +131,3 @@ def test_agent_endpoint_calls_run_agent() -> None:
     assert body["answer"] == "42"
     assert body["tool_used"] == "answer_directly"
     assert "latency_ms" in body
-
-    app.dependency_overrides.clear()

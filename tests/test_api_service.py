@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -7,14 +8,12 @@ import httpx
 import respx
 from fastapi.testclient import TestClient
 
-from localrag.api.dependencies import (
-    get_api_settings,
-    get_collection_repository,
-    get_ingestion_service,
-)
 from localrag.api.main import app
+from localrag.application.container import Container
 from localrag.ingestion.service import IngestionResult, RebuildCollectionResult
 from localrag.settings import Settings
+
+ApiContainer = Callable[..., Container]
 
 
 @dataclass
@@ -42,13 +41,14 @@ class StubIngestionService:
 
 
 @respx.mock
-def test_readiness_success_and_collections_endpoints(tmp_path: Path) -> None:
+def test_readiness_success_and_collections_endpoints(
+    tmp_path: Path, api_container: ApiContainer
+) -> None:
     base_url = "http://ollama:11434"
     settings = Settings(ollama_base_url=base_url, chroma_persist_path=str(tmp_path))
     repo = StubCollectionRepo(names=["col-1", "col-2"], deleted=[])
 
-    app.dependency_overrides[get_api_settings] = lambda: settings
-    app.dependency_overrides[get_collection_repository] = lambda: repo
+    api_container(settings, collection_repository=repo)
     client = TestClient(app)
 
     respx.get(f"{base_url}/api/tags").mock(
@@ -72,17 +72,14 @@ def test_readiness_success_and_collections_endpoints(tmp_path: Path) -> None:
     assert missing.status_code == 404
     assert repo.deleted == ["col-1"]
 
-    app.dependency_overrides.clear()
-
 
 @respx.mock
-def test_readiness_marks_ollama_unreachable_on_http_error() -> None:
+def test_readiness_marks_ollama_unreachable_on_http_error(api_container: ApiContainer) -> None:
     base_url = "http://ollama:11434"
     settings = Settings(ollama_base_url=base_url, chroma_persist_path="./data/chroma")
     repo = StubCollectionRepo(names=["col"], deleted=[])
 
-    app.dependency_overrides[get_api_settings] = lambda: settings
-    app.dependency_overrides[get_collection_repository] = lambda: repo
+    api_container(settings, collection_repository=repo)
     client = TestClient(app)
 
     respx.get(f"{base_url}/api/tags").mock(return_value=httpx.Response(500, json={"x": 1}))
@@ -91,17 +88,16 @@ def test_readiness_marks_ollama_unreachable_on_http_error() -> None:
     assert health.status_code == 503
     assert health.json() == {"status": "unavailable"}
 
-    app.dependency_overrides.clear()
-
 
 @respx.mock
-def test_readiness_marks_ollama_unreachable_on_invalid_response() -> None:
+def test_readiness_marks_ollama_unreachable_on_invalid_response(
+    api_container: ApiContainer,
+) -> None:
     base_url = "http://ollama:11434"
     settings = Settings(ollama_base_url=base_url, chroma_persist_path="./data/chroma")
     repo = StubCollectionRepo(names=["col"], deleted=[])
 
-    app.dependency_overrides[get_api_settings] = lambda: settings
-    app.dependency_overrides[get_collection_repository] = lambda: repo
+    api_container(settings, collection_repository=repo)
     client = TestClient(app)
 
     respx.get(f"{base_url}/api/tags").mock(return_value=httpx.Response(200, json={"wrong": True}))
@@ -110,10 +106,10 @@ def test_readiness_marks_ollama_unreachable_on_invalid_response() -> None:
     assert health.status_code == 503
     assert health.json() == {"status": "unavailable"}
 
-    app.dependency_overrides.clear()
 
-
-def test_ingest_directory_success_and_forbidden_outside_roots(tmp_path: Path) -> None:
+def test_ingest_directory_success_and_forbidden_outside_roots(
+    tmp_path: Path, api_container: ApiContainer
+) -> None:
     allowed_root = tmp_path / "allowed"
     allowed_root.mkdir()
     inside_dir = allowed_root / "docs"
@@ -130,8 +126,7 @@ def test_ingest_directory_success_and_forbidden_outside_roots(tmp_path: Path) ->
     )
 
     settings = Settings(ingest_roots=[str(allowed_root)])
-    app.dependency_overrides[get_api_settings] = lambda: settings
-    app.dependency_overrides[get_ingestion_service] = lambda: ingestion
+    api_container(settings, ingestion_service=ingestion)
 
     client = TestClient(app)
     ok = client.post(
@@ -156,10 +151,8 @@ def test_ingest_directory_success_and_forbidden_outside_roots(tmp_path: Path) ->
     assert forbidden.status_code == 403
     assert forbidden.json()["detail"] == "Path is not under configured ingest roots."
 
-    app.dependency_overrides.clear()
 
-
-def test_collections_rebuild_passes_embed_model() -> None:
+def test_collections_rebuild_passes_embed_model(api_container: ApiContainer) -> None:
     seen: list[str | None] = []
 
     class StubRebuild:
@@ -172,12 +165,10 @@ def test_collections_rebuild_passes_embed_model() -> None:
                 missing_sources=[],
             )
 
-    app.dependency_overrides[get_ingestion_service] = lambda: StubRebuild()
+    api_container(ingestion_service=StubRebuild())
     client = TestClient(app)
 
     response = client.post("/collections/rebuild", json={"embed_model": "mxbai-embed-large"})
     assert response.status_code == 200
     assert response.json()["missing_sources"] == []
     assert seen == ["mxbai-embed-large"]
-
-    app.dependency_overrides.clear()
