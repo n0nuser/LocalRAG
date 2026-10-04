@@ -1,111 +1,48 @@
 from __future__ import annotations
 
-from functools import lru_cache
 from http import HTTPStatus
 
-from fastapi import Depends, HTTPException, Security
+from fastapi import Depends, HTTPException, Request, Security
 from fastapi.security import APIKeyHeader
 
+from localrag.application.container import Container
 from localrag.application.jobs import JobRegistry
 from localrag.application.repository import ChromaCollectionRepository
-from localrag.application.runtime import clear_runtime_caches
-from localrag.embedding.base import EmbeddingProvider
-from localrag.embedding.cache import EmbeddingCache
-from localrag.embedding.factory import build_embedding_provider
-from localrag.ingestion.service import IngestionService
-from localrag.llm.factory import build_provider
-from localrag.plugins.retriever import ManagedRetriever, discover_retriever_plugins
-from localrag.rag.bm25_index import Bm25Index
 from localrag.rag.engine import RAGEngine
 from localrag.rag.query_cache import QueryCache
-from localrag.rag.reranker import CrossEncoderReranker
-from localrag.rag.retriever import Retriever
-from localrag.settings import Settings, get_settings
-from localrag.storage.vector_store import VectorStore
 
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 
-@lru_cache(maxsize=1)
-def get_vector_store() -> VectorStore:
-    settings = get_settings()
-    return VectorStore.create(
-        persist_path=settings.chroma_persist_path,
-        collection_name=settings.chroma_collection_name,
-    )
+def get_container(request: Request) -> Container:
+    """The process container the lifespan built; tests override this one dependency."""
+    return request.app.state.container
 
 
-@lru_cache(maxsize=1)
-def get_embedder() -> EmbeddingProvider:
-    settings = get_settings()
-    return build_embedding_provider(settings)
+def get_engine(container: Container = Depends(get_container)) -> RAGEngine:
+    return container.engine
 
 
-@lru_cache(maxsize=1)
-def get_reranker() -> CrossEncoderReranker | None:
-    settings = get_settings()
-    if not settings.rerank_enabled:
-        return None
-    return CrossEncoderReranker(model_name=settings.rerank_model)
+def get_query_cache(container: Container = Depends(get_container)) -> QueryCache:
+    return container.query_cache
 
 
-@lru_cache(maxsize=1)
-def get_retriever() -> Retriever:
-    settings = get_settings()
-    registry = discover_retriever_plugins()
-    return ManagedRetriever(registry, registry.create(settings.retriever_plugin, settings))  # type: ignore[return-value]
+def get_job_registry(container: Container = Depends(get_container)) -> JobRegistry:
+    return container.job_registry
 
 
-@lru_cache(maxsize=1)
-def get_engine() -> RAGEngine:
-    settings = get_settings()
-    return RAGEngine(
-        settings=settings, retriever=get_retriever(), provider=build_provider(settings)
-    )
-
-
-@lru_cache(maxsize=1)
-def get_query_cache() -> QueryCache:
-    settings = get_settings()
-    return QueryCache(
-        maxsize=settings.query_cache_maxsize, ttl_seconds=settings.query_cache_ttl_seconds
-    )
-
-
-@lru_cache(maxsize=1)
-def get_ingestion_service() -> IngestionService:
-    settings = get_settings()
-    return IngestionService(
-        settings=settings,
-        embedder=get_embedder(),
-        vector_store=get_vector_store(),
-        bm25_index=get_bm25_index(),
-        embedding_cache=EmbeddingCache(
-            settings.embedding_cache_path,
-            max_entries=settings.embedding_cache_max_entries,
-            max_bytes=settings.embedding_cache_max_bytes,
-            preprocessing_version=settings.embedding_cache_preprocessing_version,
-            task_prefix=settings.embedding_cache_task_prefix,
-        ),
-    )
-
-
-@lru_cache(maxsize=1)
-def get_bm25_index() -> Bm25Index:
-    return Bm25Index.from_vector_store(get_vector_store())
-
-
-@lru_cache(maxsize=1)
-def get_job_registry() -> JobRegistry:
-    return JobRegistry()
+def get_collection_repository(
+    container: Container = Depends(get_container),
+) -> ChromaCollectionRepository:
+    return container.collection_repository
 
 
 def require_api_key(
     key: str | None = Security(_api_key_header),
-    settings: Settings = Depends(get_settings),
+    container: Container = Depends(get_container),
 ) -> None:
     """Enforce X-API-Key when API_KEY is configured. No-op when API_KEY is empty."""
-    configured = settings.api_key
+    configured = container.settings.api_key
     if not configured:
         return
     if not key or key != configured:
@@ -113,25 +50,3 @@ def require_api_key(
             status_code=HTTPStatus.UNAUTHORIZED,
             detail="Invalid or missing API key.",
         )
-
-
-def get_api_settings() -> Settings:
-    return get_settings()
-
-
-def get_collection_repository(
-    store: VectorStore = Depends(get_vector_store),
-) -> ChromaCollectionRepository:
-    return ChromaCollectionRepository(_vector_store=store)
-
-
-def invalidate_retrieval_caches() -> None:
-    """Drop collection-bound retrieval objects after a collection mutation."""
-    if get_retriever.cache_info().currsize:
-        close = getattr(get_retriever(), "close", None)
-        if close is not None:
-            close()
-    get_engine.cache_clear()
-    get_retriever.cache_clear()
-    get_bm25_index.cache_clear()
-    clear_runtime_caches()

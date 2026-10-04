@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from http import HTTPStatus
 from pathlib import Path
@@ -9,15 +10,13 @@ from uuid import uuid4
 import pytest
 from fastapi.testclient import TestClient
 
-from localrag.api.dependencies import (
-    get_api_settings,
-    get_engine,
-    get_ingestion_service,
-)
 from localrag.api.main import app
+from localrag.application.container import Container
 from localrag.ingestion.service import IngestionResult
-from localrag.settings import Settings, get_settings
+from localrag.settings import Settings
 from localrag.storage.persist_lock import ConcurrentIngestError
+
+ApiContainer = Callable[..., Container]
 
 _STUB_CONTEXTS = [{"source": "doc.md", "chunk_index": 1, "text": "chunk"}]
 
@@ -70,8 +69,8 @@ class StubEngine:
         ]
 
 
-def test_query_json_returns_answer() -> None:
-    app.dependency_overrides[get_engine] = lambda: StubEngine()
+def test_query_json_returns_answer(api_container: ApiContainer) -> None:
+    api_container(engine=StubEngine())
     client = TestClient(app)
 
     response = client.post("/query", json={"question": "Hi"})
@@ -84,10 +83,8 @@ def test_query_json_returns_answer() -> None:
     assert body["model"] == "stub-model"
     assert body["trace"]["status"] == "fallback"
 
-    app.dependency_overrides.clear()
 
-
-def test_query_json_selects_request_collection() -> None:
+def test_query_json_selects_request_collection(api_container: ApiContainer) -> None:
     selected: list[str] = []
 
     @dataclass
@@ -96,15 +93,14 @@ def test_query_json_selects_request_collection() -> None:
             selected.append(collection)
             return self
 
-    app.dependency_overrides[get_engine] = lambda: CollectionEngine()
+    api_container(engine=CollectionEngine())
     response = TestClient(app).post("/query", json={"question": "Hi", "collection": "experiments"})
 
     assert response.status_code == 200
     assert selected == ["experiments"]
-    app.dependency_overrides.clear()
 
 
-def test_benchmark_contexts_return_text_and_stable_id() -> None:
+def test_benchmark_contexts_return_text_and_stable_id(api_container: ApiContainer) -> None:
     class BenchmarkRetriever(StubRetriever):
         def retrieve(self, **_kwargs: object) -> list[dict[str, Any]]:
             return [
@@ -121,7 +117,7 @@ def test_benchmark_contexts_return_text_and_stable_id() -> None:
     class BenchmarkEngine(StubEngine):
         retriever: BenchmarkRetriever = field(default_factory=BenchmarkRetriever)
 
-    app.dependency_overrides[get_engine] = lambda: BenchmarkEngine()
+    api_container(engine=BenchmarkEngine())
     response = TestClient(app).post("/query/contexts", json={"question": "Hi"})
 
     assert response.status_code == 200
@@ -133,11 +129,10 @@ def test_benchmark_contexts_return_text_and_stable_id() -> None:
             "chunk_index": 2,
         }
     ]
-    app.dependency_overrides.clear()
 
 
-def test_query_streams_events() -> None:
-    app.dependency_overrides[get_engine] = lambda: StubEngine()
+def test_query_streams_events(api_container: ApiContainer) -> None:
+    api_container(engine=StubEngine())
     client = TestClient(app)
 
     response = client.post("/query/stream", json={"question": "Hi"})
@@ -147,26 +142,26 @@ def test_query_streams_events() -> None:
     assert "hello" in response.text
     assert "event: final" in response.text
 
-    app.dependency_overrides.clear()
 
-
-def test_metrics_endpoint_returns_prometheus_text() -> None:
+def test_metrics_endpoint_returns_prometheus_text(api_container: ApiContainer) -> None:
+    api_container()
     client = TestClient(app)
     response = client.get("/metrics")
     assert response.status_code == 200
     assert "python_info" in response.text or "HELP" in response.text
 
 
-def test_build_info_is_protected(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_info_is_protected(
+    monkeypatch: pytest.MonkeyPatch, api_container: ApiContainer
+) -> None:
     monkeypatch.setenv("LOCALRAG_BUILD_SHA", "test-sha")
-    app.dependency_overrides[get_settings] = lambda: Settings(api_key="secret")
+    api_container(Settings(api_key="secret"))
     client = TestClient(app)
 
     assert client.get("/build-info").status_code == 401
     response = client.get("/build-info", headers={"X-API-Key": "secret"})
 
     assert response.json() == {"build_sha": "test-sha"}
-    app.dependency_overrides.clear()
 
 
 @pytest.mark.parametrize(
@@ -177,27 +172,23 @@ def test_build_info_is_protected(monkeypatch: pytest.MonkeyPatch) -> None:
         ({"X-API-Key": "secret"}, 200),
     ],
 )
-def test_api_key_enforcement(headers: dict[str, str], expected_status: int) -> None:
-    app.dependency_overrides[get_engine] = lambda: StubEngine()
-    app.dependency_overrides[get_settings] = lambda: Settings(api_key="secret")
+def test_api_key_enforcement(
+    headers: dict[str, str], expected_status: int, api_container: ApiContainer
+) -> None:
+    api_container(Settings(api_key="secret"), engine=StubEngine())
     client = TestClient(app)
 
     response = client.post("/query", json={"question": "Hi"}, headers=headers)
     assert response.status_code == expected_status
 
-    app.dependency_overrides.clear()
 
-
-def test_api_key_disabled_when_not_configured() -> None:
+def test_api_key_disabled_when_not_configured(api_container: ApiContainer) -> None:
     """When API_KEY is empty, all requests pass through without a key."""
-    app.dependency_overrides[get_engine] = lambda: StubEngine()
-    app.dependency_overrides[get_settings] = lambda: Settings(api_key="")
+    api_container(Settings(api_key=""), engine=StubEngine())
     client = TestClient(app)
 
     response = client.post("/query", json={"question": "Hi"})
     assert response.status_code == 200
-
-    app.dependency_overrides.clear()
 
 
 @dataclass
@@ -211,17 +202,16 @@ class UnusedIngestionService:
         raise AssertionError(path)
 
 
-def test_ingest_rejects_missing_file() -> None:
-    app.dependency_overrides[get_ingestion_service] = lambda: UnusedIngestionService()
+def test_ingest_rejects_missing_file(api_container: ApiContainer) -> None:
+    api_container(ingestion_service=UnusedIngestionService())
     client = TestClient(app)
     missing = Path(__file__).resolve().parent / f"missing_{uuid4()}.txt"
     response = client.post("/ingest", json={"path": str(missing)})
     assert response.status_code == 400
     assert response.json()["detail"] == "Path must be an existing file."
-    app.dependency_overrides.clear()
 
 
-def test_ingest_accepts_percent_encoded_spaces(tmp_path: Path) -> None:
+def test_ingest_accepts_percent_encoded_spaces(tmp_path: Path, api_container: ApiContainer) -> None:
     doc = tmp_path / "my doc.txt"
     doc.write_text("hello", encoding="utf-8")
 
@@ -239,41 +229,37 @@ def test_ingest_accepts_percent_encoded_spaces(tmp_path: Path) -> None:
             raise AssertionError(path)
 
     recording = RecordingIngestionService(seen=[])
-    app.dependency_overrides[get_ingestion_service] = lambda: recording
+    api_container(ingestion_service=recording)
     client = TestClient(app)
     response = client.post("/ingest", json={"path": str(tmp_path / "my%20doc.txt")})
     assert response.status_code == 200
     assert len(recording.seen) == 1
     assert " " in str(recording.seen[0])
     assert "%20" not in str(recording.seen[0])
-    app.dependency_overrides.clear()
 
 
-def test_ingest_forbidden_outside_roots(tmp_path: Path) -> None:
+def test_ingest_forbidden_outside_roots(tmp_path: Path, api_container: ApiContainer) -> None:
     inner = tmp_path / "allowed"
     inner.mkdir()
     outer_file = tmp_path / "outside.txt"
     outer_file.write_text("x", encoding="utf-8")
-    app.dependency_overrides[get_api_settings] = lambda: Settings(ingest_roots=[str(inner)])
-    app.dependency_overrides[get_ingestion_service] = lambda: UnusedIngestionService()
+    api_container(Settings(ingest_roots=[str(inner)]), ingestion_service=UnusedIngestionService())
     client = TestClient(app)
     response = client.post("/ingest", json={"path": str(outer_file)})
     assert response.status_code == 403
-    app.dependency_overrides.clear()
 
 
-def test_ingest_directory_rejects_file(tmp_path: Path) -> None:
+def test_ingest_directory_rejects_file(tmp_path: Path, api_container: ApiContainer) -> None:
     file_only = tmp_path / "a.txt"
     file_only.write_text("x", encoding="utf-8")
-    app.dependency_overrides[get_ingestion_service] = lambda: UnusedIngestionService()
+    api_container(ingestion_service=UnusedIngestionService())
     client = TestClient(app)
     response = client.post("/ingest/directory", json={"path": str(file_only)})
     assert response.status_code == 400
     assert response.json()["detail"] == "Path must be an existing directory."
-    app.dependency_overrides.clear()
 
 
-def test_ingest_upload_saves_and_ingests_file(tmp_path: Path) -> None:
+def test_ingest_upload_saves_and_ingests_file(tmp_path: Path, api_container: ApiContainer) -> None:
     @dataclass
     class RecordingIngestionService:
         seen: list[Path]
@@ -284,8 +270,7 @@ def test_ingest_upload_saves_and_ingests_file(tmp_path: Path) -> None:
             return IngestionResult(files_processed=1, total_chunks=3, processed_sources=[str(path)])
 
     recording = RecordingIngestionService(seen=[])
-    app.dependency_overrides[get_api_settings] = lambda: Settings(upload_dir=str(tmp_path))
-    app.dependency_overrides[get_ingestion_service] = lambda: recording
+    api_container(Settings(upload_dir=str(tmp_path)), ingestion_service=recording)
     client = TestClient(app)
 
     response = client.post(
@@ -298,12 +283,12 @@ def test_ingest_upload_saves_and_ingests_file(tmp_path: Path) -> None:
     assert body["chunks_added"] == 3
     assert len(recording.seen) == 1
     assert recording.seen[0].parent == tmp_path
-    app.dependency_overrides.clear()
 
 
-def test_ingest_upload_rejects_unsupported_extension(tmp_path: Path) -> None:
-    app.dependency_overrides[get_api_settings] = lambda: Settings(upload_dir=str(tmp_path))
-    app.dependency_overrides[get_ingestion_service] = lambda: UnusedIngestionService()
+def test_ingest_upload_rejects_unsupported_extension(
+    tmp_path: Path, api_container: ApiContainer
+) -> None:
+    api_container(Settings(upload_dir=str(tmp_path)), ingestion_service=UnusedIngestionService())
     client = TestClient(app)
 
     response = client.post(
@@ -313,14 +298,13 @@ def test_ingest_upload_rejects_unsupported_extension(tmp_path: Path) -> None:
 
     assert response.status_code == 415
     assert list(tmp_path.iterdir()) == []
-    app.dependency_overrides.clear()
 
 
-def test_ingest_upload_rejects_oversized_file(tmp_path: Path) -> None:
-    app.dependency_overrides[get_api_settings] = lambda: Settings(
-        upload_dir=str(tmp_path), upload_max_bytes=5
+def test_ingest_upload_rejects_oversized_file(tmp_path: Path, api_container: ApiContainer) -> None:
+    api_container(
+        Settings(upload_dir=str(tmp_path), upload_max_bytes=5),
+        ingestion_service=UnusedIngestionService(),
     )
-    app.dependency_overrides[get_ingestion_service] = lambda: UnusedIngestionService()
     client = TestClient(app)
 
     response = client.post(
@@ -330,27 +314,26 @@ def test_ingest_upload_rejects_oversized_file(tmp_path: Path) -> None:
 
     assert response.status_code == 413
     assert list(tmp_path.iterdir()) == []
-    app.dependency_overrides.clear()
 
 
-def test_ingest_upload_is_temporary_by_default(tmp_path: Path) -> None:
+def test_ingest_upload_is_temporary_by_default(tmp_path: Path, api_container: ApiContainer) -> None:
     @dataclass
     class Recording:
         def ingest_file(self, path: Path, embed_model: str | None = None) -> IngestionResult:
             return IngestionResult(files_processed=1, total_chunks=1, processed_sources=[str(path)])
 
     recording = Recording()
-    app.dependency_overrides[get_api_settings] = lambda: Settings(upload_dir=str(tmp_path))
-    app.dependency_overrides[get_ingestion_service] = lambda: recording
+    api_container(Settings(upload_dir=str(tmp_path)), ingestion_service=recording)
     response = TestClient(app).post(
         "/ingest/upload", files={"file": ("notes.txt", b"same", "text/plain")}
     )
     assert response.status_code == 200
     assert list(tmp_path.iterdir()) == []
-    app.dependency_overrides.clear()
 
 
-def test_ingest_upload_retention_quota_removes_oldest(tmp_path: Path) -> None:
+def test_ingest_upload_retention_quota_removes_oldest(
+    tmp_path: Path, api_container: ApiContainer
+) -> None:
     @dataclass
     class Recording:
         def ingest_file(self, path: Path, embed_model: str | None = None) -> IngestionResult:
@@ -362,18 +345,18 @@ def test_ingest_upload_retention_quota_removes_oldest(tmp_path: Path) -> None:
     settings = Settings(
         upload_dir=str(tmp_path), upload_retention_seconds=3600, upload_quota_bytes=3
     )
-    app.dependency_overrides[get_api_settings] = lambda: settings
-    app.dependency_overrides[get_ingestion_service] = lambda: Recording()
+    api_container(settings, ingestion_service=Recording())
     response = TestClient(app).post(
         "/ingest/upload", files={"file": ("notes.txt", b"new", "text/plain")}
     )
     assert response.status_code == 200
     assert old.exists() is False
     assert len(list(tmp_path.iterdir())) == 1
-    app.dependency_overrides.clear()
 
 
-def test_ingest_returns_409_when_another_process_holds_the_persist_lock(tmp_path: Path) -> None:
+def test_ingest_returns_409_when_another_process_holds_the_persist_lock(
+    tmp_path: Path, api_container: ApiContainer
+) -> None:
     doc = tmp_path / "notes.txt"
     doc.write_text("hello", encoding="utf-8")
 
@@ -383,11 +366,10 @@ def test_ingest_returns_409_when_another_process_holds_the_persist_lock(tmp_path
             _ = embed_model
             raise ConcurrentIngestError(str(path))
 
-    app.dependency_overrides[get_ingestion_service] = lambda: ContendedIngestionService()
+    api_container(ingestion_service=ContendedIngestionService())
     client = TestClient(app, raise_server_exceptions=False)
 
     response = client.post("/ingest", json={"path": str(doc)})
 
     assert response.status_code == HTTPStatus.CONFLICT
     assert str(doc) in response.json()["detail"]
-    app.dependency_overrides.clear()

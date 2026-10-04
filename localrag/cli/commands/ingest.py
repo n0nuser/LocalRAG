@@ -5,8 +5,9 @@ from pathlib import Path
 
 import typer
 
-from localrag.application.container import get_ingestion_service
+from localrag.application.container import Container
 from localrag.ingestion.service import IngestProgress
+from localrag.settings import get_settings
 from localrag.storage.persist_lock import ConcurrentIngestError
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,6 @@ def _echo_progress(event: IngestProgress) -> None:
 
 
 def ingest(path: str, recursive: bool | None = None, *, quiet: bool = False) -> None:
-    service = get_ingestion_service()
     target = Path(path)
     logger.info("cli_ingest path=%s recursive=%s is_dir=%s", path, recursive, target.is_dir())
 
@@ -34,12 +34,14 @@ def ingest(path: str, recursive: bool | None = None, *, quiet: bool = False) -> 
     on_progress = None if quiet else _echo_progress
 
     try:
-        if target.is_dir():
-            result = service.ingest_directory(
-                path=target, recursive=recursive, on_progress=on_progress
-            )
-        else:
-            result = service.ingest_file(path=target, on_progress=on_progress)
+        with Container.build(get_settings()) as container:
+            service = container.ingestion_service
+            if target.is_dir():
+                result = service.ingest_directory(
+                    path=target, recursive=recursive, on_progress=on_progress
+                )
+            else:
+                result = service.ingest_file(path=target, on_progress=on_progress)
     except ConcurrentIngestError as exc:
         logger.error("cli_ingest_conflict error=%s", exc)
         typer.echo(f"status=error reason=concurrent_ingest detail={exc}", err=True)

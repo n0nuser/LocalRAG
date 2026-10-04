@@ -53,14 +53,14 @@ default.
 | [029](029-graphrag-feasibility-boundary.md) | GraphRAG feasibility boundary | Research boundary | Retrieval |
 | [030](030-optional-otel-observability-boundary.md) | Optional OpenTelemetry observability boundary | Accepted | Observability |
 | [031](031-failure-analysis-contract.md) | Per-case failure analysis contract | Accepted | Evaluation |
-| [032](032-retriever-plugin-contract.md) | Versioned retriever plugin boundary | Accepted | Plugins |
+| [032](032-retriever-plugin-contract.md) | Versioned retriever plugin boundary | Amended by #224 (plugin instance lifecycle) | Plugins |
 | [033](033-dockerized-benchmark-boundary.md) | Dockerized benchmark boundary | Accepted | Evaluation |
 | [034](034-contributor-taskfile-contract.md) | Portable contributor Taskfile contract | Accepted | Tooling |
 | [035](035-atomic-ingestion-replacement.md) | Serialized atomic source replacement | Accepted | Ingestion |
 | [036](036-retire-zero-cost-feature-flags.md) | Retire zero-cost feature flags, unify retrieval stages | Accepted | Retrieval / Configuration |
 | [037](037-grouped-configuration-model.md) | Grouped configuration model behind flat public names | Accepted | Configuration |
-| [038](038-application-and-mcp-boundaries.md) | Transport-agnostic application boundary and MCP adapter | Amended by [039](039-fastmcp-sdk-adoption.md) | Architecture / MCP |
-| [039](039-fastmcp-sdk-adoption.md) | Adopt the FastMCP SDK for the MCP adapter | Accepted | Architecture / MCP |
+| [038](038-application-and-mcp-boundaries.md) | Transport-agnostic application boundary and MCP adapter | Amended by [039](039-fastmcp-sdk-adoption.md) and #224 (sole composition root) | Architecture / MCP |
+| [039](039-fastmcp-sdk-adoption.md) | Adopt the FastMCP SDK for the MCP adapter | Amended by #224 (container lifespan) | Architecture / MCP |
 | [040](040-request-scoped-collection-selection.md) | Request-scoped HTTP collection selection | Accepted | API / Retrieval |
 | [041](041-claim-scope-applicability-filter.md) | Claim scope-applicability filtering | Accepted | Retrieval |
 

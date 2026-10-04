@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 from typer.testing import CliRunner
 
+from localrag.application.container import Container
 from localrag.cli import app as app_module
 from localrag.cli.commands import ingest as ingest_command
 from localrag.ingestion.service import FailedSource, IngestionResult
@@ -23,7 +25,13 @@ class StubService:
 
 
 def _run(monkeypatch: Any, result: IngestionResult, tmp_path: Any) -> Any:
-    monkeypatch.setattr(ingest_command, "get_ingestion_service", lambda: StubService(result))
+    monkeypatch.setattr(
+        ingest_command,
+        "Container",
+        SimpleNamespace(
+            build=lambda settings: Container.build(settings, ingestion_service=StubService(result))
+        ),
+    )
     target = tmp_path / "doc.md"
     target.write_text("hello", encoding="utf-8")
     return runner.invoke(app_module.app, ["ingest", str(target)])

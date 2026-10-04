@@ -4,7 +4,7 @@ import hashlib
 import json
 import logging
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, BinaryIO, cast
@@ -224,7 +224,14 @@ def ingest_directory_async(
     settings: Settings,
     ingestion_service: IngestionService,
     job_registry: JobRegistry,
+    *,
+    on_ingested: Callable[[], None],
 ) -> IngestJobResponse:
+    """Run a directory ingest as a background job.
+
+    ``on_ingested`` runs on the job's thread once the ingest returns, so retrieval and
+    the query cache catch up with it the same way they do after a synchronous ingest.
+    """
     path = path_from_ingest_request(request.path).resolve()
     if not path.is_dir():
         raise IngestError(ApplicationErrorKind.BAD_REQUEST, "Path must be an existing directory.")
@@ -237,6 +244,7 @@ def ingest_directory_async(
         result = ingestion_service.ingest_directory(
             path, recursive=request.recursive, embed_model=request.embed_model
         )
+        on_ingested()
         app_metrics.ingested_documents_total.inc(result.files_processed)
         return {
             "status": "ok",

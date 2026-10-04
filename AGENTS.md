@@ -23,7 +23,7 @@ Gates enforced by [`.pre-commit-config.yaml`](.pre-commit-config.yaml): ruff (li
 
 Tests marked `integration` require a running stack and are excluded from the default run.
 
-**Unit tests run locally (`task test`); end-to-end tests run in Docker (`task test-integration`) — always.** Rebuild the image before trusting an end-to-end result: a stack that has been up since before your changes is still serving the old artifact, dependencies included. The unit suite fakes the vector store, so a green run is **not** evidence that storage or retrieval works — anything that can only fail against real Chroma (batch limits, `include` contracts, parser routing, embedding quality) needs an `integration` test. Read [`.cursor/rules/testing.mdc`](.cursor/rules/testing.mdc) before writing tests: it covers the container's constraints (read-only rootfs, no pytest/pip) and why retrieval tests must go through `get_retriever()` rather than Chroma's `query_texts`.
+**Unit tests run locally (`task test`); end-to-end tests run in Docker (`task test-integration`) — always.** Rebuild the image before trusting an end-to-end result: a stack that has been up since before your changes is still serving the old artifact, dependencies included. The unit suite fakes the vector store, so a green run is **not** evidence that storage or retrieval works — anything that can only fail against real Chroma (batch limits, `include` contracts, parser routing, embedding quality) needs an `integration` test. Read [`.cursor/rules/testing.mdc`](.cursor/rules/testing.mdc) before writing tests: it covers the container's constraints (read-only rootfs, no pytest/pip) and why retrieval tests must go through the container's retriever (`Container.build(settings).retriever`) rather than Chroma's `query_texts`.
 
 ## Trunk-based Git (read this before branching)
 
@@ -51,7 +51,7 @@ Non-obvious Python constraints are **not** duplicated here. Read them before edi
 
 | Package | Role |
 | --- | --- |
-| `localrag/application/` | Transport-neutral use cases, DTOs, errors, jobs, repositories, and runtime container |
+| `localrag/application/` | Transport-neutral use cases, DTOs, errors, jobs, repositories, and the composition root (`container.py`: one `Container` per process builds and shares every runtime object) |
 | `localrag/api/` | FastAPI HTTP adapter — see the DDD split below |
 | `localrag/mcp/` | MCP adapter (FastMCP SDK) over stdio and HTTP |
 | `localrag/cli/` | Typer app (`localrag.cli.app:app`); one module per command in `cli/commands/` |
@@ -80,7 +80,8 @@ The FastAPI layer follows a **light domain-driven** split:
 | **Application services** | `localrag/application/` | Transport-neutral use cases: orchestration, validation, logging, and domain errors. |
 | **Repositories** | `localrag/application/repository.py` | Persistence boundaries for application use cases (e.g. Chroma collections via `VectorStore`). |
 | **HTTP adapters** | `localrag/api/routers/*.py`, `localrag/api/service.py` | Routes and schema/error mapping: dependencies, call application services, return HTTP responses. **No** domain logic in adapter modules. |
-| **Dependency injection** | `localrag/api/dependencies.py` | Shared service instances, `require_api_key`. |
+| **Composition root** | `localrag/application/container.py` | `Container.build(settings)` is the only place runtime objects are constructed; the API builds it in its lifespan (`app.state.container`), MCP in its server lifespan, the CLI per command. `invalidate()` after every write, `close()` on shutdown. |
+| **Dependency injection** | `localrag/api/dependencies.py` | `get_container(request)`, thin `Depends` getters over it, `require_api_key`. Tests override `get_container` only. |
 | **Background jobs** | `localrag/application/jobs.py` | Async ingest job registry behind `ingest_directory_async` / `get_ingest_job`. |
 | **Middleware** | `localrag/api/middleware.py` | Request ID, logging. |
 | **MCP adapter** | `localrag/mcp/` | FastMCP tool registration and transport adapters over the same application use cases. |

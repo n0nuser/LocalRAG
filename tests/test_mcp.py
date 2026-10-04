@@ -10,6 +10,7 @@ from fastmcp import Client
 from fastmcp.exceptions import ToolError
 from mcp.shared.exceptions import McpError
 
+from localrag.application.container import Container
 from localrag.application.repository import ChromaCollectionRepository
 from localrag.ingestion.service import IngestionService
 from localrag.mcp.server import build_mcp_server
@@ -28,15 +29,18 @@ class StubStore:
         return None
 
 
+def stub_repository() -> ChromaCollectionRepository:
+    return ChromaCollectionRepository(cast("VectorStore", StubStore(["localrag"])))
+
+
 def make_settings(tmp_path: Path, api_key: str = "secret") -> Settings:
     return Settings(api_key=api_key, ingest_roots=[str(tmp_path / "allowed")])
 
 
 def make_client(tmp_path: Path, api_key: str = "secret") -> Client:
     settings = make_settings(tmp_path, api_key=api_key)
-    repo = ChromaCollectionRepository(cast("VectorStore", StubStore(["localrag"])))
-    mcp = build_mcp_server(settings, collection_repo_factory=lambda: repo)
-    return Client(mcp)
+    container = Container.build(settings, collection_repository=stub_repository())
+    return Client(build_mcp_server(settings, lambda: container))
 
 
 async def test_mcp_tool_listing_returns_the_four_tools(
@@ -96,13 +100,12 @@ async def test_mcp_ingest_path_outside_ingest_roots_is_rejected(
     outside.mkdir()
 
     settings = make_settings(tmp_path)
-    repo = ChromaCollectionRepository(cast("VectorStore", StubStore(["localrag"])))
-    ingestion_service = cast("IngestionService", object())
-    mcp = build_mcp_server(
+    container = Container.build(
         settings,
-        ingestion_service_factory=lambda: ingestion_service,
-        collection_repo_factory=lambda: repo,
+        ingestion_service=cast("IngestionService", object()),
+        collection_repository=stub_repository(),
     )
+    mcp = build_mcp_server(settings, lambda: container)
 
     async with Client(mcp) as client:
         with pytest.raises(
@@ -144,8 +147,8 @@ async def test_mcp_api_key_rejection(
 
 async def test_mcp_no_api_key_configured_allows_any_caller(tmp_path: Path) -> None:
     settings = make_settings(tmp_path, api_key="")
-    repo = ChromaCollectionRepository(cast("VectorStore", StubStore(["localrag"])))
-    mcp = build_mcp_server(settings, collection_repo_factory=lambda: repo)
+    container = Container.build(settings, collection_repository=stub_repository())
+    mcp = build_mcp_server(settings, lambda: container)
 
     async with Client(mcp) as client:
         result = await client.call_tool("list_collections", {})

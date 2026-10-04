@@ -1,18 +1,20 @@
 from __future__ import annotations
 
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi.testclient import TestClient
 
-from localrag.api.dependencies import get_engine, get_query_cache
 from localrag.api.main import app
+from localrag.application.container import Container
 from localrag.llm.providers.base import BaseLLMProvider
 from localrag.llm.types import LLMResponse
 from localrag.rag.engine import RAGEngine
 from localrag.rag.query_cache import QueryCache
 from localrag.settings import Settings
+
+ApiContainer = Callable[..., Container]
 
 
 @dataclass
@@ -58,14 +60,15 @@ class FakeProvider(BaseLLMProvider):
         return len(text.split())
 
 
-def test_repeat_query_is_served_from_cache_without_calling_retriever() -> None:
+def test_repeat_query_is_served_from_cache_without_calling_retriever(
+    api_container: ApiContainer,
+) -> None:
     settings = Settings(ollama_base_url="http://ollama:11434", ollama_llm_model="llm")
     retriever = CountingRetriever(calls=[], contexts=[])
     engine = RAGEngine(settings=settings, retriever=retriever, provider=FakeProvider())  # type: ignore[arg-type]
     cache = QueryCache(maxsize=10, ttl_seconds=60)
 
-    app.dependency_overrides[get_engine] = lambda: engine
-    app.dependency_overrides[get_query_cache] = lambda: cache
+    api_container(engine=engine, query_cache=cache)
     client = TestClient(app)
 
     first = client.post("/query", json={"question": "What is X?"})
@@ -74,5 +77,3 @@ def test_repeat_query_is_served_from_cache_without_calling_retriever() -> None:
     assert first.status_code == 200
     assert second.status_code == 200
     assert retriever.calls == ["What is X?"]  # second request served from cache
-
-    app.dependency_overrides.clear()
