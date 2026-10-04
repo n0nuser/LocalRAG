@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import threading
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -71,7 +72,18 @@ class Bm25Index:
             self.corpus_metadatas = list(snapshot.metadatas)
             self.bm25 = snapshot.index
 
-    def query(self, text: str, top_k: int) -> list[Bm25Hit]:
+    def query(
+        self,
+        text: str,
+        top_k: int,
+        matches: Callable[[Mapping[str, Any]], bool] | None = None,
+    ) -> list[Bm25Hit]:
+        """Rank the chunks ``matches`` accepts, all of them when it is None.
+
+        Rows are masked before scoring and the ``top_k`` cut, so a selective filter
+        still yields up to ``top_k`` hits. IDF and average document length stay
+        corpus-wide: masking changes which chunks compete, never their scores.
+        """
         with self._snapshot_lock:
             snapshot = self._snapshot
         if snapshot.index is None or top_k <= 0:
@@ -79,26 +91,34 @@ class Bm25Index:
         tokens = tokenize(text)
         if not tokens:
             return []
+        candidates = [
+            index
+            for index, metadata in enumerate(snapshot.metadatas)
+            if matches is None or matches(metadata)
+        ]
 
-        scores = snapshot.index.get_scores(tokens)
+        if not candidates:
+            return []
+
+        scores = snapshot.index.get_batch_scores(tokens, candidates)
         query_text = text.strip().lower()
         if query_text:
-            for index, document in enumerate(snapshot.documents):
-                if query_text in document.lower():
-                    scores[index] = float(scores[index]) + 1.0
-        ranked_indexes = sorted(
-            range(len(scores)),
-            key=lambda idx: float(scores[idx]),
+            for position, index in enumerate(candidates):
+                if query_text in snapshot.documents[index].lower():
+                    scores[position] += 1.0
+        ranked_positions = sorted(
+            range(len(candidates)),
+            key=lambda position: scores[position],
             reverse=True,
         )[:top_k]
         return [
             Bm25Hit(
-                chunk_id=snapshot.ids[index],
-                text=snapshot.documents[index],
-                metadata=snapshot.metadatas[index],
-                score=float(scores[index]),
+                chunk_id=snapshot.ids[candidates[position]],
+                text=snapshot.documents[candidates[position]],
+                metadata=snapshot.metadatas[candidates[position]],
+                score=float(scores[position]),
             )
-            for index in ranked_indexes
+            for position in ranked_positions
         ]
 
 
