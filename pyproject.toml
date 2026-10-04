@@ -48,7 +48,7 @@ localrag = "localrag.cli.app:app"
 [project.optional-dependencies]
 rerank = ["sentence-transformers>=3"]
 embedding = ["sentence-transformers>=3"]
-tracking = ["mlflow>=3.1"]
+tracking = ["mlflow>=3.15.1"]
 observability = [
     "opentelemetry-api>=1.29,<2",
     "opentelemetry-sdk>=1.29,<2",
