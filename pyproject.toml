@@ -51,7 +51,7 @@ embedding = ["sentence-transformers>=3"]
 tracking = ["mlflow>=3.1"]
 observability = [
     "opentelemetry-api>=1.29,<2",
-    "opentelemetry-sdk>=1.29,<2",
+    "opentelemetry-sdk>=1.45.1,<2",
     "opentelemetry-exporter-otlp-proto-http>=1.29,<2",
 ]
 langfuse = ["langfuse>=3,<4"]
